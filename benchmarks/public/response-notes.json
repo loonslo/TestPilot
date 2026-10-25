@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "source": "Observed on the service (commit 55cf875, 2026-10-15) and written by hand, because the service's OpenAPI describes none of its response bodies. Fields not listed here exist but are outside the rules.",
+  "conventions": {
+    "success": "HTTP 200 with {request_id, data, warnings, partial, server_time}. The payload is `data`.",
+    "error": "{request_id, error: {code, message, retryable, retry_after_seconds, details}, server_time}. Schema violations are HTTP 400 with code VALIDATION_ERROR and `details` naming each bad field.",
+    "money": "Response amounts end in `_minor`: integers in minor units (1/100 of the currency unit). Request amounts and quantities are decimal strings in currency units.",
+    "enum_case": "Request enums are UPPER-CASE (BANK, FUND, DEPOSIT). Responses return the same values lower-case (bank, fund, deposit).",
+    "version": "Every record has `version`: 1 when created, +1 on every change. Updating or archiving requires the record's current version.",
+    "archive": "Archiving is soft. The record leaves the list endpoints and the summary; archiving or touching it again behaves as if it does not exist.",
+    "batch": "holdings.batch_upsert and transactions.batch_upsert need a `client_request_id` and take 1 to 500 items. Items without an id create records; items with an id and the current version update them.",
+    "ids": "account_id, holding_id and transaction_id are opaque strings returned by earlier calls.",
+    "scoping": "Every call acts as one user and only sees that user's records."
+  },
+  "objects": {
+    "Account": {
+      "account_id": "string",
+      "name": "string",
+      "institution": "string or null",
+      "account_type": "lower-case: brokerage | fund | bank | crypto | other",
+      "currency": "3-letter code",
+      "opening_balance_minor": "integer",
+      "status": "\"active\"",
+      "version": "integer",
+      "updated_at": "RFC 3339 UTC string"
+    },
+    "Holding": {
+      "holding_id": "string",
+      "account_id": "string or null",
+      "name": "string",
+      "asset_type": "lower-case: stock | etf | fund | lof | reit | bond | cash | crypto | other",
+      "quantity": "number",
+      "average_cost": "number or null (unit cost)",
+      "current_price": "number or null (unit price; set it with metadata.current_price in the request)",
+      "currency": "3-letter code",
+      "market_value_minor": "integer",
+      "cost_minor": "integer",
+      "unrealized_profit_minor": "integer or null (null when average_cost is missing)",
+      "valuation_status": "\"priced\" when a price is known, otherwise \"estimated\"",
+      "version": "integer",
+      "updated_at": "RFC 3339 UTC string"
+    },
+    "Transaction": {
+      "transaction_id": "string",
+      "account_id": "string",
+      "to_account_id": "string or null (transfers only)",
+      "holding_id": "not echoed back; sent only in requests",
+      "transaction_date": "YYYY-MM-DD, taken from occurred_at",
+      "transaction_type": "lower-case: buy | sell | dividend | deposit | withdrawal | fee | interest | transfer | other",
+      "amount_minor": "integer (keeps the sign that was sent)",
+      "currency": "code of 3 to 5 letters",
+      "note": "string or null",
+      "version": "integer",
+      "updated_at": "RFC 3339 UTC string"
+    },
+    "ArchiveResult": {
+      "id": "string",
+      "archived": "true",
+      "version": "integer (the new version)",
+      "updated_at": "RFC 3339 UTC string"
+    },
+    "Totals": {
+      "cash_balance_minor": "integer",
+      "holdings_value_minor": "integer",
+      "holdings_cost_minor": "integer",
+      "unrealized_profit_minor": "integer",
+      "total_assets_minor": "integer",
+      "income_minor": "integer",
+      "expense_minor": "integer",
+      "net_cashflow_minor": "integer"
+    },
+    "LedgerSummary": {
+      "month": "YYYY-MM as requested",
+      "base_currency": "3-letter code (the user's base currency)",
+      "base": "Totals",
+      "by_currency": "object: currency code -> Totals",
+      "excluded_currencies": "array of currency codes",
+      "other_fields": "records, goals, allocation, categories, generated_at and price_refresh also exist; the rules do not cover them"
+    }
+  },
+  "operations": {
+    "accounts.list": "data = {items: Account[]}",
+    "accounts.upsert": "data = Account. Without account_id it creates; with account_id and the current version it updates.",
+    "accounts.archive": "data = ArchiveResult",
+    "holdings.list": "data = {items: Holding[]}; optional account_id filter",
+    "holdings.batch_upsert": "data = {items: Holding[]} in request order",
+    "holdings.archive": "data = ArchiveResult",
+    "transactions.list": "data = {items: Transaction[]}; optional account_id filter",
+    "transactions.batch_upsert": "data = {items: Transaction[]} in request order",
+    "transactions.archive": "data = ArchiveResult",
+    "ledger.summary": "data = LedgerSummary; optional month (YYYY-MM)"
+  }
+}

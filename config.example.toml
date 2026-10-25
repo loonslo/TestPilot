@@ -1,0 +1,36 @@
+# Copy this file to config.local.toml (ignored by Git) and fill in the local path.
+# Secrets never go here: the model's API key is read from the environment variable named below.
+
+[target]
+# Local Git repository of the system under test. Only read, via `git archive` of the pinned commit.
+source_repo = "<local path of the FinUnityServer repository>"
+commit = "55cf875b9d0350e80cfed14b971b7bec8e22b50b"
+# Same minor version as the target's production image.
+python = "3.12"
+# Loopback port for the sandbox server (the host is fixed to 127.0.0.1).
+port = 18080
+
+[sandbox]
+runtime_dir = "runtime"
+
+[model]
+# OpenRouter's Free Models Router picks a free model at random for every request, so one run can
+# mix several models. Pin one specific free model (for example "google/gemma-4-31b-it:free") before
+# any evaluation that is meant to be repeatable.
+base_url = "https://openrouter.ai/api/v1"
+model_id = "openrouter/free"
+api_key_env = "API_TEST_AGENT_MODEL_API_KEY"
+timeout_seconds = 90
+max_output_tokens = 2048
+
+[budget]
+# Limits for one task run; a task file may only lower the call and time limits.
+max_model_calls = 12
+max_http_calls = 30
+max_seconds = 600
+max_tokens = 60000
+max_cost_usd = 0.0
+# OpenRouter free models: 50 requests a day, 1000 once 10 credits have been bought.
+max_requests_per_day = 45
+min_seconds_between_model_calls = 3.0
+max_consecutive_model_failures = 3

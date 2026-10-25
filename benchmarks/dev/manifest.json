@@ -1,0 +1,49 @@
+{
+  "benchmark": "dev-v1",
+  "note": "Development benchmark: ten tasks over five scopes. Five tasks run on a build with one injected defect, five on the pristine reference build. The mapping below is for the developer; the Agent only sees benchmarks/public/tasks/. It is not a held-out test set.",
+  "reference_commit": "55cf875b9d0350e80cfed14b971b7bec8e22b50b",
+  "scopes": {
+    "S-A": {
+      "title": "Totals by currency",
+      "rules": ["LED-01", "LED-02", "LED-03", "LED-04", "LED-07"],
+      "operations": ["accounts.upsert", "holdings.batch_upsert", "holdings.list", "transactions.batch_upsert", "transactions.list", "ledger.summary"],
+      "callers": ["A"]
+    },
+    "S-B": {
+      "title": "Transfers and batch writes",
+      "rules": ["LED-05", "LED-06", "LED-08", "LED-09"],
+      "operations": ["accounts.upsert", "accounts.list", "holdings.batch_upsert", "holdings.list", "transactions.batch_upsert", "transactions.list"],
+      "callers": ["A"]
+    },
+    "S-C": {
+      "title": "Archiving and the summary",
+      "rules": ["ARC-01", "ARC-02", "ARC-05"],
+      "operations": ["accounts.upsert", "accounts.list", "accounts.archive", "holdings.batch_upsert", "holdings.list", "holdings.archive", "transactions.batch_upsert", "transactions.list", "transactions.archive", "ledger.summary"],
+      "callers": ["A"]
+    },
+    "S-D": {
+      "title": "Archive constraints",
+      "rules": ["ARC-03", "ARC-04"],
+      "operations": ["accounts.upsert", "accounts.list", "accounts.archive", "holdings.batch_upsert", "holdings.list", "holdings.archive", "transactions.batch_upsert", "transactions.list", "transactions.archive"],
+      "callers": ["A"]
+    },
+    "S-E": {
+      "title": "Separation between users and authentication",
+      "rules": ["ISO-01", "ISO-02", "ISO-03", "ISO-04"],
+      "operations": ["accounts.upsert", "accounts.list", "accounts.archive", "holdings.batch_upsert", "holdings.list", "holdings.archive", "transactions.batch_upsert", "transactions.list", "transactions.archive", "ledger.summary"],
+      "callers": ["A", "B", "anonymous", "invalid_token"]
+    }
+  },
+  "tasks": [
+    {"id": "dev-01", "scope": "S-A", "build": "reference"},
+    {"id": "dev-02", "scope": "S-B", "build": "def-01"},
+    {"id": "dev-03", "scope": "S-C", "build": "def-03"},
+    {"id": "dev-04", "scope": "S-E", "build": "reference"},
+    {"id": "dev-05", "scope": "S-D", "build": "def-04"},
+    {"id": "dev-06", "scope": "S-A", "build": "def-02"},
+    {"id": "dev-07", "scope": "S-C", "build": "reference"},
+    {"id": "dev-08", "scope": "S-E", "build": "def-05"},
+    {"id": "dev-09", "scope": "S-B", "build": "reference"},
+    {"id": "dev-10", "scope": "S-D", "build": "reference"}
+  ]
+}

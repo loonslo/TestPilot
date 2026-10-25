@@ -1,0 +1,153 @@
+{
+  "note": "Hand-written witness cases, one per defect: each must pass on the reference build and fail on the build it was written for. They prove the case language can express each defect and that the replayer tells the builds apart. They are not Agent output.",
+  "witnesses": [
+    {
+      "defect": "def-01",
+      "case": {
+        "case_id": "w_def01",
+        "title": "A transfer between accounts of different currencies is rejected",
+        "rule_id": "LED-05",
+        "claim": "Moving money between a CNY and a USD account fails with TRANSFER_CURRENCY_MISMATCH.",
+        "steps": [
+          {"id": "s1", "operation_id": "accounts.upsert", "caller": "A", "body": {"name": "cny", "account_type": "BANK", "currency": "CNY"}, "expect_status": 200},
+          {"id": "s2", "operation_id": "accounts.upsert", "caller": "A", "body": {"name": "usd", "account_type": "BANK", "currency": "USD"}, "expect_status": 200},
+          {
+            "id": "s3",
+            "operation_id": "transactions.batch_upsert",
+            "caller": "A",
+            "body": {
+              "client_request_id": "w1",
+              "items": [
+                {"account_id": "{{s1.data.account_id}}", "to_account_id": "{{s2.data.account_id}}", "transaction_type": "TRANSFER", "amount": "10.00", "currency": "CNY", "occurred_at": "2026-10-03"}
+              ]
+            },
+            "expect_status": 400,
+            "expect_error_code": "TRANSFER_CURRENCY_MISMATCH"
+          }
+        ]
+      }
+    },
+    {
+      "defect": "def-02",
+      "case": {
+        "case_id": "w_def02",
+        "title": "USD holdings are not counted in the CNY base totals",
+        "rule_id": "LED-01",
+        "claim": "With only a USD holding, the base (CNY) total is zero and the USD total is the holding's value.",
+        "steps": [
+          {"id": "s1", "operation_id": "accounts.upsert", "caller": "A", "body": {"name": "usd", "account_type": "BROKERAGE", "currency": "USD"}, "expect_status": 200},
+          {
+            "id": "s2",
+            "operation_id": "holdings.batch_upsert",
+            "caller": "A",
+            "body": {
+              "client_request_id": "w2",
+              "items": [
+                {"account_id": "{{s1.data.account_id}}", "name": "stock", "asset_type": "STOCK", "quantity": "5", "average_cost": "20", "currency": "USD"}
+              ]
+            },
+            "expect_status": 200
+          },
+          {"id": "s3", "operation_id": "ledger.summary", "caller": "A", "query": {"month": "2026-10"}, "expect_status": 200}
+        ],
+        "checks": [
+          {"expr": "{{s3.data.base.total_assets_minor}} == 0", "message": "USD must not leak into the base currency"},
+          {"expr": "{{s3.data.by_currency.USD.total_assets_minor}} == 10000"}
+        ]
+      }
+    },
+    {
+      "defect": "def-03",
+      "case": {
+        "case_id": "w_def03",
+        "title": "Archiving a deposit removes it from the month's income",
+        "rule_id": "ARC-01",
+        "claim": "After a deposit is archived the month's income no longer includes it.",
+        "steps": [
+          {"id": "s1", "operation_id": "accounts.upsert", "caller": "A", "body": {"name": "cny", "account_type": "BANK", "currency": "CNY"}, "expect_status": 200},
+          {
+            "id": "s2",
+            "operation_id": "transactions.batch_upsert",
+            "caller": "A",
+            "body": {
+              "client_request_id": "w3",
+              "items": [
+                {"account_id": "{{s1.data.account_id}}", "transaction_type": "DEPOSIT", "amount": "100.00", "currency": "CNY", "occurred_at": "2026-10-05"}
+              ]
+            },
+            "expect_status": 200
+          },
+          {"id": "s3", "operation_id": "ledger.summary", "caller": "A", "query": {"month": "2026-10"}, "expect_status": 200},
+          {
+            "id": "s4",
+            "operation_id": "transactions.archive",
+            "caller": "A",
+            "path_params": {"transaction_id": "{{s2.data.items.0.transaction_id}}"},
+            "body": {"version": "{{s2.data.items.0.version}}"},
+            "expect_status": 200
+          },
+          {"id": "s5", "operation_id": "ledger.summary", "caller": "A", "query": {"month": "2026-10"}, "expect_status": 200}
+        ],
+        "checks": [
+          {"expr": "{{s3.data.base.income_minor}} == 10000"},
+          {"expr": "{{s5.data.base.income_minor}} == 0", "message": "the archived deposit still counts"}
+        ]
+      }
+    },
+    {
+      "defect": "def-04",
+      "case": {
+        "case_id": "w_def04",
+        "title": "An account that received a transfer cannot be archived",
+        "rule_id": "ARC-03",
+        "claim": "Archiving the target account of an active transfer fails with ACCOUNT_HAS_TRANSACTIONS.",
+        "steps": [
+          {"id": "s1", "operation_id": "accounts.upsert", "caller": "A", "body": {"name": "source", "account_type": "BANK", "currency": "CNY"}, "expect_status": 200},
+          {"id": "s2", "operation_id": "accounts.upsert", "caller": "A", "body": {"name": "target", "account_type": "BANK", "currency": "CNY"}, "expect_status": 200},
+          {
+            "id": "s3",
+            "operation_id": "transactions.batch_upsert",
+            "caller": "A",
+            "body": {
+              "client_request_id": "w4",
+              "items": [
+                {"account_id": "{{s1.data.account_id}}", "to_account_id": "{{s2.data.account_id}}", "transaction_type": "TRANSFER", "amount": "10.00", "currency": "CNY", "occurred_at": "2026-10-03"}
+              ]
+            },
+            "expect_status": 200
+          },
+          {
+            "id": "s4",
+            "operation_id": "accounts.archive",
+            "caller": "A",
+            "path_params": {"account_id": "{{s2.data.account_id}}"},
+            "body": {"version": "{{s2.data.version}}"},
+            "expect_status": 409,
+            "expect_error_code": "ACCOUNT_HAS_TRANSACTIONS"
+          }
+        ]
+      }
+    },
+    {
+      "defect": "def-05",
+      "case": {
+        "case_id": "w_def05",
+        "title": "Another user cannot archive my account",
+        "rule_id": "ISO-02",
+        "claim": "User B archiving user A's account fails with NOT_FOUND, as for an unknown id.",
+        "steps": [
+          {"id": "s1", "operation_id": "accounts.upsert", "caller": "A", "body": {"name": "mine", "account_type": "BANK", "currency": "CNY"}, "expect_status": 200},
+          {
+            "id": "s2",
+            "operation_id": "accounts.archive",
+            "caller": "B",
+            "path_params": {"account_id": "{{s1.data.account_id}}"},
+            "body": {"version": "{{s1.data.version}}"},
+            "expect_status": 404,
+            "expect_error_code": "NOT_FOUND"
+          }
+        ]
+      }
+    }
+  ]
+}

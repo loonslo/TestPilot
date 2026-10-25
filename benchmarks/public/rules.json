@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "scope": "Three flows of the service, about ten operations: same-currency ledger summary (F1), archive constraints and their effect on the summary (F2), isolation between two users (F3).",
+  "how_to_read": "Each rule states what the service must do. A rule is judged only by comparing observed responses with its statement; the statement is never to be adjusted so that a failing response passes.",
+  "rules": [
+    {
+      "id": "LED-01",
+      "flow": "F1",
+      "title": "Totals per currency, never mixed",
+      "statement": "In ledger.summary, by_currency[C] sums only the holdings and transactions whose currency is C. `base` equals by_currency[base_currency]. excluded_currencies lists every other key of by_currency, in ascending order. No amount of one currency is ever added to another.",
+      "operations": ["ledger.summary", "holdings.list", "transactions.list"],
+      "source": "docs: API.md section 2",
+      "owner_confirm": "A currency appears in by_currency only if the user has a holding in it or a transaction in it within the requested month; the base currency always appears.",
+      "confirmed_on": "2026-10-15"
+    },
+    {
+      "id": "LED-02",
+      "flow": "F1",
+      "title": "Assets come from holdings",
+      "statement": "total_assets_minor = cash_balance_minor + holdings_value_minor. Holdings of asset_type cash count toward cash_balance_minor, all other holdings toward holdings_value_minor (and holdings_cost_minor). Transactions never change assets. Assets are current values and do not depend on `month`.",
+      "operations": ["ledger.summary", "holdings.list"],
+      "source": "docs: API.md section 2 and the 2026-09-05 ledger snapshot note; owner test: transactions do not mutate cash snapshots",
+      "owner_confirm": null
+    },
+    {
+      "id": "LED-03",
+      "flow": "F1",
+      "title": "Holding valuation",
+      "statement": "market_value_minor = quantity x unit price, rounded half up to the minor unit. The unit price is current_price, else average_cost, else 0; cash without a price has unit price 1. cost_minor = quantity x average_cost (1 for cash, 0 for other holdings without average_cost). unrealized_profit_minor = market_value_minor - cost_minor, and is null (not 0) when average_cost is missing. valuation_status is priced when a price is known, otherwise estimated.",
+      "operations": ["holdings.batch_upsert", "holdings.list"],
+      "source": "docs: API.md ledger snapshot note (cost-based estimate, null profit without cost)",
+      "owner_confirm": "Half-up rounding; unit price 0 when both price and cost are missing.",
+      "confirmed_on": "2026-10-15"
+    },
+    {
+      "id": "LED-04",
+      "flow": "F1",
+      "title": "Monthly income and expense",
+      "statement": "For transactions whose occurred_at falls in the requested month: income_minor is the sum of the absolute amounts of DEPOSIT, DIVIDEND and INTEREST; expense_minor is the sum of the absolute amounts of WITHDRAWAL and FEE. BUY, SELL, TRANSFER and OTHER are neither income nor expense. net_cashflow_minor = income_minor - expense_minor.",
+      "operations": ["transactions.batch_upsert", "transactions.list", "ledger.summary"],
+      "source": "owner",
+      "owner_confirm": "Which types count as income and which as expense (the documentation only says the month filters the transaction figures).",
+      "confirmed_on": "2026-10-15"
+    },
+    {
+      "id": "LED-05",
+      "flow": "F1",
+      "title": "Transfers stay within one currency",
+      "statement": "A TRANSFER needs both account_id and to_account_id. If the two accounts have different currencies the request fails with HTTP 400 and code TRANSFER_CURRENCY_MISMATCH, and nothing from that batch is saved.",
+      "operations": ["transactions.batch_upsert", "accounts.upsert"],
+      "source": "docs: API.md section 2",
+      "owner_confirm": null
+    },
+    {
+      "id": "LED-06",
+      "flow": "F1",
+      "title": "Malformed transfers are rejected",
+      "statement": "A TRANSFER whose to_account_id equals its account_id, and any non-TRANSFER transaction that carries a to_account_id, is rejected with HTTP 400 and code VALIDATION_ERROR.",
+      "operations": ["transactions.batch_upsert"],
+      "source": "owner",
+      "owner_confirm": "Both rejections and the VALIDATION_ERROR code.",
+      "confirmed_on": "2026-10-15"
+    },
+    {
+      "id": "LED-07",
+      "flow": "F1",
+      "title": "Month format",
+      "statement": "`month` must match YYYY-MM with a month from 01 to 12; anything else is HTTP 400 with code VALIDATION_ERROR. Behaviour without `month` is not judged.",
+      "operations": ["ledger.summary"],
+      "source": "docs: API.md section 2 and the OpenAPI pattern",
+      "owner_confirm": null
+    },
+    {
+      "id": "LED-08",
+      "flow": "F1",
+      "title": "Batches are all or nothing",
+      "statement": "holdings.batch_upsert and transactions.batch_upsert save every item or none. If any item fails (validation, missing reference, outdated version) the whole batch is rolled back and existing data is unchanged.",
+      "operations": ["holdings.batch_upsert", "transactions.batch_upsert", "holdings.list", "transactions.list"],
+      "source": "docs: API.md section 2",
+      "owner_confirm": null
+    },
+    {
+      "id": "LED-09",
+      "flow": "F1",
+      "title": "Replaying a batch does not duplicate",
+      "statement": "Sending the same client_request_id with identical content again returns the first response and creates no new records, as long as everything the request refers to is still active.",
+      "operations": ["holdings.batch_upsert", "transactions.batch_upsert", "holdings.list", "transactions.list"],
+      "source": "owner",
+      "owner_confirm": "Replay returns the stored first response. Reusing the id with different content, and replays after a referenced record was archived, are not judged.",
+      "confirmed_on": "2026-10-15"
+    },
+    {
+      "id": "ARC-01",
+      "flow": "F2",
+      "title": "Soft archive",
+      "statement": "After a successful archive (HTTP 200) the record's version increases by 1 and the record is gone from its list endpoint and from ledger.summary: archiving a transaction lowers income or expense of its month, archiving a holding lowers its share of cash_balance_minor or holdings_value_minor, holdings_cost_minor and total_assets_minor. Nothing else changes.",
+      "operations": ["accounts.archive", "holdings.archive", "transactions.archive", "accounts.list", "holdings.list", "transactions.list", "ledger.summary"],
+      "source": "docs: README (soft archive) and API.md",
+      "owner_confirm": null
+    },
+    {
+      "id": "ARC-02",
+      "flow": "F2",
+      "title": "Archiving needs the current version",
+      "statement": "An archive request whose version differs from the record's current version fails with HTTP 409 and code VERSION_CONFLICT, and the record stays active.",
+      "operations": ["accounts.archive", "holdings.archive", "transactions.archive"],
+      "source": "docs: API.md (409 means conflict of state or version)",
+      "owner_confirm": "The code string VERSION_CONFLICT.",
+      "confirmed_on": "2026-10-15"
+    },
+    {
+      "id": "ARC-03",
+      "flow": "F2",
+      "title": "Accounts with dependants cannot be archived",
+      "statement": "An account that still has active holdings cannot be archived (HTTP 409, ACCOUNT_HAS_HOLDINGS). An account that still has active transactions, as source or as transfer target, cannot be archived (HTTP 409, ACCOUNT_HAS_TRANSACTIONS). If both apply, ACCOUNT_HAS_HOLDINGS is returned. A rejected archive leaves the account active. Once the dependants are archived, the account can be archived.",
+      "operations": ["accounts.archive", "holdings.archive", "transactions.archive"],
+      "source": "owner",
+      "owner_confirm": "The guard, the two codes and the precedence.",
+      "confirmed_on": "2026-10-15"
+    },
+    {
+      "id": "ARC-04",
+      "flow": "F2",
+      "title": "Holdings with transactions cannot be archived",
+      "statement": "A holding that is referenced (holding_id) by an active transaction cannot be archived (HTTP 409, HOLDING_HAS_TRANSACTIONS). After those transactions are archived it can be.",
+      "operations": ["holdings.archive", "transactions.archive"],
+      "source": "owner",
+      "owner_confirm": "The guard and the code.",
+      "confirmed_on": "2026-10-15"
+    },
+    {
+      "id": "ARC-05",
+      "flow": "F2",
+      "title": "Archived or unknown records do not exist",
+      "statement": "Archiving a record that is already archived, or whose id does not exist, fails with HTTP 404 and code NOT_FOUND and changes nothing. Creating a transaction or holding in an archived account is rejected as not found.",
+      "operations": ["accounts.archive", "holdings.archive", "transactions.archive"],
+      "source": "docs: API.md (404 means the single resource does not exist)",
+      "owner_confirm": "The code string NOT_FOUND.",
+      "confirmed_on": "2026-10-15"
+    },
+    {
+      "id": "ISO-01",
+      "flow": "F3",
+      "title": "Lists and summaries are private",
+      "statement": "A user's account, holding and transaction lists and ledger.summary contain only that user's records. Writes, updates and archives by user A never change what user B reads, and the other way round.",
+      "operations": ["accounts.list", "holdings.list", "transactions.list", "ledger.summary"],
+      "source": "docs: API.md (user-scoped bearer sessions)",
+      "owner_confirm": null
+    },
+    {
+      "id": "ISO-02",
+      "flow": "F3",
+      "title": "Another user's ids are not usable",
+      "statement": "Updating or archiving a record with an id that belongs to another user fails with HTTP 404 and code NOT_FOUND, exactly as for an id that does not exist (same code and message), and the owner's data is unchanged.",
+      "operations": ["accounts.upsert", "accounts.archive", "holdings.archive", "transactions.archive"],
+      "source": "docs: API.md (404) and the service's own message for unknown or foreign records",
+      "owner_confirm": null
+    },
+    {
+      "id": "ISO-03",
+      "flow": "F3",
+      "title": "Another user's accounts cannot be referenced",
+      "statement": "Creating a holding or transaction whose account_id or to_account_id belongs to another user fails with HTTP 404 and code NOT_FOUND, and nothing is saved.",
+      "operations": ["holdings.batch_upsert", "transactions.batch_upsert"],
+      "source": "owner",
+      "owner_confirm": "404 for foreign accounts.",
+      "confirmed_on": "2026-10-15"
+    },
+    {
+      "id": "ISO-04",
+      "flow": "F3",
+      "title": "Authentication is required",
+      "statement": "Without a token every in-scope operation returns HTTP 401 with code UNAUTHORIZED; with an invalid token HTTP 401 with code TOKEN_INVALID. No user data is returned.",
+      "operations": ["accounts.list", "holdings.list", "transactions.list", "ledger.summary"],
+      "source": "docs: error-codes.md",
+      "owner_confirm": null
+    }
+  ]
+}

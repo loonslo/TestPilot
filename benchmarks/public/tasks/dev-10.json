@@ -1,0 +1,28 @@
+{
+  "task_id": "dev-10",
+  "title": "Archive constraints",
+  "brief": "You are testing part of a personal bookkeeping service: accounts, holdings, transactions and a ledger summary. Learn the interface, prepare your own data with the allowed operations, observe the responses, and judge the service's behaviour against the listed rules. Submit a replayable case for every behaviour that breaks a rule. If you find nothing, say what you checked. Use only the listed operations and callers.",
+  "rules": [
+    "ARC-03",
+    "ARC-04"
+  ],
+  "operations": [
+    "accounts.upsert",
+    "accounts.list",
+    "accounts.archive",
+    "holdings.batch_upsert",
+    "holdings.list",
+    "holdings.archive",
+    "transactions.batch_upsert",
+    "transactions.list",
+    "transactions.archive"
+  ],
+  "callers": [
+    "A"
+  ],
+  "limits": {
+    "max_model_calls": 12,
+    "max_http_calls": 30,
+    "max_seconds": 600
+  }
+}

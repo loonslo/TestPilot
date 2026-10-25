@@ -1,0 +1,96 @@
+{
+  "note": "Development benchmark: five single-change defects of the reference copy. Visible to the developer; not a held-out test set.",
+  "defects": [
+    {
+      "id": "def-01",
+      "title": "Transfers between accounts of different currencies are accepted",
+      "rules": [
+        "LED-05"
+      ],
+      "expected_violations": [
+        "LED-05"
+      ],
+      "replacements": [
+        {
+          "file": "src/finunity_server/v1_api.py",
+          "old": "if source is None or target[\"currency\"] != source[\"currency\"]:",
+          "new": "if source is None:"
+        }
+      ]
+    },
+    {
+      "id": "def-02",
+      "title": "Holdings of every currency are added into the base currency's totals",
+      "rules": [
+        "LED-01"
+      ],
+      "expected_violations": [
+        "LED-01"
+      ],
+      "replacements": [
+        {
+          "file": "src/finunity_server/v1_api.py",
+          "old": "aggregate = currency_totals(holding[\"currency\"])",
+          "new": "aggregate = currency_totals(base_currency)"
+        }
+      ]
+    },
+    {
+      "id": "def-03",
+      "title": "Archived transactions still count in the ledger summary",
+      "rules": [
+        "ARC-01"
+      ],
+      "expected_violations": [
+        "ARC-01"
+      ],
+      "replacements": [
+        {
+          "file": "src/finunity_server/store.py",
+          "old": "f\"SELECT * FROM {table} WHERE user_id=? AND archived_at IS NULL \"",
+          "new": "f\"SELECT * FROM {table} WHERE user_id=? AND (archived_at IS NULL OR '{table}' = 'transactions') \""
+        }
+      ]
+    },
+    {
+      "id": "def-04",
+      "title": "An account that only receives transfers can be archived",
+      "rules": [
+        "ARC-03"
+      ],
+      "expected_violations": [
+        "ARC-03"
+      ],
+      "replacements": [
+        {
+          "file": "src/finunity_server/v1_api.py",
+          "old": "item[\"account_id\"] == account_id or item.get(\"to_account_id\") == account_id",
+          "new": "item[\"account_id\"] == account_id"
+        }
+      ]
+    },
+    {
+      "id": "def-05",
+      "title": "Archiving does not check who owns the record",
+      "rules": [
+        "ISO-02"
+      ],
+      "expected_violations": [
+        "ISO-01",
+        "ISO-02"
+      ],
+      "replacements": [
+        {
+          "file": "src/finunity_server/store.py",
+          "old": "f\"SELECT version FROM {table} WHERE id=? AND user_id=? AND archived_at IS NULL\",\n                (row_id, user_id),",
+          "new": "f\"SELECT version FROM {table} WHERE id=? AND archived_at IS NULL\",\n                (row_id,),"
+        },
+        {
+          "file": "src/finunity_server/store.py",
+          "old": "\"WHERE id=? AND user_id=?\",\n                (timestamp, timestamp, row_id, user_id),",
+          "new": "\"WHERE id=?\",\n                (timestamp, timestamp, row_id),"
+        }
+      ]
+    }
+  ]
+}

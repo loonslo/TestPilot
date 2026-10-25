@@ -1,0 +1,159 @@
+{
+  "note": "Sensitivity mutants for the conformance suite itself (not Agent tasks): each breaks rules the five dev defects do not cover. They show the suite can fail on those rules.",
+  "defects": [
+    {
+      "id": "mut-01",
+      "title": "Valuation rounds down instead of half up",
+      "rules": [
+        "LED-03"
+      ],
+      "expected_violations": [
+        "LED-03"
+      ],
+      "replacements": [
+        {
+          "file": "src/finunity_server/v1_api.py",
+          "old": "rounding=ROUND_HALF_UP",
+          "new": "rounding=\"ROUND_DOWN\""
+        }
+      ]
+    },
+    {
+      "id": "mut-02",
+      "title": "The month filter is cumulative: it includes every earlier month",
+      "rules": [
+        "LED-04"
+      ],
+      "expected_violations": [
+        "LED-04"
+      ],
+      "replacements": [
+        {
+          "file": "src/finunity_server/v1_api.py",
+          "old": "if not item[\"occurred_at\"].startswith(month):",
+          "new": "if item[\"occurred_at\"][:7] > month:"
+        }
+      ]
+    },
+    {
+      "id": "mut-03",
+      "title": "Negative amounts are not taken as absolute values in income and expense",
+      "rules": [
+        "LED-04"
+      ],
+      "expected_violations": [
+        "LED-04"
+      ],
+      "replacements": [
+        {
+          "file": "src/finunity_server/v1_api.py",
+          "old": "aggregate = currency_totals(item[\"currency\"])\n        amount = abs(money_minor(item[\"amount\"]))",
+          "new": "aggregate = currency_totals(item[\"currency\"])\n        amount = money_minor(item[\"amount\"])"
+        }
+      ]
+    },
+    {
+      "id": "mut-04",
+      "title": "Archiving does not check the record's version",
+      "rules": [
+        "ARC-02"
+      ],
+      "expected_violations": [
+        "ARC-02"
+      ],
+      "replacements": [
+        {
+          "file": "src/finunity_server/store.py",
+          "old": "if version != row[\"version\"]:",
+          "new": "if False:"
+        }
+      ]
+    },
+    {
+      "id": "mut-05",
+      "title": "Holdings may reference an account that belongs to someone else",
+      "rules": [
+        "ISO-03"
+      ],
+      "expected_violations": [
+        "ARC-05",
+        "ISO-03"
+      ],
+      "replacements": [
+        {
+          "file": "src/finunity_server/v1_api.py",
+          "old": "if item.account_id is not None and item.account_id not in accounts:",
+          "new": "if False:"
+        }
+      ]
+    },
+    {
+      "id": "mut-06",
+      "title": "A transfer to the same account is accepted",
+      "rules": [
+        "LED-06"
+      ],
+      "expected_violations": [
+        "LED-06"
+      ],
+      "replacements": [
+        {
+          "file": "src/finunity_server/contracts.py",
+          "old": "if self.to_account_id == self.account_id:",
+          "new": "if False:"
+        }
+      ]
+    },
+    {
+      "id": "mut-07",
+      "title": "The summary accepts any month number",
+      "rules": [
+        "LED-07"
+      ],
+      "expected_violations": [
+        "LED-07"
+      ],
+      "replacements": [
+        {
+          "file": "src/finunity_server/v1_api.py",
+          "old": "Query(pattern=r\"^\\d{4}-(0[1-9]|1[0-2])$\")",
+          "new": "Query(pattern=r\"^\\d{4}-\\d{2}$\")"
+        }
+      ]
+    },
+    {
+      "id": "mut-08",
+      "title": "A holding that transactions refer to can be archived",
+      "rules": [
+        "ARC-04"
+      ],
+      "expected_violations": [
+        "ARC-04"
+      ],
+      "replacements": [
+        {
+          "file": "src/finunity_server/v1_api.py",
+          "old": "if any(item.get(\"holding_id\") == holding_id for item in db.list_rows(\"transactions\", user_id)):",
+          "new": "if False:"
+        }
+      ]
+    },
+    {
+      "id": "mut-09",
+      "title": "Income transactions are added to the cash balance",
+      "rules": [
+        "LED-02"
+      ],
+      "expected_violations": [
+        "LED-02"
+      ],
+      "replacements": [
+        {
+          "file": "src/finunity_server/v1_api.py",
+          "old": "        if item[\"transaction_type\"] in {\"DEPOSIT\", \"DIVIDEND\", \"INTEREST\"}:\n            aggregate[\"income_minor\"] += amount",
+          "new": "        if item[\"transaction_type\"] in {\"DEPOSIT\", \"DIVIDEND\", \"INTEREST\"}:\n            aggregate[\"income_minor\"] += amount\n            aggregate[\"cash_balance_minor\"] += amount"
+        }
+      ]
+    }
+  ]
+}

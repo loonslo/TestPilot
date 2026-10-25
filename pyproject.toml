@@ -1,0 +1,39 @@
+[project]
+name = "api-test-agent"
+version = "0.1.0"
+description = "A tool-calling agent that explores a REST API in an isolated sandbox and is scored by independent rules."
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "httpx>=0.28.1",
+    "openai>=3.31.0",
+    "pydantic>=2,<3",
+]
+
+[project.scripts]
+api-test-agent = "api_test_agent.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.10,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.17.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# Prose that is sent to the model keeps its natural line length.
+"src/api_test_agent/prompts.py" = ["E501"]
+"src/api_test_agent/tools.py" = ["E501"]
