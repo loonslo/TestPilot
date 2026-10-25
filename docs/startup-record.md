@@ -21,6 +21,8 @@
 | 费用上限 | 每次运行 ≤ ¥1；A3 阶段总上限 ¥30；币种 CNY。当前模型免费，运行器把“供应商报告了费用”当作停止条件（`max_cost_usd = 0`）；改用付费模型前要先按这两个上限重新配置并更新本文件 |
 | 待用户补充 | API key（用户环境变量）；每周可投入小时数 |
 
+2026-10-25：用户决定并入 testagent 为回归模块。被测源码从 FinUnity 2026-10-25 整合时做的 FinUnityServer 完整 bundle（本机备份）恢复到 `subjects/FinUnityServer`；用户在合并执行方案第 0 节 A 确认这属于可读取的源码历史，不包含被禁止的被测数据备份。探索基准仍固定在 55cf875，FinUnity 单仓 `server/` 暂不接入。本次请求按执行方案勾选的 A–D 实施，仅做本地提交，不推送。
+
 ## 2 技术栈与实测版本（2026-10-15）
 
 | 层次 | 选择 | 版本 |
@@ -33,6 +35,8 @@
 | 被测运行时 | 被测项目自己的锁文件建环境，Python 3.12（与它的生产镜像同一小版本） | Python 3.12.13、FastAPI 0.141.1、Starlette 1.6.0、uvicorn 0.52.4、pydantic 2.13.4、pydantic-settings 2.15.0 |
 | 模型调用 | openai 包（连接 OpenRouter 的兼容接口，关闭 SDK 重试）；LangGraph 只在 B1 需要中断恢复时加 | openai 3.31.0 |
 
+2026-10-25：回归模块新增依赖 PyYAML 6.0.3；被测克隆按自己的锁文件建立独立环境，实测 Python 3.12.13。完整 R0 环境与验收见 acceptance.md。
+
 ## 3 预算与 `openrouter/free` 的约束（A3 开发集实测后可调，冻结评测期间不改）
 
 - 每个任务：最多 12 次模型调用、30 次 HTTP 调用、10 分钟、累计 60,000 token；任务文件只能调低。上限在每次调用之前检查，重试也计入；usage 缺失时记为未知，不能填 0。
@@ -41,12 +45,16 @@
 - **隐私：** 提示词会发给免费模型的供应商，供应商可能记录；发出的只有接口片段、规则、响应说明和合成数据。
 - 来源：[OpenRouter FAQ](https://openrouter.ai/docs/faq)、[Free Models Router](https://openrouter.ai/docs/cookbook/get-started/free-models-router-playground)、[模型清单接口](https://openrouter.ai/api/v1/models)。
 
+2026-10-25：回归模块模型为 DeepSeek `deepseek-chat`，每次 plan 做 1 次分析调用、最多 2 次尝试。金额上限每次 ≤ ¥1、R 系列合计 ≤ ¥30（用户 2026-10-25 确定）。目前只有字符预算，没有按金额的调用前检查；每次真实调用仍须用户批准。R0 不调用模型，所有 plan 显式使用 `--stub`，不执行探索模块的 model status、model ping 或 agent run。
+
 ## 4 信任边界
 
 - Agent 只拿到 `benchmarks/public/` 里的内容；令牌由宿主注入，模型只见账号别名 A、B（以及无令牌的 anonymous）。
 - 被测服务只绑定 127.0.0.1；沙箱进程的环境变量是白名单重建的，机器上的 API 密钥、代理、数据库路径不会进入被测进程。
 - 评分端和 Agent 分开：缺陷补丁、判定套件和构建对应关系放在 `benchmarks/dev/` 与 `src/api_test_agent/conformance.py`（开发集，可提交，对开发者可见，不称为未见测试集）；冻结测试集以后放在被忽略的 `benchmarks/private/`。现有 126 项测试（项目验收记录 2026-10-15 的数字，本项目没有复跑）不进入 Agent 环境。
 - 首版不含 UI、多 Agent、长期记忆、MCP、向量库、自动修产品代码、任意 Python 或 SQL 执行、本地模型自动回退、每晚云模型评测。
+
+2026-10-25：`subjects/FinUnityServer` 允许 Git 读命令、回归执行前 `git checkout <提交>`（用完切回 `main`），以及 `uv sync --locked --extra dev --python 3.12`；不改其已跟踪文件、不提交、不推送、不安装本项目依赖。`subjects/` 不进入探索 Agent 的工具、提示词或 trace。回归模块会把 base..head 的差异和业务资料发给配置的模型服务 DeepSeek，只在用户批准真实调用时才发生；密钥仅从 `DEEPSEEK_API_KEY` 读取。只用本机隔离用例和合成数据，本次不读取凭据、环境文件或真实数据。
 
 ## 5 A0 验收条件与结果
 

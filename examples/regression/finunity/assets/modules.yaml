@@ -1,0 +1,64 @@
+# FinUnityServer 模块映射（示例，人工维护）
+#
+# 代码目录 / 接口 -> 业务模块。首版不做完整调用图，只做精确前缀匹配与关键词关联。
+# 维护方式：模块改了归属、新增目录时同步改这里；不要为了"覆盖得多"乱填。
+
+modules:
+  - module: 接口与健康检查
+    summary: FastAPI 应用入口、健康检查、版本查询
+    paths:
+      - src/finunity_server/main.py
+      - src/finunity_server/config.py
+    api_paths:
+      - /health
+      - /version
+    keywords: [健康检查, readiness, liveness]
+    cases: [TC-HEALTH-001]
+
+  - module: v1 资产接口
+    summary: 资产/持仓/行情查询的 v1 HTTP 接口层
+    paths:
+      - src/finunity_server/v1_api.py
+      - src/finunity_server/contracts.py
+    api_paths:
+      - /api/v1
+    keywords: [资产, 持仓, 行情, v1]
+    cases: [TC-V1-001]
+
+  - module: 持仓与账本一致性
+    summary: 成本、份额、快照舍入与多视图一致性
+    paths:
+      - src/finunity_server/service.py
+      - src/finunity_server/models.py
+      - src/finunity_server/store.py
+    keywords: [成本, 账本, 快照, 一致性]
+    cases: [TC-LEDGER-001]
+
+  - module: 账号与登录
+    summary: 密码认证、会话与限流
+    paths:
+      - src/finunity_server/auth_api.py
+    keywords: [登录, 密码, 会话, 限流]
+    cases: [TC-AUTH-001]
+
+  - module: 图像与 OCR
+    summary: 图片校验、OCR 供应商适配
+    paths:
+      - src/finunity_server/paddle_ocr.py
+      - src/finunity_server/baidu_ocr.py
+    keywords: [图片, OCR, 识别]
+    cases: [TC-IMAGE-001]
+
+  - module: 行情刷新与缓存
+    summary: 行情刷新任务与缓存
+    paths:
+      - src/finunity_server/market_refresh.py
+      - src/finunity_server/cache.py
+    keywords: [行情刷新, 缓存]
+
+  - module: 运维与备份
+    summary: 数据库迁移与异地备份脚本
+    paths:
+      - deploy/database.py
+      - ops/offsite_backup.py
+    keywords: [备份, 迁移]

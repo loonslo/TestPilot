@@ -1,0 +1,25 @@
+# 自包含演示项目：购物车优惠券（离线即可跑通）
+
+name = "购物车演示"
+
+# 演示仓库由 setup_demo.py 生成
+repository = "_repo"
+docs = ["docs/cart.md"]
+modules_file = "assets/modules.yaml"
+cases_file = "assets/cases.yaml"
+smoke_file = "assets/smoke.yaml"
+artifacts_dir = "artifacts"
+
+# 没有模型密钥时用 --stub；配置了模型才会走真实分析
+[model]
+base_url = "https://api.deepseek.com/v1"
+model = "deepseek-chat"
+api_key_env = "DEEPSEEK_API_KEY"
+timeout_seconds = 120.0
+max_output_tokens = 4000
+max_attempts = 2
+json_mode = true
+
+[suite]
+python = ""
+timeout_seconds = 120.0

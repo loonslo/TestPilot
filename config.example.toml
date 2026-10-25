@@ -2,8 +2,8 @@
 # Secrets never go here: the model's API key is read from the environment variable named below.
 
 [target]
-# Local Git repository of the system under test. Only read, via `git archive` of the pinned commit.
-source_repo = "<local path of the FinUnityServer repository>"
+# 从 FinUnity 2026-10-25 整合时做的 FinUnityServer 完整 bundle 恢复的本机克隆，见 README。
+source_repo = "subjects/FinUnityServer"
 commit = "55cf875b9d0350e80cfed14b971b7bec8e22b50b"
 # Same minor version as the target's production image.
 python = "3.12"

@@ -1,0 +1,7 @@
+modules:
+  - module: 购物车
+    summary: 金额计算与下单
+    paths: [src/cart]
+    api_paths: [/checkout]
+    keywords: [购物车, 下单, 优惠券]
+    cases: [TC-CART-001]

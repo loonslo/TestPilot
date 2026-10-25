@@ -2,7 +2,7 @@
 
 一个用工具调用探索 REST API 的测试 Agent：模型负责选测试点、写结构化用例，工具层限制它能做什么，确定性规则判对错，产物是可重放的用例和普通回归测试。
 
-**当前状态（2026-10-15）：沙箱、判定套件和开发基准（A0 到 A2）完成；A3 的 Agent（模型适配器、四个工具、用例重放、循环）中不需要 API key 的部分完成，用假模型和真实沙箱验证过。** 没有向任何模型发过请求：模型指定为 OpenRouter 的 `openrouter/free`，等用户设置 key，见 [TASKS.md](TASKS.md)。
+**当前状态（2026-10-25）：** 探索模块的沙箱、判定套件和开发基准（A0 到 A2）完成，A3 中不需要 API key 的部分用假模型和真实沙箱验证过，尚未调用真实模型。回归模块由 testagent 并入为 `api_test_agent.regression`，提供版本差异分析、回归计划和已登记接口用例执行；合并验收结果见 [docs/acceptance.md](docs/acceptance.md)，后续任务见 [TASKS.md](TASKS.md)。
 
 ## 现在有什么
 
@@ -34,6 +34,16 @@ uv run python -m api_test_agent model ping              # 需要 API key：两�
 uv run python -m api_test_agent agent run --task dev-02 --replay   # 需要 API key：跑一个任务并判定用例
 uv run pytest -q -p no:cacheprovider --basetemp=$env:TEMP\api-test-agent-pytest-1
 ```
+
+## 回归模块
+
+回归模块比较两次发布的 base/head 快照，结合模块映射、业务资料和用例目录给出建议；人工核对计划后，只执行已登记的 pytest 入口，并报告实际结果与覆盖缺口。保留命令入口 `uv run testagent check|plan|reconcile|run|show|runs`。**`plan` 不加 `--stub` 会调用付费模型 DeepSeek；每次真实调用都要先获用户批准。** 离线验证使用 `plan --stub`。
+
+FinUnity 配置模板在 [examples/regression/finunity/testagent.example.toml](examples/regression/finunity/testagent.example.toml)，复制为同目录被忽略的 `testagent.toml`，填写被测克隆的 Python 解释器绝对路径。仓库和资料路径按配置文件所在目录解析。
+
+两个模块共用被忽略的 `subjects/FinUnityServer` 源码克隆。用 FinUnity 2026-10-25 整合时做的 FinUnityServer 完整 bundle（本机备份）恢复：先创建 `subjects/`，执行 `git clone <bundle 本机路径> subjects/FinUnityServer`，再在克隆内 `git remote remove origin`；核对 `main` HEAD 为 `e69f09f18f85cb6516093e739282adba73d1284a`、历史共 24 个提交，再执行 `uv sync --locked --extra dev --python 3.12`。探索模块仍固定使用 `55cf875b9d0350e80cfed14b971b7bec8e22b50b`。克隆不提交、不推送，不改其已跟踪文件。
+
+完整用法见 [回归模块说明](docs/regression/README.md) 和 [架构](docs/regression/architecture.md)。
 
 ## 边界
 

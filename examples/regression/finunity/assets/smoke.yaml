@@ -1,0 +1,7 @@
+# 固定冒烟集：每轮回归必跑的核心路径，不因模型"没发现相关变化"而被跳过。
+# 这里的编号必须在 cases.yaml 中存在且 status=active，否则 testagent check 会报错。
+
+smoke:
+  - TC-HEALTH-001
+  - TC-V1-001
+  - TC-LEDGER-001

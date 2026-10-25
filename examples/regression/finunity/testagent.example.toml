@@ -1,0 +1,59 @@
+# FinUnityServer 试点配置（示例）
+#
+# 复制为同目录的 testagent.toml（被忽略）后填写 python 路径。
+# 用法（在 examples/regression/finunity 目录执行）：
+#   uv run testagent check
+#   uv run testagent plan --base 55cf875 --head e69f09f --env-version "<测试环境版本>" --stub
+#   uv run testagent run <run_id> --env-version "<测试环境版本>"
+#
+# 注意：本文件只放机器相关路径与套件入口，不放任何凭据。
+# 密钥通过环境变量提供，配置里只写变量名。
+
+name = "FinUnityServer"
+
+# 本地已 clone 的仓库（首版只分析本地仓库，不做 GitHub 登录/Webhook）
+repository = "../../../subjects/FinUnityServer"
+
+# 团队已同意共享的业务资料（相对路径或绝对路径）
+docs = [
+  "../../../subjects/FinUnityServer/docs/API.md",
+  "../../../subjects/FinUnityServer/docs/error-codes.md",
+]
+
+modules_file = "assets/modules.yaml"
+cases_file = "assets/cases.yaml"
+smoke_file = "assets/smoke.yaml"
+artifacts_dir = "artifacts"
+
+# 既有接口测试框架：使用项目自己的 venv 解释器（测试依赖装在里面）
+[suite]
+python = "<absolute path of subjects/FinUnityServer/.venv/Scripts/python.exe>"
+timeout_seconds = 300.0
+
+# 测试进程的附加环境变量（不要写凭据）
+[environment]
+FINUNITY_TEST_ISOLATED = "1"
+
+# 模型接口：已核实的 OpenAI 兼容端点 + SDK。没有密钥时用 --stub 运行离线演示。
+[model]
+base_url = "https://api.deepseek.com/v1"
+model = "deepseek-chat"
+api_key_env = "DEEPSEEK_API_KEY"
+timeout_seconds = 180.0
+max_output_tokens = 8000
+temperature = 0.1
+max_attempts = 2
+json_mode = true
+
+[budget]
+max_changed_files = 60
+max_diff_chars = 300000
+max_file_context_chars = 4000
+max_file_context_files = 10
+max_doc_chars = 60000
+max_total_prompt_chars = 500000
+
+# 除默认排除外，额外不送给模型的路径（运行目录、数据与生成物）
+[[redaction]]
+pattern = '''(^|/)(tmp|data|\.deepeval|\.pytest-[^/]+)/'''
+reason = "仓库内运行与数据目录，不进入模型上下文"

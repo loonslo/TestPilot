@@ -8,10 +8,12 @@ dependencies = [
     "httpx>=0.28.1",
     "openai>=3.31.0",
     "pydantic>=2,<3",
+    "pyyaml>=6.0.3",
 ]
 
 [project.scripts]
 api-test-agent = "api_test_agent.cli:main"
+testagent = "api_test_agent.regression.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.12.10,<0.13.0"]
@@ -37,3 +39,7 @@ select = ["E", "F", "I", "B", "UP"]
 # Prose that is sent to the model keeps its natural line length.
 "src/api_test_agent/prompts.py" = ["E501"]
 "src/api_test_agent/tools.py" = ["E501"]
+# Chinese prompts, messages and report text in the regression module keep their natural length.
+"src/api_test_agent/regression/**" = ["E501"]
+"examples/regression/**" = ["E501"]
+"docs/regression/**" = ["E501"]

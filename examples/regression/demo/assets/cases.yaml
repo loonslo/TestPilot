@@ -1,0 +1,24 @@
+cases:
+  - id: TC-CART-001
+    name: 无优惠券时的金额计算
+    module: 购物车
+    entry: [tests/test_cart.py::test_total_without_coupon]
+    status: active
+    api: [/checkout]
+    last_verified: "2026-10-22"
+
+  - id: TC-CART-002
+    name: 有优惠券时的金额扣减
+    module: 购物车
+    entry: [tests/test_cart.py::test_total_with_coupon]
+    status: active
+    api: [/checkout]
+    last_verified: "2026-10-22"
+
+  - id: TC-CART-003
+    name: 低于门槛时拒绝使用优惠券
+    module: 购物车
+    entry: [tests/test_cart.py::test_coupon_threshold_rejected]
+    status: active
+    api: [/checkout]
+    last_verified: "2026-10-22"

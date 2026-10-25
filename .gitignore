@@ -20,3 +20,13 @@ artifacts/
 
 # Private ground truth and patches stay out of Git so a later public repo cannot leak them
 benchmarks/private/
+
+# Regression module (merged from testagent)
+subjects/
+examples/regression/demo/_repo/
+examples/regression/finunity/testagent.toml
+.pytest-tmp/
+.env
+.env.*
+*.key
+*.pem

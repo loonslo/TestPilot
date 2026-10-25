@@ -4,17 +4,18 @@
 
 ## 本项目约束
 
-- 项目编号 `api-test-agent`：用工具调用的 Agent 探索 REST API，用独立规则判对错。首个被测对象是衡仓后端（FinUnityServer）固定提交 55cf875 的本机沙箱副本。范围、批准和预算见 docs/startup-record.md，当前只做到任务 A3。
+- 项目编号 `api-test-agent`，包含两个模块。探索模块：用工具调用的 Agent 探索 REST API，用独立规则判对错。首个被测对象是衡仓后端（FinUnityServer）固定提交 55cf875 的本机沙箱副本。范围、批准和预算见 docs/startup-record.md，探索模块当前只做到任务 A3。回归模块：2026-10-25 由 testagent 并入为 `api_test_agent.regression`，按两次发布之间的差异给出回归建议，并执行已登记的接口用例。两个模块的被测源码都来自 `subjects/FinUnityServer`：从 FinUnity 2026-10-25 整合时做的 FinUnityServer 完整 bundle（本机备份）恢复的本机克隆，被忽略，不提交、不推送；探索基准仍固定在 55cf875。
 - 只用合成数据。不读取、复制或复用被测项目的 `.env`、`data/`、生产凭据、真实账号或备份；沙箱密钥由本项目生成并只放在被忽略的 `runtime/`。
-- 被测仓库只读：只通过 `git archive`、`git ls-tree`、`git rev-parse` 读取固定提交，副本放在被忽略的 `runtime/sut/`，用它自己的锁文件建环境。不向被测环境安装本项目依赖，不修改被测仓库。
-- 模型 API key 只从环境变量 `API_TEST_AGENT_MODEL_API_KEY` 读取（进程环境优先，缺失时回落到 Windows 用户级环境变量），不写进任何文件、日志、trace 或对话；没有 key 不能调用模型。供应商地址和模型 ID 不是秘密，写在被忽略的 `config.local.toml`。
+- 被测仓库只读：探索模块只通过 `git archive`、`git ls-tree`、`git rev-parse` 读取固定提交，副本放在被忽略的 `runtime/sut/`，用它自己的锁文件建环境。`subjects/FinUnityServer` 允许 Git 读命令、回归模块执行用例前 `git checkout <提交>`（用完切回 `main`），以及 `uv sync --locked --extra dev --python 3.12` 按被测项目自己的锁文件建 `.venv`。不向被测环境安装本项目依赖，不改被测仓库已跟踪文件，不提交；`subjects/` 不进入探索 Agent 的工具、提示词或 trace。
+- 探索模块的模型 API key 只从环境变量 `API_TEST_AGENT_MODEL_API_KEY` 读取（进程环境优先，缺失时回落到 Windows 用户级环境变量）；回归模块只从 `DEEPSEEK_API_KEY` 读取，配置里只写变量名。key 不写进任何文件、日志、trace 或对话；没有 key 不能调用模型。供应商地址和模型 ID 不是秘密，探索模块写在被忽略的 `config.local.toml`。
 - 当前模型是 OpenRouter 的免费路由器 `openrouter/free`：运行器在供应商报告任何费用时停止，并按每天请求数上限（默认 45）和调用间隔限流。换成付费模型前必须先回到每次 ≤ ¥1、A3 总 ≤ ¥30 的金额上限并更新启动记录。预算在每次调用前检查，不靠模型自觉。不配置付费 CI，不公开发布，不推送到远程，除非用户明确要求。
+  回归模块用付费模型 DeepSeek `deepseek-chat`，每次 plan 做 1 次分析调用、最多 2 次尝试；金额上限每次 ≤ ¥1、R 系列合计 ≤ ¥30（用户 2026-10-25 确定）。目前只有字符预算，没有按金额的调用前检查，所以每次真实调用前都要用户批准。R0 合并全程不调用模型，plan 必须带 `--stub`。
 - 路由器每次请求可能换一个模型：运行产物记录每次回答的模型，混用时在结果里单列（manifest 的 `mixed_model`）；要可复现的评测必须固定到某一个具体模型。
 - Agent 只看 `benchmarks/public/`（接口片段、响应字段说明、规则、任务）。缺陷补丁、构建与任务的对应关系、判定套件、现有 126 项测试内容和评分细节不能进入 Agent 的运行环境、提示词或 trace。开发集（五个缺陷、变异体、清单）放在可提交的 `benchmarks/dev/`，对开发者可见，不称为未见测试集；将来的冻结测试集放在被忽略的 `benchmarks/private/`，不提交。
 - `benchmarks/dev/` 的补丁文本含被测项目（私有仓库）的几行源码；公开本项目之前必须先确认这些片段可以公开，或改写成不含源码的描述。
 - Agent 的 HTTP 工具只能访问配置好的 127.0.0.1 端口和白名单操作，令牌由宿主注入，模型只见账号别名。宿主只清理自己创建且带标记文件的目录。
 - 规则里标了 `owner_confirm` 的条目，必须带 `confirmed_on`（用户确认的日期）才能据此设计缺陷、评分或写入简历；改动这些规则要重新确认。简历、README 里的指标只用已验收的实测值，估算要标明。
-- 沙箱目前只支持 Windows。运行测试用全新 basetemp：`uv run pytest -q -p no:cacheprovider --basetemp=<新目录>`，缓存和临时目录不作为进度证据。
+- 沙箱目前只支持 Windows。运行测试用全新 basetemp：`uv run pytest -q -p no:cacheprovider --basetemp=<新目录>`，缓存和临时目录不作为进度证据。回归模块的测试在 `tests/regression/`，随整体一起跑。
 
 ## PROJECT_STATUS 同步契约（v1）
 

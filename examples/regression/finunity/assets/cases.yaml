@@ -1,0 +1,80 @@
+# FinUnityServer 用例目录（示例）
+#
+# 每一行是一个"可追踪映射"：编号 -> 真实 pytest 入口。runner 只执行这里登记的 entry。
+# status 说明：
+#   active     可被自动执行，也可能被建议回归
+#   draft      草稿，不执行
+#   deprecated 已下线，不执行
+#   ui/manual/perf  只能人工或 UI 执行，列入建议但不算自动化覆盖
+#
+# 维护要求：entry 指向的函数必须真实存在；重命名测试函数时同步改这里。
+
+cases:
+  - id: TC-HEALTH-001
+    name: 健康检查就绪接口返回 200
+    module: 接口与健康检查
+    entry: [tests/test_health.py::test_live_is_a_constant_pulse]
+    status: active
+    api: [/health/live]
+    notes: 冒烟核心路径
+    last_verified: "2026-10-22"
+
+  - id: TC-HEALTH-002
+    name: 就绪接口在数据库不可用时返回 503
+    module: 接口与健康检查
+    entry: [tests/test_health.py::test_ready_is_503_when_the_database_cannot_be_used]
+    status: active
+    api: [/health/ready]
+    last_verified: "2026-10-22"
+
+  - id: TC-V1-001
+    name: v1 接口返回 v1 契约字段
+    module: v1 资产接口
+    entry: [tests/test_v1_api.py]
+    status: active
+    api: [/api/v1]
+    notes: 整文件执行，覆盖多个端点
+    last_verified: "2026-10-22"
+
+  - id: TC-LEDGER-001
+    name: 账本快照舍入与账户一致性
+    module: 持仓与账本一致性
+    entry: [tests/test_ledger_consistency.py]
+    status: active
+    notes: 整文件执行
+    last_verified: "2026-10-22"
+
+  - id: TC-MODEL-001
+    name: 缺失成本不被市值替代
+    module: 持仓与账本一致性
+    entry: [tests/test_models.py::test_missing_cost_is_never_replaced_with_market_value]
+    status: active
+    last_verified: "2026-10-22"
+
+  - id: TC-AUTH-001
+    name: 密码登录与会话限制
+    module: 账号与登录
+    entry: [tests/test_password_auth.py]
+    status: active
+    last_verified: "2026-10-22"
+
+  - id: TC-IMAGE-001
+    name: 图片上传校验规则
+    module: 图像与 OCR
+    entry: [tests/test_image_guard.py]
+    status: active
+    last_verified: "2026-10-22"
+
+  - id: TC-SVC-001
+    name: 服务层主要业务流程
+    module: 持仓与账本一致性
+    entry: [tests/test_service.py]
+    status: active
+    last_verified: "2026-10-22"
+
+  - id: TC-UI-001
+    name: Web 端资产页展示与交互
+    module: v1 资产接口
+    entry: [tests/browser_acceptance.py]
+    status: ui
+    notes: 需浏览器与前端服务，首版只列为建议、不自动执行

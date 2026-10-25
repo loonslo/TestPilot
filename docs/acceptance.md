@@ -183,3 +183,89 @@ uv run ruff format --check . ; uv run ruff check .
 - 十个开发任务还没有跑；A3 的验收条件（十个任务都有明确结束状态、至少一条模型产出的用例可在两个版本上重放）还没有满足，现在满足的只有“重放引擎能区分两个版本”（见证用例）。
 - 提示词和工具说明是第一版，没有按真实模型的行为调过。
 - `model status`、`model ping` 没有对真实服务运行过，`GET /key` 的返回格式只按官方文档假设。
+
+## 2026-10-25：R0 并入 testagent（回归模块）
+
+**结果：** testagent 并入 `api_test_agent.regression`，保留 `uv run testagent` 命令入口。293 项测试、Ruff 两项、探索模块离线链路与回归模块隔离用例通过。探索模块原有 `src/api_test_agent/*.py`、`tests/*.py`、`tools/`、`benchmarks/` 均未改动。全程未调用任何模型，未推送、未添加远程；FinUnity 单仓与原始 bundle 只读，未修改日常库。
+
+**批准与预期差异：** 本次用户要求按合并执行方案实施，方案 A–D 均已勾选，包括本地基线与合并提交、两组隔离用例执行，以及验收通过后的旧目录移动归档。`testagent check` 实测当前进程看不到 `DEEPSEEK_API_KEY`，与方案的“已设置”预期不同；发现后暂停后续步骤并询问用户，用户于 2026-10-25 明确回复“接受差异，继续完成离线合并（不调用模型）”。因此该项按用户接受的差异记录，不写成密钥已设置。未读取或打印密钥、环境变量值、`.env` 或 `runtime/secrets.json`；本地探索配置仅修改 `source_repo` 一行。
+
+**环境（本次实测）：** Microsoft Windows 10 专业版 10.0.19045；宿主 Python 3.14.4；uv 0.12.10；git 2.54.0.windows.1；被测克隆 Python 3.12.13；宿主 openai 3.31.0、pydantic 2.14.1、PyYAML 6.0.3、pytest 9.1.1、ruff 0.17.0。项目 `requires-python` 保持 `>=3.14`，被测环境按自己的锁文件用 Python 3.12 建立，未安装本项目依赖。
+
+**被测对象：** 从 FinUnity 2026-10-25 整合时做的 FinUnityServer 完整 bundle（本机备份）恢复到被忽略的 `subjects/FinUnityServer`，移除克隆的 origin。`main` HEAD 为 `e69f09f18f85cb6516093e739282adba73d1284a`，共 24 个提交；探索基准 `55cf875b9d0350e80cfed14b971b7bec8e22b50b`，tree 为 `f04f293e7cd99cb63ac0e0c99fa9fd9ea2c79b6c`。
+
+**前置与迁移核对：** 开工状态恰为方案中的 14 项未跟踪内容，无 HEAD；`subjects/` 与回归子包均不存在；bundle 校验通过。基线 245 项测试通过（6.11 秒），本地基线提交 `50c5997`。复制回归源码 11 个 Python 文件和 7 个测试文件；导入替换恰为 39 处，无旧 `testagent` 导入；默认提示词路径改为回归包内 `prompts/`。`uv add` 引入 PyYAML 6.0.3，锁文件新增 28 行；只对回归模块路径自动格式化，16 个文件重排，22 项 Ruff 问题自动修复。
+
+**用到的主要命令：** 在项目根目录执行下列探索命令；回归命令分别在 `examples/regression/finunity/` 与 `examples/regression/demo/` 执行。PowerShell 的 basetemp 参数先赋给独立变量，再用带引号的完整参数传递。首次内联表达式传参被 pytest 拒绝，未执行测试；改正调用方式后基线与整体测试均通过。
+
+```powershell
+$pytestTemp = Join-Path $env:TEMP ("ata-r0-20261025-" + (Get-Date -Format HHmmss))
+uv run pytest -q -p no:cacheprovider "--basetemp=$pytestTemp"
+uv run ruff format --check .
+uv run ruff check .
+uv run python -m api_test_agent doctor
+uv run python -m api_test_agent sandbox verify
+uv run python -m api_test_agent sandbox check
+uv run python -m api_test_agent agent witnesses
+uv run python tools/scripted_run.py
+uv run testagent --help
+
+# examples/regression/finunity/
+uv run testagent check
+uv run testagent plan --base 55cf875 --head e69f09f --env-version r0-20261025 --stub --run-id r0-smoke-20261025
+uv run testagent run r0-smoke-20261025 --env-version r0-20261025 --skip-confirm
+uv run testagent plan --base 8d1836f --head 2f4b565 --env-version r0-20261025 --stub --run-id r0-pair-20261025
+
+# 项目根目录
+uv run python examples/regression/demo/setup_demo.py
+# examples/regression/demo/
+uv run testagent plan --base base --head head --stub --env-version demo --run-id r0-demo-20261025
+uv run testagent run r0-demo-20261025 --env-version demo --skip-confirm
+```
+
+| 检查 | 预期 | 实测 |
+| --- | --- | --- |
+| pytest | 293 passed | 293 passed，34.83 秒 |
+| Ruff | format --check 与 check 均通过 | 74 files already formatted；All checks passed |
+| doctor | 全部 ok，能找到固定提交 55cf875 | 9 项全 ok；pinned commit exists in source repo: 55cf875b9d03 |
+| sandbox verify | 64 个文件，tree f04f293e7cd9，缺失/改动/多出均 0 | ok=True files=64 tree=f04f293e7cd9 missing=0 modified=0 extra=0 |
+| sandbox check | 13 项全过，与 2026-10-15 的 A1 表一致 | 13 项全 ok，all_ok=True；包括重置、合成账号隔离、源码与种子不变、端口释放 |
+| agent witnesses | 5 个用例 × 6 个构建矩阵与历史记录一致 | 30 个判定符合预期；每个用例只在对应缺陷上失败，其余与 reference 均通过；all_ok=True |
+| scripted_run | dev-02 完成、1 个用例 detects；dev-09 完成、无用例 | dev-02 completed(final_report)，cases 1，def-01，detects；dev-09 completed(final_report)，cases 0，reference；scripted pipeline ok |
+| testagent --help | 保留 plan/reconcile/run/show/runs/check | usage: testagent [-h] [--version] {plan,reconcile,run,show,runs,check} ... |
+| testagent check | 检查通过；7 模块、9 用例（active 8）、3 冒烟、两份资料存在；密钥已设置 | 除密钥外全部符合；DEEPSEEK_API_KEY 显示未设置，用户明确接受该差异后继续离线验收 |
+| plan 55cf875 → e69f09f | 4 个变更文件，3 条冒烟 | 4 个文件，diff 6779/6779 字符；TC-HEALTH-001、TC-V1-001、TC-LEDGER-001，无额外建议用例 |
+| run r0-smoke-20261025 | 执行 3/3，通过 3，失败 0，异常 0 | 完全符合；三条分别耗时约 9.0、2.6、3.1 秒，未覆盖 0 |
+| plan 8d1836f → 2f4b565 | 31 文件，diff 84467/84467 字符，6 用例（冒烟 3 / 建议 3） | 完全符合；建议 TC-HEALTH-002、TC-MODEL-001、TC-SVC-001；ui 用例被剔除，覆盖缺口 1 项单列；未执行该历史版本对用例 |
+| 购物车演示 plan / run | 3 文件，3 用例（冒烟 1 / 建议 2），执行 3/3，通过 3 | 完全符合；diff 1346/1346 字符；TC-CART-001/002/003 全 passed，失败 0、异常 0、未覆盖 0 |
+| 被测克隆 | 工作区干净，HEAD 仍 e69f09f | git status --porcelain 无输出；HEAD e69f09f18f85cb6516093e739282adba73d1284a，分支 main，无 remote |
+
+**见证矩阵复核：** 本次核对了 `artifacts/witnesses-20261025T144947Z.json` 的 5 × 6 明细，结果如上；运行文件被忽略，仅此稳定文档作为验收正本。回归本次产物分别位于 FinUnity 的 `artifacts/r0-smoke-20261025/`、`artifacts/r0-pair-20261025/` 和演示的 `artifacts/r0-demo-20261025/`；它们均被忽略，不作为 PROJECT_STATUS evidence。
+
+**提交前路径与邮箱核对：** 原有本机路径形态出现在 `docs/startup-record.md` 第 19 行（工作区位置）、`src/api_test_agent/sandbox.py` 第 238 行（Windows 路径处理），以及测试夹具 `tests/test_dev_benchmark.py` 第 238/242/244 行、`tests/test_sandbox_env.py` 第 13/14/15/18/27/30/31/35/37/41/42/50 行、`tests/test_settings.py` 第 22 行。新增的 `docs/regression/make_diagrams.py` 第 24–26 行包含 Windows 字体路径。它们不阻止本地提交，公开前需审视；本地 FinUnity 解释器路径只在被忽略的配置中。邮箱命中只有 `t@example.invalid`（原测试夹具）、`test@example.com`（回归测试夹具）和 `demo@example.com`（演示仓库身份），均为假地址。未发现所扫描的私钥/令牌形态，待提交文件均为 UTF-8 文本（PNG 除外），文本无 CRLF。
+
+**未验证项：** 两个模块的真实模型调用；R1 历史改动质量评测及人工参考结论；R2 FinUnity 单仓 `server/`；`benchmarks/dev` 公开前的源码片段确认；Mac/Linux。R3 扩充用例目录仍待开始。本次离线桩结果不能作为真实模型建议质量或检出率的证据。
+
+### 历史记录搬迁：testagent 2026-10-22（未复测）
+
+以下来自原 `testagent/PROJECT_STATUS.md` 的“当前进度”“真实链路样例”“边界与未做”，是 2026-10-22 历史记录搬迁，**不是本次真实模型复测**。原目录在 R0 验收通过后按方案移动归档。表中保留历史完成状态，证据路径已注明合并后的对应位置。
+
+| 能力 | 历史状态（2026-10-22） | 原证据 → 现位置 |
+| --- | --- | --- |
+| 版本采集（固定 base/head、完整文件列表、diff、来源定位） | 已完成 | src/testagent/collect.py → src/api_test_agent/regression/collect.py；tests/test_collect.py → tests/regression/test_regression_collect.py |
+| 影响分析（结构化输出、证据强度、待确认项） | 已完成 | src/testagent/analyze.py → src/api_test_agent/regression/analyze.py；prompts/analyze.md → src/api_test_agent/regression/prompts/analyze.md；tests/test_analyze.py → tests/regression/test_regression_analyze.py |
+| 回归计划（校验编号、冒烟集必留、缺口单独记录、指纹） | 已完成 | src/testagent/plan.py → src/api_test_agent/regression/plan.py；tests/test_plan.py → tests/regression/test_regression_plan.py |
+| 执行（只跑已登记 pytest 入口、异常不计通过） | 已完成 | src/testagent/runner.py → src/api_test_agent/regression/runner.py；tests/test_runner.py → tests/regression/test_regression_runner.py |
+| 报告（版本/证据/结果/缺口/限制） | 已完成 | src/testagent/report.py → src/api_test_agent/regression/report.py；tests/test_report.py → tests/regression/test_regression_report.py |
+| 两阶段 CLI 与状态复核 | 已完成 | src/testagent/cli.py → src/api_test_agent/regression/cli.py；tests/test_cli.py → tests/regression/test_regression_cli.py |
+| 离线演示与真实项目试点 | 已完成 | examples/demo、examples/finunity → examples/regression/demo、examples/regression/finunity |
+| 自测 | 48 项通过 | 历史命令 py -3 -m pytest -q；本次随整体 293 项一起复测，不等于重跑历史真实模型 |
+
+真实链路历史样例原位于 `examples/finunity/artifacts/demo-live/`，现复制到 `examples/regression/finunity/artifacts/demo-live/`（本机、被忽略，不作为 evidence）：
+
+- base `8d1836f` → head `2f4b565`，31 个变更文件，diff 84,467 字符全部进入分析；
+- 模型给出 11 条影响（含代码位置与业务来源）、9 项覆盖缺口、6 项待确认；
+- 计划 6 条（3 条固定冒烟 + 3 条建议），实际执行 6 条全部通过；
+- 报告明确标注 9 项未覆盖不计入通过数。
+
+历史边界与未做：未做账号/权限、RAG、用例平台、多项目并发、Web、Webhook、PR 回写、自动部署、UI/性能执行、多 Agent、自动改断言；只支持 base 为 head 祖先的两端快照，跨分支合并历史不支持；模型密钥只从环境变量读取，配置与产物中不落盘。R0 未扩展这些边界。
