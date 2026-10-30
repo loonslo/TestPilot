@@ -1,10 +1,10 @@
 """两阶段命令行：plan 收集并生成建议，run 执行已确认的计划并出报告。
 
-    testagent plan --base <ref> --head <ref> [--config PATH] [--run-id ID] [--stub] [--no-ai]
-    testagent run  <run_id> [--env-version V] [--skip-confirm] [--dry-run]
-    testagent show <run_id> [--json]
-    testagent runs
-    testagent check [--config PATH]
+    testpilot plan --base <ref> --head <ref> [--config PATH] [--run-id ID] [--stub] [--no-ai]
+    testpilot run  <run_id> [--env-version V] [--skip-confirm] [--dry-run]
+    testpilot show <run_id> [--json]
+    testpilot runs
+    testpilot check [--config PATH]
 
 退出码：0 完成；1 失败（计划/执行异常或无回归）；2 使用错误；3 需要人工确认而未确认（自动回退）。
 """
@@ -113,9 +113,9 @@ def _print_plan_summary(plan: RegressionPlan, directory: Path) -> None:
     print("")
     print("  下一步：")
     print(f"    1) 打开并核对计划: {directory / 'plan.json'}")
-    print(f"    2) 如修改了用例（增删/调整优先级），先执行: testagent reconcile {plan.run_id}")
-    print(f"    3) 确认后执行: testagent run {plan.run_id} --env-version <测试环境版本>")
-    print(f"    跳步执行（仅限脚本/测试）: testagent run {plan.run_id} --skip-confirm")
+    print(f"    2) 如修改了用例（增删/调整优先级），先执行: testpilot reconcile {plan.run_id}")
+    print(f"    3) 确认后执行: testpilot run {plan.run_id} --env-version <测试环境版本>")
+    print(f"    跳步执行（仅限脚本/测试）: testpilot run {plan.run_id} --skip-confirm")
 
 
 # --------------------------------------------------------------------------- check
@@ -300,7 +300,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     directory = project.artifacts_dir / args.run_id
     plan_path = directory / "plan.json"
     if not plan_path.is_file():
-        print(f"错误: 找不到计划 {plan_path}；请先执行 testagent plan", file=sys.stderr)
+        print(f"错误: 找不到计划 {plan_path}；请先执行 testpilot plan", file=sys.stderr)
         return EXIT_USAGE
     plan = load_plan(plan_path)
 
@@ -308,7 +308,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     if plan_fingerprint(plan) != plan.plan_sha256:
         print(
             "错误: 计划内容与指纹不一致（可能被手工修改）。请执行 "
-            f"testagent reconcile {args.run_id} 复核后再执行。",
+            f"testpilot reconcile {args.run_id} 复核后再执行。",
             file=sys.stderr,
         )
         return EXIT_FAIL
@@ -318,7 +318,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(f"错误: {problem}", file=sys.stderr)
     if problems:
         print(
-            "请更新用例目录后重新执行 testagent plan，或运行 testagent reconcile 处理可修复项",
+            "请更新用例目录后重新执行 testpilot plan，或运行 testpilot reconcile 处理可修复项",
             file=sys.stderr,
         )
         return EXIT_FAIL
@@ -490,14 +490,25 @@ def cmd_runs(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="testagent",
+        prog="testpilot",
         description="发布版本变更分析与回归建议（MVP）：plan 生成计划，run 执行并出报告。",
     )
-    parser.add_argument("--version", action="version", version=f"testagent {__version__}")
+    parser.add_argument("--version", action="version", version=f"TestPilot {__version__}")
+    parser.add_argument("--config", help="项目配置文件")
     sub = parser.add_subparsers(dest="command", required=True)
+    register_commands(sub)
+    return parser
+
+
+def register_commands(sub: argparse._SubParsersAction) -> None:
+    """Register regression commands on the shared TestPilot command parser."""
 
     def common(p: argparse.ArgumentParser) -> None:
-        p.add_argument("--config", help="项目配置文件（默认在当前目录找 testagent.toml）")
+        p.add_argument(
+            "--config",
+            default=argparse.SUPPRESS,
+            help="项目配置文件（默认在当前目录找 testagent.toml）",
+        )
 
     p_plan = sub.add_parser("plan", help="采集 base..head 变更并生成回归计划（不执行测试）")
     common(p_plan)
@@ -551,12 +562,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_check = sub.add_parser("check", help="检查配置、资产与模型密钥是否就绪")
     common(p_check)
     p_check.set_defaults(func=cmd_check)
-    return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    return execute(args)
+
+
+def execute(args: argparse.Namespace) -> int:
+    """Execute a parsed regression command without loading exploration settings."""
     try:
         return int(args.func(args))
     except ProjectError as exc:

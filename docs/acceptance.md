@@ -269,3 +269,282 @@ uv run testagent run r0-demo-20261025 --env-version demo --skip-confirm
 - 报告明确标注 9 项未覆盖不计入通过数。
 
 历史边界与未做：未做账号/权限、RAG、用例平台、多项目并发、Web、Webhook、PR 回写、自动部署、UI/性能执行、多 Agent、自动改断言；只支持 base 为 head 祖先的两端快照，跨分支合并历史不支持；模型密钥只从环境变量读取，配置与产物中不落盘。R0 未扩展这些边界。
+
+## 2026-10-25：N0 正式命名 TestPilot（测试领航员）
+
+**结果与范围：** 用户要求采用正式名称，选择 TestPilot（测试领航员）。统一项目标题、介绍、协作入口、任务与启动记录；安装包名由 `api-test-agent` 改为 `testpilot`，版本仍为 0.1.0。新增探索主命令 `uv run testpilot`，CLI 帮助显示 TestPilot。旧探索命令 `uv run api-test-agent`、`uv run python -m api_test_agent` 和回归入口 `uv run testagent` 保持兼容。工作区目录及 `project_id` 仍为 `api-test-agent`，Python 包名保留 `api_test_agent`；构建配置显式指定该模块名。未移动目录、被测克隆或环境，未改变业务逻辑、模型变量名、配置文件名及已有运行目录标记。
+
+**环境：** 同本日 R0：Windows 10 专业版 10.0.19045，宿主 Python 3.14.4，uv 0.12.10，pytest 9.1.1，Ruff 0.17.0。
+
+| 检查与命令 | 本次实测 |
+| --- | --- |
+| uv lock --offline；uv sync --locked --offline | 安装 testpilot 0.1.0，旧安装名称被替换；26 个第三方包的锁定记录逐项比较完全不变 |
+| uv build --offline | 生成 testpilot-0.1.0.tar.gz 与 testpilot-0.1.0-py3-none-any.whl（dist/ 被忽略），未发布 |
+| wheel 内容与安装元数据 | Name=testpilot、Version=0.1.0；三个命令入口正确，探索/回归模块及回归提示词均包含在 wheel 内 |
+| testpilot --help；api-test-agent --help；testagent --help | 三个已安装入口均退出 0；探索显示 usage: testpilot，回归保持 usage: testagent |
+| uv run pytest -q -p no:cacheprovider --basetemp=<本次全新目录> | 293 passed，34.14 秒 |
+| uv run ruff format --check .；uv run ruff check . | 74 files already formatted；All checks passed |
+| uv run testpilot doctor | 9 项全 ok，固定提交 55cf875b9d03 可读，端口空闲 |
+| uv run testpilot sandbox verify | ok=True files=64 tree=f04f293e7cd9 missing=0 modified=0 extra=0 |
+| 在 examples/regression/finunity/ 执行 uv run testagent check | 通过；7 模块、9 用例（active 8）、3 冒烟，两份资料存在；DEEPSEEK_API_KEY 仍未设置，无需读取密钥值 |
+| uv run testagent plan --base 55cf875 --head e69f09f --env-version rename-20261025 --stub --run-id rename-smoke-20261025 | 4 个变更文件，diff 6779/6779 字符；3 条固定冒烟，无建议用例；仅生成离线计划，未执行被测用例 |
+| 被测克隆 git status --porcelain；git diff --check | 均无问题；被测克隆已跟踪文件未修改 |
+
+**边界与未复测：** 本次只验证命名、打包、命令兼容与上述离线检查，未重复 R0 的 sandbox check、见证矩阵、scripted_run 或真实被测用例执行；其通过结果仍是本日 R0 记录。未调用模型、未推送、未发布、未写日常库；真实模型、R1/R2、Mac/Linux 等未验证项保持原状。Python 包名、目录名和旧入口的保留是兼容策略，不代表改名遗漏。
+
+## 2026-10-25：U0 统一入口与最新架构/流程图
+
+**结果：** 用户要求只保留统一入口，并提供当前架构与流程以便分析。安装包只注册 `testpilot = api_test_agent.cli:main`；移除旧 api-test-agent/testagent console 脚本。统一解析器接入回归的六个根命令，再按解析结果分发到探索或回归；回归命令在读取探索配置前分流，避免把回归配置当成探索配置。回归 `--config` 可放在命令前后，探索配置沿用全局位置；文件名和资产不迁移。提示、示例与当前使用文档同步为 testpilot，N0/R0 的历史验收记录保持原样。
+
+**最新设计交付：** docs/architecture.md 为整体架构正本，包含整体架构、探索循环、回归两阶段流程的 Mermaid 源码，输入输出、状态边界、代码映射和失败分支；docs/architecture.png/.svg 与 docs/workflow.png/.svg 为可查看、放大的两张总览图，已逐张目视核对布局与中文显示。绘图复用原有风格，通过可选 Matplotlib 生成，不新增运行依赖。图中的“探索用例到回归资产未自动打通”“回归不自动 checkout/证明环境与 head 一致”“字符预算不等于金额守卫”均按代码核对，未把待做能力画成已实现。
+
+**环境：** Windows 10 专业版 10.0.19045，Python 3.14.4，uv 0.12.10，pytest 9.1.1，Ruff 0.17.0；被测克隆仍为 main/e69f09f，Python 3.12.13（沿用本日 R0 环境，本次未重建）。
+
+| 本次检查 | 实测 |
+| --- | --- |
+| 新增统一入口集成测试 | 5 项通过：回归配置前后位置、回归不加载探索配置、离线 plan→篡改被拒→reconcile→dry-run→show/runs、探索独立配置、无配置 help；模型构造器用禁止调用的替身验证 --stub 分支 |
+| pytest（全新 basetemp） | 298 passed，34.95 秒；包括原 293 项与新增 5 项 |
+| Ruff format --check / check | 77 files already formatted；All checks passed |
+| uv sync --locked --offline；uv build --offline | 成功；安装元数据和 wheel 均只有 testpilot 一个 console 入口，旧 api-test-agent.exe 与 testagent.exe 已不存在，回归提示词仍在 wheel 内 |
+| testpilot doctor；testpilot sandbox verify | doctor 9 项全 ok；verify 为 64 个文件，缺失/改动/多出均 0，tree f04f293e7cd9 |
+| testpilot check --config examples/regression/finunity/testagent.toml | 7 模块、9 用例（active 8）、3 冒烟、两份资料存在，检查通过；DEEPSEEK_API_KEY 仍未设置 |
+| testpilot plan --config examples/regression/finunity/testagent.toml --base 55cf875 --head e69f09f --env-version unified-20261025 --stub --run-id unified-smoke-20261025 | 4 个文件，diff 6779/6779 字符；生成 3 条冒烟用例，无建议用例；下一步提示均使用 testpilot |
+| testpilot run unified-smoke-20261025 --config examples/regression/finunity/testagent.toml --env-version unified-20261025 --skip-confirm --dry-run | 退出 0；3 条均为 skipped，实际执行 0/3、通过 0；只验证解析与守卫，不冒充真实测试通过 |
+| 被测克隆状态 | git status --porcelain 无输出；未修改已跟踪源码 |
+
+本次未调用任何模型，未执行真实被测用例，未重复 sandbox check、见证矩阵或 scripted_run，未推送/发布、未写日常库。原有未提交的 N0 改动继续保留并在其上调整；真实模型质量、R1/R2、Mac/Linux 和公开前审查仍未验证。
+
+## 2026-10-29：需求梳理与 F0 实施方案交付（非功能验收）
+
+用户本次要求先提供可落地方案供审阅，不启动实现。需求包括：无既有用例的真实项目；从资料/接口文档/指定版本源码梳理接口；生成有场景、依据和参数理由的用例；人工查看并确认后执行；真实结果与未完成项如实报告；人工与 AI 资产逐步统一。
+
+交付 docs/implementation-plan-20261029.md，包含首版范围、全量发现与分批执行流程、模块和状态边界、用例字段、审核绑定、执行证据、异常/中断行为、覆盖口径、F1–F8 依赖与逐项验收，以及旧实现复用与先修事项。TASKS.md 登记 F0 方案交付和待开始工作包；README.md 与 startup-record.md 加入待审入口。方案未获用户审阅确认，不代表任何新增能力已验收。
+
+本次只核对本项目说明和相关代码，未读取新的被测仓库、凭据或运行数据，未改 src/、tests/、模型配置和旧功能状态，未执行模型、HTTP 业务测试、提交或推送。原有未提交修改继续保留。
+
+### 同日本会话此前的技术基线（与方案交付分开记录）
+
+2026-10-29 简历项目分析期间，在本机 Windows PowerShell 与现有项目环境执行：
+
+- `uv run --no-sync pytest -q -p no:cacheprovider --basetemp=runtime/resume-review-20261029-8b7e3b`：298 passed，36.78 秒；使用当时新建的 basetemp，不调用模型。
+- `uv run --no-sync ruff check .`：All checks passed；`uv run --no-sync ruff format --check .`：77 files already formatted。
+
+这些是本日已有实现的检查，不是 F1–F8 验收；本次方案文档编辑后未重复运行测试，也没有重复 sandbox check、见证矩阵或真实模型质量评测。
+
+### 文档与摘要校验边界
+
+交付前在本项目内校验新增方案的任务引用、PROJECT_STATUS 必填字段、字段唯一性、日期类型、状态及证据相对路径：通过，12 个 evidence 文件均符合约束；README/TASKS 的 27 个本地文档链接均存在；方案 14 节、F0–F8 任务一致，F1–F8 均标为待开始，拟议命令明确标为尚不可用。`git diff --check` 通过。未使用日常同步工具或写入 vault，未读取凭据或运行目录。该校验只证明文档与摘要自洽，不证明接口发现、审核守卫或真实测试链路已经实现。
+
+
+## 2026-10-30：F1 首批统一资产机制验证（整包未验收）
+
+用户要求按方案开始执行。新增 tasks/models.py、store.py、cli.py 与唯一入口的 task 分发，具体边界见 task-assets.md。未覆盖或还原用户已有未提交改动。
+
+Windows PowerShell、项目 uv/Python 环境，实际验证：
+
+- `uv run pytest -q -p no:cacheprovider --basetemp=runtime/f1-tests-20261030-01`：311 passed，60.77 秒，使用本次全新目录。13 项新增机制测试覆盖空目录建任务、人工/AI 同目录、旧修订保持、重复任务/修订拒绝、理由/预期/提交/来源/清理变更影响完整哈希、未知引用和缺证据拒绝。替身与合成数据仅证明机制。
+- `uv run ruff check .`：通过；`uv run ruff format --check .`：83 files already formatted。
+- 实际运行 `uv run testpilot task --root runtime/f1-demo-20261030 create f1-demo --project synthetic --commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --scope "GET /items"` 后 show：退出 0，任务 created、空 history、无用例；提交为合成输入，未核实真实仓库。
+- `git diff --check`：通过（Git 提示部分原有文件未来转换 CRLF，无空白错误）。
+
+F1 为进行中：状态转换持久化、接口对象、审核状态修订级存储及旧资产适配契约待补；没有批准/执行入口，不声称已有审核守卫、可执行 pytest 适配或防篡改结果库。F2–F8 未实施，目标项目/提交/资料范围待指定。未调用模型、发送被测请求、读取新目标源码、提交/推送或访问日常库；未重复沙箱全链路或真实模型效果验收。
+
+
+## 2026-10-30：F1 基础验收完成与目标选择澄清
+
+用户说明项目应由自己选择，无须当前聊天写死目标。落实为每任务选择：`task create <id>` 可创建无目标、无用例草稿；`configure` 登记项目/完整提交/范围/源码或文档位置/环境；登记不读取文件，`validate-target` 只验完整性，不伪装已验证版本。已有用例或发现后锁定目标，变更版本另建任务，跨任务复用留待 F8。
+
+F1 补齐 Operation 来源与不确定状态模型、任务阻塞/恢复/终止原子写入及历史、按完整修订哈希追加审核状态（draft→pending_review→rejected/deferred）、新修订恢复 draft、旧审核历史保留，以及人工/AI 合成 JSON 示例。旧探索与 pytest 适配边界已在 task-assets.md 固定，不自动推断缺失理由或批准；pytest 导入继续明确拒绝。
+
+本机 Windows、PowerShell、现有 uv 项目环境，实际验证：
+
+- 定向测试 `uv run pytest -q -p no:cacheprovider --basetemp=runtime/f1-target-tests-20261030-02 tests/test_task_assets.py`：23 passed，2.17 秒。
+- 完整测试 `uv run pytest -q -p no:cacheprovider --basetemp=runtime/f1-full-20261030-03`：321 passed，63.43 秒，使用本次新建 basetemp。新增覆盖任务独立配置、不完整输入拒绝、导入后换目标拒绝、非法/空原因状态转换拒绝与历史保持、终止不可恢复、新修订审核失效、审核旧修订及 approved 写入拒绝、路径越界和隐藏路径拒绝、接口冲突状态与来源保留。
+- `uv run ruff check .` 与 `uv run ruff format --check .`：通过，84 files already formatted。
+- 真实 CLI 合成演示：以 `task --root runtime/f1-user-choice-20261030` 依次 create user-choice、configure（synthetic-user-selection、40 位合成提交、GET /items、docs/synthetic-api.json）、validate-target、导入 examples/tasks/human-case.json 和 ai-case.json、state blocked、show；均退出 0，显示两条 draft、blocked 原因与状态历史。资料路径仅登记，示例资料未提供，不冒充完成发现或真实版本验证。
+- 用同一演示任务和人工样例哈希执行 `review-state --decision pending_review` 后 `--decision deferred`，均退出 0；show 显示人工样例 deferred、AI 样例 draft，审核状态与任务状态独立，无批准/执行。
+
+F1 按“统一对象、状态与旧资产适配边界”口径完成基础验收。完整业务状态推进的发现证据、冻结批准、实际执行和报告由 F2–F6 接入；不把预留状态枚举或审核状态记录当成这些功能已完成。F2–F8 未实施；开发无需等待用户现在选择真实项目，可使用合成输入继续。未调用模型、发送业务 HTTP、读取新目标源码、修改被测仓库、提交/推送或访问日常同步工具；未复测真实模型质量、沙箱全链路、跨平台和断电恢复。
+
+
+## 2026-10-30：F2 首批实现（整包进行中）
+
+新增 tasks/discovery.py、task discover/materials；Git 固定提交只读 blob 快照、文档路径限定、来源哈希、OpenAPI 初步发现、FastAPI AST 局部路由、冲突/范围外/不支持/待确认项和实际导出材料字符预算已实现。回归 context_files 进入实际请求；相关文件改从 head 提交读取，总预算在最终用户提示词序列化后实际删减内容并保留来源/遗漏说明，不再只写“已截断”却仍发送全文。该字符限制不是金额预算，未授权任何模型调用。
+
+本次开发只创建合成 Git 仓库与文档。定向测试 `uv run pytest -q -p no:cacheprovider --basetemp=runtime/f2-discovery-20261030-03 tests/test_task_assets.py tests/test_task_discovery.py`：28 passed，3.08 秒；证明脏工作树不进入指定提交快照、不执行目标 Python、过滤已有测试/凭据路径、保留来源哈希和接口限制、文档冲突/范围外/不支持项，以及最终材料 JSON 的实际长度和未发送列表。发现快照字符串被默认 strip 导致哈希不一致，已禁用快照字段的空白裁剪并复测通过。
+
+回归输入定向测试 `uv run pytest -q -p no:cacheprovider --basetemp=runtime/f2-analyze-20261030-07 tests/regression/test_regression_analyze.py`：9 passed，6.49 秒。新增验证采集上下文标记确实进入请求、收紧预算后实际消失而来源及遗漏保留、模板/元数据本身超限明确报错。中间测试发现 head_snapshot 未加入 source 枚举、冻结 DocRef 无法原位修改，已补枚举并以新模型替换裁剪条目；此前失败不计为通过。
+
+F2 仍未验收：跨文件 FastAPI 挂载图、字段/认证差异对账、失败部分采集产物及恢复路径待补。discovered 只是离线清单已落盘，不等于全集已确认。F3–F8 未实现；没有真实模型效果或新目标实测。未调用模型、被测 HTTP、读取衡仓源码、提交/推送或访问日常同步工具。
+
+F2 本批最终完整检查：`uv run pytest -q -p no:cacheprovider --basetemp=runtime/f2-full-20261030-08`，327 passed，65.25 秒；`uv run ruff check .` 通过，`uv run ruff format --check .` 为 86 files already formatted。均使用本机 Windows/项目环境，未调用模型。交付前本项目摘要字段和证据路径自检、git diff --check 通过；未使用日常同步工具。
+
+
+## 2026-10-30：F2 路由图/重入机制与 F3 设计审核链路
+
+本轮仅使用本项目合成源码、文档、生成器响应和假供应商，不读取真实目标源码或调用真实模型/被测接口。F2 原局部扫描替换为跨文件静态挂载图：导入别名/相对导入、嵌套前缀、重复挂载和子应用均有明确预期清单；循环、孤立与动态注册保留限制。OpenAPI 继承参数、解析本地引用，不跟随外部引用；重复映射键拒绝。每例保留声明、挂载和字段/认证/状态差异，不掩盖只在一侧出现的接口。失败采集资料在独立 attempt 保存，重试不覆盖旧记录；完整清单写入后中断，可核对绑定后推进状态而不重读变化文档。
+
+F3 新增 design.py/design_model.py、task design/review：从空资产构造实际带 Schema/来源的请求；小批默认十项，可显式选 operation IDs，宿主全清单场景矩阵保留其他接口 pending；整批验证后导入草稿，输出规则目录与矩阵，Markdown 展示参数理由表、步骤副作用和断言及完整快照。输出不合法时保存 response/failed，不产生用例或通过记录；人工审核材料只将 draft 变为 pending_review，manifest 明确 executable=false。正常/边界/异常合成样例保留不同理由，未有正式拒绝响应依据时标 hypothesis，不能借此确认产品缺陷。
+
+实时调用适配仅允许既有免费路由，仍使用原 key 环境变量及共享每日计数；最多一请求，调用前检查预算/计数和 token 上界，报告非零费用则停止接受草稿。保存实际模型元数据，key 不落盘。相关测试替换为假客户端，仅证明协议和守卫，未证明真实生成效果。
+
+实测环境：本机 Windows PowerShell、现有 uv/Python 项目环境：
+
+- `uv run pytest -q -p no:cacheprovider --basetemp=runtime/f2-graph-20261030-10 tests/test_task_discovery.py tests/test_task_assets.py`：35 passed，3.77 秒。精确验证五个挂载后的 method/path、三份挂载来源、循环/动态/孤立/WebSocket、引用/重复键、差异、失败重试、快照写入后中断重入、篡改哈希拒绝。
+- `uv run pytest -q -p no:cacheprovider --basetemp=runtime/f23-final-20261030-16`：350 passed，65.22 秒。完整测试基于本批最终运行代码（此后仅增加一项测试及文档）。
+- 追加正常/边界/待确认异常三类设计样例后，`uv run pytest -q -p no:cacheprovider --basetemp=runtime/f23-scenarios-20261030-17 tests/test_task_design.py tests/test_task_discovery.py tests/test_task_assets.py`：52 passed，4.51 秒。包括设计到审核过程 HTTP 调用数为零、响应多余批准字段/未知来源/缺理由/恶意表达式/认证头/错误版本/缺失值/场景缺项拒绝、请求实际字符预算、供应商失败留痕、修订失效，以及假供应商每日限额阻止第二次调用、付费配置在读 key 前拒绝。
+- `uv run ruff check .`：通过；`uv run ruff format --check .`：90 files already formatted（添加最后场景测试后再核对格式/规则）。
+
+F2 按首版静态适配支持范围完成机制验收；动态/运行框架隐式路由、认证语义、外部引用等无法静态证明的范围仍保留限制，真实项目接口全集对账在 F7 验收，不用合成测试冒充已覆盖衡仓。F3 继续进行中，仍需补预算下片段与整文件实际送出对账、更多中断/拒绝路径和 F4 连接；F4–F8 未实现，整个目标尚未完成。未调用真实模型、执行被测请求、修改被测仓库、提交/推送或访问日常库。
+
+
+## 2026-10-30：F3 送出对账与 F4 冻结批准（进行中）
+
+新增 approval.py、task approve/verify-approval；review 可带 execution-config。人工提交绑定审核文档及 manifest 精确哈希，可逐条批准/拒绝/暂缓，未提及项保持待审。批准包保存任务、全修订集合、来源清单、执行配置、执行器指纹、操作者和时间；新增修订撤回 ready，关键内容变化拒绝沿用旧批准。无配置的旧审核材料不能变成执行批准，模型没有批准工具。外部环境当前明确 version_verified=false，不把环境名称当部署版本证明。
+
+F3 送出记录区分完整文件、实际发送的解析声明及完全省略材料；导入中断保留批次标记，阻止审核，design-recover 校验请求/输出哈希后补齐，不重新调用模型。增加供应商报告费用、中断和实际材料记录的拒绝测试。
+
+`uv run pytest -q -p no:cacheprovider --basetemp=runtime/f34-guard-20261030-20 tests/test_task_design.py tests/test_task_approval.py tests/test_task_assets.py tests/test_task_discovery.py`：74 passed，7.44 秒。验证参数、理由、断言、准备/清理、版本、配置、执行器与审核文本变化拒绝；部分批准、未批准项保留；假供应商非零费用拒绝且 key 不落盘。Ruff 修复一处测试导入排序后检查通过，格式检查为 92 files already formatted。
+
+实际执行器尚未接入，F4 仅冻结/复核机制验证，不冒充真实业务请求前的端到端守卫。F5–F8 尚未完成；未调用真实模型、被测接口或读取新目标源码。此前完整检查句柄失效，未用其推断结果，重新启动 f34-final-20261030-22 全量检查，结果待回收。没有提交或推送。
+
+完整检查已回收：`uv run pytest -q -p no:cacheprovider --basetemp=runtime/f34-final-20261030-22`：373 passed，44.16 秒。Ruff、格式检查及项目摘要自检通过。
+
+
+## 2026-10-30：F4 审核冻结、F5 统一执行与 F6 报告守恒对账（机制验收通过）
+
+在前期 F1–F3 的统一数据模型、接口发现、小批生成与审核材料基础上，本轮完成 F4 人工冻结快照、F5 统一执行引擎（`structured-http-v1`）与 F6 报告生成与守恒覆盖统计的机制验收。
+
+### 1. 交付物与机制验证
+- **F4 人工审核与执行前冻结**：
+  - 新增 `approval.py`、`task approve` 与 `task verify-approval`。
+  - 绑定审核材料 manifest 精确哈希，支持逐条批准、拒绝或暂缓。
+  - 冻结快照绑定任务设置、全修订哈希集合、接口清单、执行配置、执行器实现指纹及操作者时间。
+  - 任何改动（参数值/理由/预期断言/步骤/版本/执行配置/执行器代码）或引入新修订均使旧批准失效，执行前直接拒绝，业务请求数为零。
+- **F5 统一执行引擎（`structured-http-v1`）与证据对账**：
+  - 新增 `execution.py`、`task execute`。
+  - 严格限制宿主请求仅流向回环地址 `http://127.0.0.1:<port>`，禁止任何外网连接。
+  - 宿主从环境变量读取账号凭据，所有落盘证据（EvidenceRecord）、事件日志（events.jsonl）和报告中令牌均严格替换为 `[REDACTED]`，绝不落盘或泄露。
+  - 步骤严格按 prepare、test、verify、cleanup 四阶段执行。prepare 启动后异常记为 error，启动前缺凭据记为 blocked；断言失败记为 failed，并自动根据规则依据创建疑似产品缺陷（suspected_defect）或待确认假设（unconfirmed_hypothesis）Issue；清理步骤在任何情况下均会触发，清理失败告警 issues，不掩盖主体步骤通过记录。
+  - 中断对账：`--max-cases` 与 `--stop-on-failure` 中断后剩余项标记为 `not_run`，任务置为 `incomplete`，不盲目重试带副作用步骤。
+  - 既有 pytest 回归适配增强：`runner.py` 的 `classify` 增加对全部跳过（skipped）和未收集到（no tests ran）的结构化明细解析，退出码为 0 但无通过用例时不伪装为 passed。
+- **F6 报告生成与守恒覆盖统计**：
+  - 新增 `report.py`、`task report`。
+  - 确定性守恒公式严格核算：`计划执行数 (planned) = passed + failed + error + blocked + skipped + not_run`，若不平衡直接告警。
+  - 凭据真实性核验：`passed`、`failed`、`error` 必须有对应落盘证据文件存在，无证据不能增加通过计数。
+  - 覆盖统计分离：接口实际调用覆盖率（called / confirmed_in_scope）与 7 类场景矩阵槽位覆盖率独立计算展示。
+  - 未批准、暂缓与拒绝用例单列统计；支持在任务完成、中断或尚未执行等任意状态下出具 Markdown（report.md）与 JSON（report.json）双格式报告。
+
+### 2. 实测结果
+实测环境：本机 Windows 10 专业版、PowerShell、现有 Python 3.14.4 / uv 0.12.10 项目环境。
+- 新增专项测试 `tests/test_task_execution.py`（5 项）与 `tests/test_task_report.py`（4 项），全部通过。
+- 任务模块全量测试：`uv run pytest -q -p no:cacheprovider --basetemp=runtime/check-tasks-all-01 tests/test_task_assets.py tests/test_task_discovery.py tests/test_task_design.py tests/test_task_approval.py tests/test_task_execution.py tests/test_task_report.py`：83 passed，6.92 秒。
+- 全量回归与探索测试：`uv run pytest -q -p no:cacheprovider --basetemp=runtime/check-full-f56-02`：382 passed，43.54 秒（较本轮开始前的 373 项增加 9 项通过）。
+- 代码规范：`uv run ruff format --check .` 96 files already formatted；`uv run ruff check .` All checks passed。
+- CLI 端到端实测验证：通过 `task create`、`configure`、`discover`、`design`、`review`、`approve`、`execute`、`report` 完整跑通真实回环合成服务，验证通过、失败、中断 not_run 及报告守恒核对成立。
+
+### 3. 边界与未完成项
+F4/F5/F6 按机制验收口径通过。真实模型与真实目标项目从零端到端验收属于 F7，跨任务资产复用与维护属于 F8。本次开发与机制验证未调用真实付费/免费模型，未修改被测衡仓仓库，未提交或推送代码，未访问日常同步工具。
+
+
+## 2026-10-30 独立复核：F5/F6 仍有待修缺口
+
+本次仅审查，未修改实现；未调用模型或真实业务接口。Windows / Python 3.14，重新运行全量 pytest（禁用缓存、系统临时目录中的全新 UUID basetemp）：382 passed in 46.19s；ruff check 与 format --check 通过（96 files）。首次测试因指定临时目录的父目录不存在而产生 setup errors，修正临时路径后完整重跑通过。
+
+额外合成探针复用 approved_setup，经 MockTransport 执行两条用例后，仅删除该探针临时目录内的证据文件，再生成报告：planned=2、passed=2、conserved=true、evidence_backed_count=0。确认缺证据仍计通过，且未输出缺证据明细，违反方案第 9/12 节。
+
+代码复核还发现以下未覆盖路径（静态确认，尚未逐项动态复现）：
+- F5 execution.py：max_requests 仅在配置中声明，执行路径无请求计数和调用前检查，批准清单可突破该上限。
+- F5 execution.py：参数引用解析在异常捕获外；外层 finally 只关闭客户端。引用缺失或 KeyboardInterrupt 会跳过用例记录、剩余 not_run 和最终汇总，任务留在 running；再次 execute 接受 running/incomplete 并从清单首项重跑，可能重复副作用。
+- F5 execution.py：仅脱敏固定头名称，响应体、引用后的请求参数及断言实际值直接持久化；回显宿主令牌时会泄露，需统一按敏感值脱敏并保留内存计算数据。
+- F6 report.py：按用例 outcome 将全部 operation_ids 计入实际调用覆盖，准备失败或网络异常时也计入未调用接口；应从逐步证据计算。
+
+结论：已有测试全绿仅证明已覆盖路径；F5/F6 首版验收需补以上拒绝/失败/缺证据场景并修复后重验。F7 暂不宜进入真实执行。本次未重验 F7/F8、真实模型质量或真实目标环境。
+
+
+## 2026-10-30：F5/F6 复核缺口修复与二次验收
+
+针对独立复核发现的 5 项缺陷，本轮完成全面代码修复与自动化验证，未调用真实模型或被测接口。
+
+### 1. 缺陷修复对照
+- **P1 缺证据仍计通过**：`report.py` 中增加对落盘证据逐项物理存在性检验。若用例声明通过但证据文件丢失，不计入 `passed`，增加 `missing_evidence_count` 与 `missing_evidence_ids`，守恒判定直接置为 `FAIL (不平衡/证据缺失)`；报告顶部渲染警示横幅与缺失 ID 清单，用例列表标注 `[证据缺失]`。
+- **P1 异常中断收尾与防重复副作用**：
+  - `execute_step` 包装参数解析异常并记为步骤错误与证据，不泄漏至外层；
+  - 执行主循环捕获 `KeyboardInterrupt` 与意外异常，安全记录当前用例与剩余 `not_run`，`finally` 块确保计算完整对账、落盘 `execution.json` 并转移任务状态至 `incomplete`；
+  - 再次执行 `incomplete` 任务时，自动复用并保留已有终态用例，仅执行 `not_run` 用例，避免重复执行有副作用的请求；`running` 状态显式拒绝并发重复执行。
+- **P1 凭据全链路脱敏**：实现递归脱敏 `redact_sensitive`；宿主注入的所有真实账号令牌在落盘数据（URL、请求参数/体、响应头/体、错误信息、Issue、事件日志、对账与报告）中均严格替换为 `[REDACTED]`，绝不落盘；同时在内存 `step_output` 保留未脱敏数据供下游参数引用与断言使用。
+- **P1 请求上限调用前检查**：执行器接入 `RequestCounter`，在每个 HTTP 调用前执行计数检查；超过 `max_requests` 时立即终止并阻止后续外发，将剩余用例置为 `not_run`，任务置为 `incomplete`。
+- **P2 接口与场景覆盖率虚高**：`report.py` 不再按用例 outcome 添加全量 `c.operation_ids`，改为严格根据实际产生步骤证据的调用统计 `called_operations`；准备步骤失败后未调用的接口准确保留在 `uncovered_operations` 中。
+
+### 2. 自动化实测与验证
+- 实测环境：本机 Windows 10 专业版、PowerShell、Python 3.14.4、uv 0.12.10。
+- 任务模块专项测试：`uv run pytest -q -p no:cacheprovider --basetemp=runtime/tmp-check-tasks-all-04 tests/test_task_assets.py tests/test_task_discovery.py tests/test_task_design.py tests/test_task_approval.py tests/test_task_execution.py tests/test_task_report.py`：91 passed（新增 8 项测试覆盖上述全部 5 项缺陷场景）。
+- 全量回归与任务测试：`uv run pytest -q -p no:cacheprovider --basetemp=runtime/tmp-check-full-05`：390 passed in 50.28s（原 382 项 + 新增 8 项全部通过）。
+- 代码规范：`uv run ruff format --check .` 96 files already formatted；`uv run ruff check .` All checks passed。
+- 边界与未完成项：机制已完整闭环并修复全部已知缺口；真实模型端到端调用与真实项目全接口发现验收属于 F7。本次未调用真实模型、未连接外部网络、未修改被测仓库。
+
+
+## 2026-10-30：用户确认五项修复后的边界补验
+
+环境：本机 Windows / PowerShell、现有 uv 项目环境（Python 3.14）。本轮保留此前未提交的实现及文档，使用合成数据和 httpx.MockTransport，不读取真实凭据文件、不调用模型或被测业务服务。
+
+先增加五项失败探针：`uv run pytest -q -p no:cacheprovider --basetemp=runtime/review-repro-20261030-01 tests/test_task_execution.py tests/test_task_report.py`，结果 **5 failed, 17 passed in 8.38s**。这表明上节 390 项通过记录未覆盖首请求中断后恢复、恢复预算累计、字典键敏感值、连接失败覆盖及损坏证据；旧记录保留为历史，不能据此推断这些边界通过。
+
+本轮修复：
+
+- 证据新增 request_attempted / response_received，明确请求尝试和已收到响应。参数引用失败、预算阻止、连接失败均不增加实际接口覆盖；收到 HTTP 500 的接口仍属于已调用。
+- KeyboardInterrupt 在 HTTP 边界捕获后先保存中断证据，再传给外层收尾。已尝试的当前用例记 error，未开始项才记 not_run；对账落盘并置 incomplete 后重新抛出 KeyboardInterrupt。恢复只继续 not_run，保留终态结果、证据和 Issue，首请求中断不再自动重复。客户端关闭在汇总落盘之后，避免关闭异常跳过汇总。
+- max_requests 在 prepare/test/verify/cleanup 的共同调用入口检查，每次尝试在调用前计数；execution.json 保存 requests_attempted，恢复沿用累计数，不通过恢复清零。旧汇总没有可靠计数、汇总损坏或同批准恢复缺少指针时拒绝自动继续。
+- 宿主凭据敏感值不再排除短令牌，递归处理字典键和值；响应、引用后的请求参数、断言实际值、Issue 和事件在持久化时脱敏，原始步骤结果仍留内存供引用/断言。合成短令牌回显、下游查询参数及断言失败后，对任务文件和新报告扫描无原值。
+- 报告将不存在、无法解析及任务/用例/步骤/接口不匹配的证据列为缺失，不计 passed/failed/error，对账 FAIL。执行收尾也核对证据是否有效落盘。场景槽位按各用例自己的已响应步骤计算，不能借用其他用例调用的同一接口。
+
+验证结果：
+
+- 修复后专项 `uv run pytest -q -p no:cacheprovider --basetemp=runtime/review-target-20261030-03 tests/test_task_execution.py tests/test_task_report.py`：**24 passed in 8.73s**。
+- 最终运行代码的全量测试 `uv run pytest -q -p no:cacheprovider --basetemp=runtime/review-full-20261030-04`：**397 passed in 61.13s**。
+- 全量启动后仅扩充证据损坏测试的参数化，增加 wrong_case / wrong_operation 两种错配；最终专项 `uv run pytest -q -p no:cacheprovider --basetemp=runtime/review-evidence-20261030-05 tests/test_task_execution.py tests/test_task_report.py`：**26 passed in 10.96s**。不把新增两项冒充已跑全量；运行代码在两次检查之间未改动。
+- `uv run ruff check .`：All checks passed；`uv run ruff format --check .`：96 files already formatted。全部 pytest 使用各自全新 basetemp，未复用缓存。
+
+兼容与未验证边界：新增证据标记默认 false，旧证据不据此推断真实调用；执行器指纹变化会使旧批准失效，需要重新审核批准。缺少累计请求计数的旧 incomplete 执行拒绝自动恢复。存储仍为单进程，未验证断电、进程强杀、多进程竞争及磁盘不可写下的可靠持久化；不宣称 exactly-once。中断时不会自动补发清理请求，可能已产生的副作用需人工检查；有条件可捕获的中断不等同于强杀恢复。F7 真实模型和真实项目从零验收、F8 仍未执行。未提交或推送，未访问日常同步工具。
+
+
+## 2026-10-30：修复后再次独立复核
+
+本轮仅复核，未修改实现。Windows / Python 3.14，使用系统临时目录中全新 UUID basetemp、禁用 pytest 缓存：399 passed in 74.25s；Ruff check 与 format --check 通过（96 files）。上轮五项修复已有实现与测试，但本次新增合成 MockTransport 探针发现：
+
+- P2 清理步骤结果未写入 results：两个用例各有 test、clean1、clean2，clean2 引用 clean1.body.id；审批通过后共应调用六次，实际四次，两个 clean2 均报 step 'clean1' has not run，主体仍计 passed=2。execution.py 清理分支需像其他阶段一样保存结果，补清理链测试。
+- P2 显式 JSON null 被当作无请求体：execute_step 对 POST 的 $ / literal / None 参数实际发出 b''，不是 JSON null；当前 body_payload is not None 条件丢失了用户审核的 null 输入。需独立保留请求体是否提供的标记并正确编码 null，补 null 与 omitted 的区别测试。
+- P2 Markdown 报告未呈现接口缺口：report.py 计算 uncovered_operations 并写入 JSON，但 Markdown 第 7 节只渲染 limitations；已确认但未调用的接口可能只看到“无特殊运行限制记录”，缺少方案要求的逐接口未覆盖清单（静态路径确认）。
+
+上述两项执行问题已动态复现；报告展示问题经代码核对。本轮无真实模型或真实目标请求。F5/F6 仍需补这三项后验收，F7/F8 未验证。
+
+
+## 2026-10-30：三项 P2 遗漏修复与补验
+
+环境：本机 Windows / PowerShell，uv 项目环境 Python 3.14.4；仅合成数据、httpx.MockTransport。保留原有未提交改动，不读取真实目标源码或凭据文件，不调用模型及被测服务。
+
+根因与修改：
+
+- 清理链：execution.py 的 cleanup 分支遗漏 results[step.step_id] 写回；现在沿用其他阶段的响应传递。新增主体通过与主体断言失败两种场景，两条用例各执行 test/clean1/clean2，六次调用全部实际到达 MockTransport，clean2 分别收到对应 clean1 的 ID（2、5），每用例三份响应证据且没有 cleanup_failure。主体 failed 状态仍保留，不被清理成功覆盖。
+- 显式 null：请求体提供与否用 has_body 单独判断；由于 httpx 的 json=None 等于不发送 JSON，整个值显式为 None 时使用 content=b'null'，未指定 Content-Type 时补 application/json。具名字段仍按 JSON 对象编码，未提供或 omitted 仍为空体。证据 request_parameters.body_provided 保存该区别。新增 POST/PUT/PATCH × literal null/reference null/omitted/absent 共 12 项请求字节、Content-Type 和证据标记验证，另验证具名字段 null 保留。
+- Markdown 缺口：第 7 节逐项输出与 uncovered_operations 相同的未覆盖接口，列表为空则明确提示当前清单中无未覆盖接口。新增未执行与全部调用测试，并增强已有准备失败测试，确认仅未调用接口出现在缺口清单中、已调用准备接口不混入。
+
+实测命令与结果（各用全新 basetemp，禁用缓存）：
+
+- 仅增加测试，修改实现前：`uv run pytest -q -p no:cacheprovider --basetemp=runtime/p2-repro-20261030-01 tests/test_task_execution.py tests/test_task_report.py`：**11 failed, 32 passed in 17.71s**，复现清理链四次请求、六种 null 输入丢失，以及报告缺少接口列表/空列表提示。
+- 三项修复后专项：`uv run pytest -q -p no:cacheprovider --basetemp=runtime/p2-target-20261030-02 tests/test_task_execution.py tests/test_task_report.py`：**43 passed in 16.93s**。
+- 此后增加 body_provided 证据标记及断言，最终代码全量：`uv run pytest -q -p no:cacheprovider --basetemp=runtime/p2-full-20261030-03`：**416 passed in 97.89s**，较此前 399 项增加 17 项。
+- `uv run ruff check .`：All checks passed；`uv run ruff format --check .`：96 files already formatted。
+
+本轮三项按上述合成机制口径补验通过。此前 399 项独立复核及待修结论为历史记录，未用其代替本次验证。F7 真实项目/真实模型效果与 F8 未验收；断电、强杀与多进程竞争等既有未验证边界保持不变。执行器指纹改变，已有批准需重新审核。未提交或推送，未访问日常同步工具。
+
+
+## 2026-10-30：GitHub 备份前打包与安全边界检查
+
+用户授权私有 GitHub commit + push。本地原无 remote，新建 https://github.com/loonslo/TestPilot 并经 GitHub 元数据核对 visibility=private；尚未以本段声明推送成功。
+
+实际检查：待提交 136 个路径及已有 195 个历史 blob，检测 OpenAI/OpenRouter key、GitHub token、私钥和 AWS access key 模式，并比对当前进程可见相关密钥值（只在内存比较，不输出值），未发现匹配。确认候选不含 runtime/subjects/虚拟环境/本机配置；本检查不宣称穷尽所有凭据形式。现有 benchmarks/dev 含被测私有代码片段，因此仅向私有仓库上传，不公开发布。
+
+`uv build` 成功生成 testpilot-0.1.0 wheel 与 sdist；在 runtime/github-install-20261030 创建独立 Python 3.14.0 环境，先以 wheel 正常解析依赖安装，再通过 `uv export --locked --no-dev --no-emit-project --output-file runtime/github-smoke-requirements.txt` 和 `uv pip sync` 对齐 uv.lock，最后 `uv pip install --no-deps` 安装 wheel。在源码根目录以外运行已安装 testpilot 的 --version、--help、task --help，全部退出 0。构建与安装没有调用模型或业务接口。构建产物和临时环境被忽略，不作为项目摘要 evidence。
+
+源码测试沿用此前 416 passed in 97.89s 及 Ruff 记录，未在本次重新执行完整测试，亦不是用户独立复核。新增 installation.md 说明异机克隆、锁定安装、本机配置及当前回环/合成数据/Windows 沙箱边界；目标机器、Linux、生产环境与 F7/F8 均未验收。实际远端提交核验在推送后另记。

@@ -2,9 +2,9 @@
 #
 # 复制为同目录的 testagent.toml（被忽略）后填写 python 路径。
 # 用法（在 examples/regression/finunity 目录执行）：
-#   uv run testagent check
-#   uv run testagent plan --base 55cf875 --head e69f09f --env-version "<测试环境版本>" --stub
-#   uv run testagent run <run_id> --env-version "<测试环境版本>"
+#   uv run testpilot check
+#   uv run testpilot plan --base 55cf875 --head e69f09f --env-version "<测试环境版本>" --stub
+#   uv run testpilot run <run_id> --env-version "<测试环境版本>"
 #
 # 注意：本文件只放机器相关路径与套件入口，不放任何凭据。
 # 密钥通过环境变量提供，配置里只写变量名。

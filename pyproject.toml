@@ -1,7 +1,7 @@
 [project]
-name = "api-test-agent"
+name = "testpilot"
 version = "0.1.0"
-description = "A tool-calling agent that explores a REST API in an isolated sandbox and is scored by independent rules."
+description = "TestPilot: REST API exploration and release regression planning with replayable test evidence."
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
@@ -12,12 +12,14 @@ dependencies = [
 ]
 
 [project.scripts]
-api-test-agent = "api_test_agent.cli:main"
-testagent = "api_test_agent.regression.cli:main"
+testpilot = "api_test_agent.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.12.10,<0.13.0"]
 build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "api_test_agent"
 
 [dependency-groups]
 dev = [

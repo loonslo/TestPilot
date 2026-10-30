@@ -96,14 +96,27 @@ def invoke(command: list[str], cwd: Path, extra_env: dict[str, str], timeout: fl
 
 
 def classify(returncode: int | None, output: str, timed_out: bool) -> str:
-    """把 pytest 退出码映射为结果。5=没有收集到用例，属于配置问题，记为 error。"""
+    """把 pytest 退出码映射为结果。5=没有收集到用例，属于配置问题，记为 error。
+    若退出码为 0 但所有用例均为 skipped 或未收集到，不能误判为 passed。
+    """
+    import re
 
     if timed_out or returncode is None:
         return "error"
-    if returncode == 0:
-        return "passed"
+    if returncode == 5:
+        return "error"
     if returncode == 1:
         return "failed"
+    if returncode == 0:
+        passed_matches = re.findall(r"\b(\d+)\s+passed\b", output)
+        passed_count = sum(int(n) for n in passed_matches)
+        skipped_matches = re.findall(r"\b(\d+)\s+skipped\b", output)
+        skipped_count = sum(int(n) for n in skipped_matches)
+        if skipped_count > 0 and passed_count == 0:
+            return "skipped"
+        if passed_count == 0 and ("no tests ran" in output or "collected 0 items" in output):
+            return "error"
+        return "passed"
     return "error"
 
 

@@ -81,7 +81,7 @@ def build_defect(settings: Settings, defect: Defect, *, force: bool = False) -> 
     layout = Layout.from_settings(settings)
     reference = layout.sut_dir
     if not reference.is_dir():
-        raise SandboxError("reference copy missing; run: api-test-agent sandbox export")
+        raise SandboxError("reference copy missing; run: testpilot sandbox export")
     destination = layout.build_dir(defect.id)
     if destination.exists():
         if not force:

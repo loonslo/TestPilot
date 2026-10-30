@@ -1,4 +1,4 @@
-"""Command line entry point: ``python -m api_test_agent`` or ``api-test-agent``."""
+"""The single TestPilot CLI for API exploration and release regression."""
 
 from __future__ import annotations
 
@@ -10,12 +10,14 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from api_test_agent import benchmark, capability, checks, replay, runner, sandbox
+from api_test_agent import __version__, benchmark, capability, checks, replay, runner, sandbox
 from api_test_agent.budget import DailyLedger
 from api_test_agent.envvars import read_env
 from api_test_agent.layout import REFERENCE, Layout, SandboxError
 from api_test_agent.model import ModelClient, ModelError
+from api_test_agent.regression import cli as regression_cli
 from api_test_agent.settings import Settings
+from api_test_agent.tasks import cli as task_cli
 
 
 def _model_client(settings: Settings) -> ModelClient:
@@ -195,11 +197,16 @@ def _cmd_agent_witnesses(settings: Settings, _args: argparse.Namespace) -> int:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="api-test-agent")
+    parser = argparse.ArgumentParser(
+        prog="testpilot", description="TestPilot · API 探索测试与发布回归"
+    )
+    parser.add_argument("--version", action="version", version=f"TestPilot {__version__}")
     parser.add_argument(
-        "--config", type=Path, default=Path("config.local.toml"), help="local TOML configuration"
+        "--config", type=Path, help="配置文件；探索默认 config.local.toml，回归默认 testagent.toml"
     )
     commands = parser.add_subparsers(dest="command", required=True)
+    regression_cli.register_commands(commands)
+    task_cli.register_commands(commands)
     commands.add_parser(
         "doctor", help="check local prerequisites without calling any model"
     ).set_defaults(handler=_cmd_doctor)
@@ -262,13 +269,19 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    sys.stdout.reconfigure(encoding="utf-8")
-    sys.stderr.reconfigure(encoding="utf-8")
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     args = _build_parser().parse_args(argv)
+    if hasattr(args, "task_handler"):
+        return args.task_handler(args)
+    if hasattr(args, "func"):
+        return regression_cli.execute(args)
+    config_path = args.config or Path("config.local.toml")
     try:
-        settings = Settings.load(args.config)
+        settings = Settings.load(config_path)
     except FileNotFoundError:
-        print(f"config not found: {args.config} (copy config.example.toml)", file=sys.stderr)
+        print(f"config not found: {config_path} (copy config.example.toml)", file=sys.stderr)
         return 2
     except (ValidationError, ValueError, tomllib.TOMLDecodeError) as exc:
         print(f"invalid config {args.config}: {exc}", file=sys.stderr)

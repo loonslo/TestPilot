@@ -276,7 +276,7 @@ class ContextFile(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     path: str
-    source: Literal["repo", "doc"]
+    source: Literal["repo", "doc", "head_snapshot"]
     content: str
     truncated: bool = False
     reason: str = ""
@@ -301,6 +301,7 @@ class CollectionContext(BaseModel):
     cases_overview: list[dict] = Field(default_factory=list)
     omissions: list[str] = Field(default_factory=list, description="本次未分析/被排除的部分")
     warnings: list[str] = Field(default_factory=list)
+    max_prompt_chars: int | None = Field(default=None, gt=0)
     diff_total_chars: int = 0
     diff_included_chars: int = 0
     collected_at: datetime = Field(default_factory=utc_now)

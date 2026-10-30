@@ -1,3 +1,3 @@
-"""api-test-agent: a tool-calling agent that tests a REST API inside an isolated sandbox."""
+"""TestPilot: REST API exploration and release regression with replayable test evidence."""
 
 __version__ = "0.1.0"

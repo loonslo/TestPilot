@@ -37,6 +37,11 @@ def _plan(project, run_id="r1"):
 
 def test_classify_maps_exit_codes():
     assert classify(0, "", False) == "passed"
+    assert classify(0, "1 passed in 0.05s", False) == "passed"
+    assert classify(0, "1 skipped in 0.01s", False) == "skipped"
+    assert classify(0, "2 skipped, 0 passed in 0.01s", False) == "skipped"
+    assert classify(0, "1 passed, 1 skipped in 0.05s", False) == "passed"
+    assert classify(0, "collected 0 items / no tests ran", False) == "error"
     assert classify(1, "", False) == "failed"
     assert classify(5, "", False) == "error"  # 没收集到用例不是通过
     assert classify(None, "", True) == "error"

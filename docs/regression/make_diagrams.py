@@ -324,7 +324,7 @@ def two_phase() -> Path:
     label(ax, 2, 57.5, "拒绝条件（守卫）", size=10.4, color=INK, weight="bold")
     guards = [
         ("head 提交移动", "计划里的 head_sha ≠ 当前引用 → 重新 plan"),
-        ("计划被手工修改", "指纹不匹配 → 先执行 testagent reconcile"),
+        ("计划被手工修改", "指纹不匹配 → 先执行 testpilot reconcile"),
         ("用例入口漂移", "编号消失或 entry 改名 → 更新目录后重新 plan"),
         ("环境版本未提供", "拒绝执行；或显式 --allow-unconfirmed-env 并标注"),
         ("非交互终端", "未加 --skip-confirm → 退出码 3，不执行任何用例"),

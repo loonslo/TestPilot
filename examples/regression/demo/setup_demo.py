@@ -3,8 +3,8 @@
 用法（在仓库根目录执行）：
     uv run python examples/regression/demo/setup_demo.py
     cd examples/regression/demo
-    uv run testagent plan --base base --head head --stub --env-version demo
-    uv run testagent run <run_id> --skip-confirm
+    uv run testpilot plan --base base --head head --stub --env-version demo
+    uv run testpilot run <run_id> --skip-confirm
 
 脚本只会创建 examples/regression/demo/_repo 与 assets；重复执行会重建演示仓库（仅限该目录）。
 """
@@ -106,8 +106,8 @@ def main() -> int:
     git("tag", "head")
     print(f"演示仓库已生成: {REPO}")
     print("下一步（在本目录执行）：")
-    print("  uv run testagent plan --base base --head head --stub --env-version demo")
-    print("  uv run testagent run <run_id> --skip-confirm")
+    print("  uv run testpilot plan --base base --head head --stub --env-version demo")
+    print("  uv run testpilot run <run_id> --skip-confirm")
     return 0
 
 

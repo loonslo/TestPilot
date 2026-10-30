@@ -1,11 +1,12 @@
 ---
 project_id: api-test-agent
-updated: 2026-10-25
-status: waiting
-overview: "测试 Agent，两个模块：探索模块用工具调用探索 REST API，由独立规则判对错；回归模块按两次发布之间的差异给出回归建议，并执行已登记的接口用例。被测对象是衡仓后端 FinUnityServer，源码克隆在被忽略的 subjects/ 里，探索基准固定在提交 55cf875。探索模块还没有在真实模型上运行过。"
-progress: "2026-10-25 R0：testagent 并入为回归模块 api_test_agent.regression，293 项测试与 Ruff 两项通过；doctor 9 项、sandbox verify 64/0/0/0 与 sandbox check 13 项通过；witnesses 的 5×6 矩阵符合预期，scripted_run 的 dev-02 完成并提交 1 个 detects 用例、dev-09 完成且无用例；testagent check 与两组 plan --stub 通过，FinUnity 冒烟和购物车演示各执行 3/3 全通过；没有调用任何模型。check 显示 DEEPSEEK_API_KEY 未设置，用户当日明确接受差异并批准继续离线合并。历史记录：2026-10-15 探索模块 A0–A2 与 A3 离线部分通过项目侧验收；testagent 2026-10-22 的自测与真实链路试点为历史记录搬迁，未复测，详见 docs/acceptance.md。"
-next: "探索模块：等用户设置 API_TEST_AGENT_MODEL_API_KEY 并说明每周小时数，之后跑 model status、model ping 和十个开发任务（A3）。回归模块：R1 需要用户提供 5–10 个历史版本对的人工参考结论，并逐次批准真实 DeepSeek 调用（每次 ≤ ¥1，R 系列合计 ≤ ¥30）；真实调用前须在运行进程中配置 DEEPSEEK_API_KEY；R2 等单仓 server/ 有了导入后的真实提交再做。"
+updated: 2026-10-30
+status: active
+overview: "TestPilot（测试领航员），唯一入口 uv run testpilot；目标由用户逐任务选择。F1–F6 统一资产、接口发现、用例生成与审核材料、冻结批准、执行引擎与报告守恒对账已完成修复与二次机制验收，F7 真实验收与 F8 统一维护待开始。"
+progress: "2026-10-30 已完成三项 P2 修复，源码 416 项测试及 Ruff 通过（非用户独立复核）；用户授权 GitHub 私有备份，私有仓库已创建、候选/历史扫描及打包/独立安装冒烟通过，实际推送待核验。"
+next: "完成私有 GitHub commit/push 并核对远端提交；再于实际使用环境准备 F7，F8 待验收。"
 evidence:
+  - docs/task-assets.md
   - README.md
   - TASKS.md
   - docs/startup-record.md
@@ -14,9 +15,13 @@ evidence:
   - benchmarks/dev/README.md
   - docs/regression/README.md
   - docs/regression/architecture.md
+  - docs/architecture.md
+  - docs/architecture.png
+  - docs/workflow.png
+  - docs/implementation-plan-20261029.md
 ---
 
-# api-test-agent · 项目概览与进度
+# TestPilot · 测试领航员 · 项目概览与进度
 
 本页是本项目的概览与进度摘要。更新进度时先核对证据文件及实际验收；任务细节以 TASKS.md 和 docs/acceptance.md 为准。只根据有证据的变化修改状态与日期；未验证事项保留“待核实”，不把文件存在或 Git 改动当作完成。
 
@@ -25,3 +30,37 @@ evidence:
 2026-10-25 完成 R0：原 testagent 作为回归模块并入，程序、提示词、测试、示例与说明分别位于 `src/api_test_agent/regression/`、`tests/regression/`、`examples/regression/` 与 `docs/regression/`。两个模块共用被忽略的 `subjects/FinUnityServer` 克隆，各自保持配置、运行时与用例边界；探索模块的原有代码、测试与工具未改动。本次 293 项测试与两个模块的离线链路通过，未调用模型；密钥可见性差异已获用户明确接受，详细对照与历史记录搬迁见 docs/acceptance.md。
 
 项目跟进状态为 waiting：等待探索模块的真实模型条件、回归 R1 的人工参考结论与逐次模型调用批准，以及 R2 的单仓历史条件；不表示真实模型质量评测或后续工作已验收。此次仅做本地基线与合并提交，不推送。PROJECT_STATUS 已在本项目手工核对 frontmatter、状态、日期和 evidence 路径，未调用日常同步工具或写入 vault。
+
+2026-10-25 命名调整 N0（历史步骤）：正式名称改为 TestPilot（测试领航员），当时采用保留旧命令的策略，构建、293 项测试、Ruff 和离线检查通过；随后该策略已被 U0 的单入口要求取代。
+
+2026-10-25 U0：唯一入口 `uv run testpilot` 同时接入回归与探索；原有未提交的命名改动继续保留。298 项测试、Ruff、构建、单入口检查和本机离线检查通过，未调用模型或执行真实被测用例。最新图解见 docs/architecture.md，标明用例自动桥接、自动版本环境准备及金额预算守卫仍未实现。状态保持 waiting，后续真实模型、R1/R2 与资产完善仍待满足原条件。已手工核对 frontmatter、日期、状态与 11 个 evidence 文件，未使用日常同步工具。
+
+2026-10-29：进入新需求的方案审阅阶段，跟进状态更新为 active。实施方案补齐从零发现接口、参数设计理由、统一用例修订、人工审核后执行、真实证据和完整/部分报告的任务包。本次只编制方案及同步项目文档；F1–F8 尚未开始，未修改运行代码或对新目标执行测试。同日本会话此前的 298 项测试与 Ruff 结果已写入 acceptance.md，属于旧功能基线，不是新方案验收。原段落中的 waiting 和旧检查均按历史保留；本次未核验密钥状态、未调用模型、未访问日常库或推送。交付前仅在本项目核对摘要格式、证据路径和文档一致性。
+
+2026-10-30：用户要求启动实施，F1 首批机制验证通过，整包仍为进行中；当前边界及检查结果见 docs/acceptance.md 和 docs/task-assets.md。前文方案待审与 waiting 表述为历史记录，不代表当前状态。本次未调用日常同步工具，摘要在项目内自检。
+
+2026-10-30 本轮续做：F1 基础验收完成，321 项完整测试通过；目标改为用户逐任务选择，可先建空草稿，不以当前未指定真实项目阻断通用开发。F2–F8 与真实效果未验收，旧记录按历史保留。详细实测及限制在 acceptance.md；未使用日常同步工具。
+
+2026-10-30 F2 首批进展：327 项完整测试与 Ruff 通过，细节见 docs/acceptance.md。F2 仍在进行中，整个剩余功能目标未达成；未调用模型或实际项目接口。摘要在项目内自检，未访问日常同步工具。
+
+2026-10-30 F2/F3 续做：F2 首版静态机制验证通过，F3 进入小批生成请求与审核材料阶段，详细真实命令/结果和未验收边界见 docs/acceptance.md。完整剩余功能目标未完成；仅使用合成资料及假模型，无实际模型或业务请求。未访问日常同步工具，摘要在项目内自检。
+
+2026-10-30 F4/F5/F6 闭环机制验收：完成 F4 人工审核冻结、F5 统一执行引擎（`structured-http-v1`，包含 127.0.0.1 限制、凭据脱敏、分阶段执行、中断对账及 pytest 纯跳过识别）和 F6 报告生成与守恒覆盖统计。全量 382 项测试与 Ruff 格式/检查全通，CLI 跑通端到端合成闭环。未调用真实模型或执行被测源码，未推送或访问日常同步工具。
+
+2026-10-30 独立复核结果见 TASKS.md 和 docs/acceptance.md；未修改运行代码。摘要在本项目自检，未使用日常同步工具。
+
+2026-10-30 F5/F6 复核缺口修复与二次验收：完成对独立复核发现的 5 项缺陷（缺证据通过判定、max_requests 前置拦截、异常中断对账与防重复副作用恢复、递归敏感凭据脱敏、步骤证据接口覆盖统计）的修复；全量 390 项测试与 Ruff 检查/格式全通。未调用真实模型或执行被测源码，未推送或访问日常同步工具。
+
+
+2026-10-30 用户确认五项修复后的补验：新增失败探针确认此前修复仍有边界遗漏，修复并通过全量 397 项与最终专项 26 项；最终两项证据错配参数化仅纳入专项，运行代码一致，未称 399 项全量通过。真实验证命令、环境、结果及旧批准/旧计数兼容边界见 TASKS.md 和 docs/acceptance.md。本次摘要维护日期为 2026-10-30；未使用日常同步工具，未重验 F7/F8、强杀与断电恢复。
+
+本轮交付前已在本项目自检 PROJECT_STATUS：字段无重复、必填字符串/日期/状态合规，13 条 evidence 均为项目内现存非运行目录文件；未通过项为零，未调用日常同步工具。
+
+2026-10-30 再次独立复核结果见 TASKS.md 与 docs/acceptance.md；本次未修改实现，未访问日常同步工具。
+
+
+2026-10-30 三项 P2 遗漏修复：先以新增测试复现，再补清理结果引用、显式 JSON null 编码和 Markdown 接口缺口列表。最终代码全量 416 项通过；专项及复现细节、环境和未验证边界见 TASKS.md 与 docs/acceptance.md。本次摘要维护日期仍为 2026-10-30，先前待修结论按历史保留，F7/F8 未验收；未访问日常库或同步工具。
+
+本轮摘要在本项目自检通过：frontmatter 字段无重复、必填字段/日期/状态合规，13 条 evidence 路径合规；未通过项为零，未使用日常同步工具。
+
+2026-10-30 用户授权私有 GitHub 源码备份；推送前检查、打包及异机安装说明详见 TASKS.md 与 docs/acceptance.md。未复测全量源码测试或生产环境，未访问日常同步工具。

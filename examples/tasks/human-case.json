@@ -1,0 +1,66 @@
+{
+  "case_id": "human-list-items",
+  "revision": 1,
+  "title": "Synthetic example",
+  "origin": "human",
+  "target_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "operation_ids": [
+    "list"
+  ],
+  "purpose": "Check response",
+  "scenario": "normal",
+  "rules": [
+    {
+      "rule_id": "r1",
+      "statement": "Return list",
+      "basis": "requirement",
+      "sources": [
+        {
+          "source_id": "s1",
+          "version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "path": "docs/spec.md",
+          "locator": "section 1",
+          "content_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "summary": "Synthetic specification"
+        }
+      ],
+      "confirmed_on": null
+    }
+  ],
+  "preconditions": [],
+  "execution_kind": "http",
+  "steps": [
+    {
+      "step_id": "request",
+      "phase": "test",
+      "operation_id": "list",
+      "account": "synthetic",
+      "parameters": [
+        {
+          "name": "limit",
+          "location": "query",
+          "mode": "literal",
+          "value": 1,
+          "role": "background",
+          "reason": "Valid baseline",
+          "source_ids": [
+            "s1"
+          ]
+        }
+      ],
+      "depends_on": [],
+      "side_effect": false
+    }
+  ],
+  "assertions": [
+    {
+      "expression": "status == 200",
+      "expected": 200,
+      "rule_ids": [
+        "r1"
+      ]
+    }
+  ],
+  "change_summary": "Initial design",
+  "supersedes": null
+}

@@ -1,5 +1,7 @@
 # 项目协作入口
 
+项目正式名称为 **TestPilot（测试领航员）**，安装包名称为 `testpilot`，唯一命令入口为 `uv run testpilot`：根命令 plan/run/show 等处理回归，agent/sandbox/benchmark/model 等处理探索。已移除旧的 api-test-agent/testagent 命令入口。工作区目录及项目编号仍为 `api-test-agent`，Python 包名保留 `api_test_agent`。最新整体架构与流程见 docs/architecture.md。
+
 先阅读 README.md、TASKS.md、docs/startup-record.md 和 docs/acceptance.md，再修改项目。有实质进展后，先更新 TASKS.md 与 docs/acceptance.md，再按下面的同步契约更新根目录 PROJECT_STATUS.md；不能用文件存在、格式通过或 Git 改动推断完成。
 
 ## 本项目约束

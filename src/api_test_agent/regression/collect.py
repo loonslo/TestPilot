@@ -390,35 +390,29 @@ def collect(
         ):
             omissions.append(f"{change.path} 未命中模块映射，业务归属待确认")
 
+    committed_paths = _git(repo, "ls-tree", "-r", "--name-only", head.sha).splitlines()
     context_files: list[ContextFile] = []
     remaining_context = budget.max_file_context_files
     for entry in hit_modules:
         if remaining_context <= 0:
             break
         for prefix in entry.paths:
-            directory = (repo / prefix).resolve()
-            try:
-                directory.relative_to(repo.resolve())
-            except ValueError:
-                continue
-            if not directory.is_dir():
-                continue
-            for candidate in sorted(directory.rglob("*")):
+            for rel in sorted(committed_paths):
                 if remaining_context <= 0:
                     break
-                if not candidate.is_file():
+                if not (rel == prefix or rel.startswith(prefix.rstrip("/") + "/")):
                     continue
-                rel = candidate.relative_to(repo.resolve()).as_posix()
                 if rel in {c.path for c in changes} or is_excluded(rel, extra) or not is_text(rel):
                     continue
-                read = _read_repo_file(repo, rel, budget.max_file_context_chars)
-                if read is None:
+                if rel in {f.path for f in context_files}:
                     continue
-                content, truncated = read
+                content = _git(repo, "show", f"{head.sha}:{rel}")
+                truncated = len(content) > budget.max_file_context_chars
+                content = content[: budget.max_file_context_chars]
                 context_files.append(
                     ContextFile(
                         path=rel,
-                        source="repo",
+                        source="head_snapshot",
                         content=content,
                         truncated=truncated,
                         reason=f"模块映射 {entry.module} 的相关文件（本次未改动，供理解调用关系）",
@@ -459,15 +453,9 @@ def collect(
         cases_overview=catalog_overview(project.catalog),
         omissions=omissions,
         warnings=warnings,
+        max_prompt_chars=budget.max_total_prompt_chars,
         diff_total_chars=diff_total,
         diff_included_chars=diff_used,
     )
-    prompt_chars = sum(len(c.patch) for c in changes) + sum(len(c.content) for c in context_files)
-    prompt_chars += sum(len(d.content) for d in docs)
-    if prompt_chars > budget.max_total_prompt_chars:
-        omitted = prompt_chars - budget.max_total_prompt_chars
-        context.omissions.append(
-            f"上下文总量超出总预算：约 {omitted} 字符未发送（max_total_prompt_chars={budget.max_total_prompt_chars}），"
-            "本次分析范围被缩小"
-        )
+    # The final serializer enforces this limit including template and JSON overhead.
     return context

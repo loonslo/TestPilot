@@ -96,6 +96,16 @@ def _context_payload(context: CollectionContext) -> dict[str, Any]:
             for m in context.modules
         ],
         "case_catalog": context.cases_overview,
+        "context_files": [
+            {
+                "path": f.path,
+                "source": f.source,
+                "content": f.content,
+                "truncated": f.truncated,
+                "reason": f.reason,
+            }
+            for f in context.context_files
+        ],
         "business_docs": [
             {
                 "path": d.path,
@@ -128,11 +138,42 @@ def build_analysis_request(context: CollectionContext, prompts_dir: Path) -> str
     template = _load_template(prompts_dir)
     if "{{CONTEXT_JSON}}" not in template:
         raise AnalysisError(f"{prompts_dir / 'analyze.md'} 缺少 {{{{CONTEXT_JSON}}}} 占位符")
-    text = template.replace(
-        "{{CONTEXT_JSON}}",
-        json.dumps(_context_payload(context), ensure_ascii=False, indent=1),
-    )
-    return text + "\n\n" + _diff_section(context)
+
+    def render() -> str:
+        text = template.replace(
+            "{{CONTEXT_JSON}}",
+            json.dumps(_context_payload(context), ensure_ascii=False, indent=1),
+        )
+        return text + "\n\n" + _diff_section(context)
+
+    prompt = render()
+    if context.max_prompt_chars is None:
+        return prompt
+    candidates = [
+        (context.context_files, i, "content") for i in reversed(range(len(context.context_files)))
+    ]
+    candidates += [(context.docs, i, "content") for i in reversed(range(len(context.docs)))]
+    candidates += [(context.changes, i, "patch") for i in reversed(range(len(context.changes)))]
+    for group, index, field in candidates:
+        if len(prompt) <= context.max_prompt_chars:
+            break
+        item = group[index]
+        path = item.path
+        if not getattr(item, field):
+            continue
+        updates = {field: ""}
+        if hasattr(item, "truncated"):
+            updates["truncated"] = True
+        if field == "patch":
+            updates["excluded"] = True
+            updates["exclusion_reason"] = "Final serialized prompt budget"
+        group[index] = item.model_copy(update=updates)
+        context.omissions.append(f"{path}: content omitted by final serialized prompt budget")
+        context.diff_included_chars = sum(len(c.patch) for c in context.changes)
+        prompt = render()
+    if len(prompt) > context.max_prompt_chars:
+        raise AnalysisError("Input budget cannot hold template and provenance metadata")
+    return prompt
 
 
 SYSTEM_PROMPT = (

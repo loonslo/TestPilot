@@ -159,7 +159,7 @@ def ensure_venv(settings: Settings) -> Path:
     """Create the target's own virtualenv from its lock file; nothing of ours goes into it."""
     layout = Layout.from_settings(settings)
     if not layout.sut_dir.is_dir():
-        raise SandboxError("target copy missing; run: api-test-agent sandbox export")
+        raise SandboxError("target copy missing; run: testpilot sandbox export")
     if layout.venv_python.is_file():
         return layout.venv_python
     command = [
@@ -296,12 +296,10 @@ class TargetServer:
         if self._proc is not None:
             raise SandboxError("server already started")
         if not self._layout.venv_python.is_file():
-            raise SandboxError("target virtualenv missing; run: api-test-agent sandbox venv")
+            raise SandboxError("target virtualenv missing; run: testpilot sandbox venv")
         source_dir = self._layout.source_dir(self._build)
         if not source_dir.is_dir():
-            raise SandboxError(
-                f"build {self._build!r} not found; run: api-test-agent benchmark build"
-            )
+            raise SandboxError(f"build {self._build!r} not found; run: testpilot benchmark build")
         port = self._settings.target.port
         if not _port_is_free(port):
             raise SandboxError(f"port {port} is already in use (orphaned sandbox server?)")
@@ -556,7 +554,7 @@ def start_scenario(
     secrets = load_or_create_secrets(layout)
     seed_db = layout.seed_dir(seed_id) / "finunity.db"
     if not seed_db.is_file():
-        raise SandboxError(f"seed {seed_id!r} not found; run: api-test-agent sandbox seed")
+        raise SandboxError(f"seed {seed_id!r} not found; run: testpilot sandbox seed")
     directory = layout.scenario_dir(scenario_id)
     if directory.exists():
         raise SandboxError(f"scenario {scenario_id!r} already exists")

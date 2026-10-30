@@ -160,3 +160,30 @@ def test_analyzer_fails_after_repair(worlds):
     analyzer._client = lambda: _FakeClient(["not json", "still not json"])
     with pytest.raises(AnalysisError):
         analyzer.analyze(context, project.prompts_dir)
+
+
+def test_context_files_reach_actual_request_and_budget_is_real(worlds):
+    from api_test_agent.regression.models import ContextFile
+
+    _, _, project, _, _ = worlds
+    context = collect(project, "HEAD~1", "HEAD")
+    context.context_files.append(
+        ContextFile(
+            path="src/context.py",
+            source="head_snapshot",
+            content="UNIQUE_CONTEXT_MARKER" + "x" * 20000,
+            reason="Synthetic dependency",
+        )
+    )
+    context.max_prompt_chars = 100000
+    prompt = build_analysis_request(context, project.prompts_dir)
+    assert "UNIQUE_CONTEXT_MARKER" in prompt
+    context.max_prompt_chars = len(prompt) - 15000
+    bounded = build_analysis_request(context, project.prompts_dir)
+    assert len(bounded) <= context.max_prompt_chars
+    assert "UNIQUE_CONTEXT_MARKER" not in bounded
+    assert "src/context.py" in bounded
+    assert any("src/context.py" in note for note in context.omissions)
+    context.max_prompt_chars = 1
+    with pytest.raises(AnalysisError, match="budget"):
+        build_analysis_request(context, project.prompts_dir)

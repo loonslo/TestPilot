@@ -12,7 +12,7 @@ uv run --with matplotlib python docs/regression/make_diagrams.py
 
 ## 模块与数据流（Mermaid 源码）
 
-程序位于 `src/api_test_agent/regression/`，提示词位于其中的 `prompts/`；测试在 `tests/regression/`，示例资产在 `examples/regression/`。两个模块共用被忽略的 `subjects/FinUnityServer` 源码克隆，探索模块固定在 55cf875，回归模块按 base/head 采集。命令入口保留 `uv run testagent`；本次合并验收只用 `plan --stub`，不调用模型。
+程序位于 `src/api_test_agent/regression/`，提示词位于其中的 `prompts/`；测试在 `tests/regression/`，示例资产在 `examples/regression/`。两个模块共用被忽略的 `subjects/FinUnityServer` 源码克隆，探索模块固定在 55cf875，回归模块按 base/head 采集。命令入口保留 `uv run testpilot`；本次合并验收只用 `plan --stub`，不调用模型。
 
 ```mermaid
 flowchart TD

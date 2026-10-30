@@ -1,6 +1,6 @@
-# 回归模块（testagent）— 发布版本变更分析与回归建议（MVP V0.1）
+# TestPilot 回归模块（testagent）— 发布版本变更分析与回归建议（MVP V0.1）
 
-来源方案：日常库 `output/20261022-测试Agent最小可行落地方案.md`（本机资料）。2026-10-25 并入 api-test-agent，作为 `api_test_agent.regression` 子包：
+来源方案：日常库 `output/20261022-测试Agent最小可行落地方案.md`（本机资料）。2026-10-25 并入的项目正式命名为 TestPilot（测试领航员），现有目录保留 `api-test-agent/`，回归模块为 `api_test_agent.regression` 子包：
 给定上次发布提交与本次候选提交，解释改了什么、建议回归什么、指出哪里缺用例，并运行**已登记**的接口用例，产出可核对证据的报告。
 
 首版为单进程 Python 程序，按固定顺序调用模块，不做自由规划循环，不引入数据库、队列或工作流引擎。
@@ -52,8 +52,8 @@ api-test-agent/
 # 在 api-test-agent 项目根目录执行
 uv run python examples/regression/demo/setup_demo.py  # 生成演示 Git 仓库
 cd examples/regression/demo
-uv run testagent plan --base base --head head --stub --env-version demo --run-id demo
-uv run testagent run demo --env-version demo --skip-confirm
+uv run testpilot plan --base base --head head --stub --env-version demo --run-id demo
+uv run testpilot run demo --env-version demo --skip-confirm
 ```
 
 产物在 `examples/regression/demo/artifacts/demo/`：`context.json`、`prompt.txt`、`analysis.json`、`plan.json`、`run.json`、`report.md`、`log.txt`。
@@ -64,13 +64,13 @@ uv run testagent run demo --env-version demo --skip-confirm
 # 先按根 README 恢复 subjects/FinUnityServer 并建立其 Python 3.12 环境
 # 复制 testagent.example.toml 为 testagent.toml，填写套件 Python 的绝对路径
 cd examples/regression/finunity
-uv run testagent check
-uv run testagent plan --base 8d1836f --head 2f4b565 --env-version "<测试环境版本>" --stub
+uv run testpilot check
+uv run testpilot plan --base 8d1836f --head 2f4b565 --env-version "<测试环境版本>" --stub
 # 打开 artifacts/<run_id>/plan.json 核对、增删用例
-uv run testagent reconcile <run_id>        # 只有改过计划才需要
-uv run testagent run <run_id> --env-version "<测试环境版本>"
-uv run testagent show <run_id>
-uv run testagent runs
+uv run testpilot reconcile <run_id>        # 只有改过计划才需要
+uv run testpilot run <run_id> --env-version "<测试环境版本>"
+uv run testpilot show <run_id>
+uv run testpilot runs
 ```
 
 `--stub` 是离线桩，只按模块映射给候选范围；也可用 `--no-ai`（只用冒烟集 + 模块映射）。**去掉 `--stub` 会通过环境变量 `DEEPSEEK_API_KEY` 调用付费模型，每次真实调用前都须用户批准**（每次 ≤ ¥1，R 系列合计 ≤ ¥30；目前没有按金额的调用前检查）。配置里只写变量名。
