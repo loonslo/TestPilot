@@ -3,8 +3,8 @@ project_id: api-test-agent
 updated: 2026-10-30
 status: active
 overview: "TestPilot（测试领航员），唯一入口 uv run testpilot；目标由用户逐任务选择。F1–F6 统一资产、接口发现、用例生成与审核材料、冻结批准、执行引擎与报告守恒对账已完成修复与二次机制验收，F7 真实验收与 F8 统一维护待开始。"
-progress: "2026-10-30 已完成三项 P2 修复，源码 416 项测试及 Ruff 通过（非用户独立复核）；用户授权 GitHub 私有备份，私有仓库已创建、候选/历史扫描及打包/独立安装冒烟通过，实际推送待核验。"
-next: "完成私有 GitHub commit/push 并核对远端提交；再于实际使用环境准备 F7，F8 待验收。"
+progress: "2026-10-30 F5/F6 三项 P2 修复后源码 416 项测试及 Ruff 通过（非用户独立复核）；用户授权的 GitHub 私有备份已推送并核对源码提交 51bc481，打包及锁定依赖的独立安装 CLI 冒烟通过。F7/F8 未验收。"
+next: "在实际使用环境按安装说明拉取版本，再确定 F7 的项目、提交、读取范围、执行环境与模型条件；F8 待验收。"
 evidence:
   - docs/task-assets.md
   - README.md
@@ -64,3 +64,5 @@ evidence:
 本轮摘要在本项目自检通过：frontmatter 字段无重复、必填字段/日期/状态合规，13 条 evidence 路径合规；未通过项为零，未使用日常同步工具。
 
 2026-10-30 用户授权私有 GitHub 源码备份；推送前检查、打包及异机安装说明详见 TASKS.md 与 docs/acceptance.md。未复测全量源码测试或生产环境，未访问日常同步工具。
+
+2026-10-30 GitHub 私有备份完成：源码提交 51bc481 已在远端 master 核验，URL 和完整提交号记录在 TASKS.md 与 docs/acceptance.md。后续文档提交仅同步上传事实，不表示已验证生产环境。已自检摘要字段及证据路径，未访问日常同步工具。

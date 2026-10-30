@@ -106,3 +106,6 @@ F1 基础验收已完成，下一步开发 F2 通用适配，不等待用户现�
 ## 2026-10-30：GitHub 私有备份与异机安装准备
 
 用户明确授权 commit + push，先准备源码备份再推进 F7。已新建私有仓库 loonslo/TestPilot；候选 136 个文件及 195 个历史 blob 的凭据模式和可见环境密钥值扫描无发现（不是凭据不存在的完整证明），本机配置/运行目录/目标源码不纳入候选。uv build 成功，独立 Python 3.14 wheel 安装按 uv.lock 导出依赖锁定，根目录外三个 CLI 入口检查通过；新增 docs/installation.md。当前记录为推送前准备，实际推送结果待远端提交核验后补记。416 项源码测试结果沿用本轮已执行记录，未冒充用户独立复核；本次未重复全量测试或执行真实目标。
+
+
+2026-10-30 备份结果：源码提交 `51bc48101d5fb43e6f5765b1d2949f005b84cb0e` 已推送至私有 https://github.com/loonslo/TestPilot 的 master；git ls-remote 返回同一提交，GitHub 元数据核对默认分支 master、visibility=PRIVATE。最终 137 个暂存路径扫描通过，runtime/subjects/本机配置未入库。Ruff 最终检查通过，97 files already formatted；git diff --cached --check 通过（新 SVG 仅去除行末空白）。安装文档为 docs/installation.md。本次上传不改变 F7/F8 未验收的状态，416 项仍为本轮代理执行的测试记录，不是用户独立复核结论。

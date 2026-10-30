@@ -548,3 +548,10 @@ F4/F5/F6 按机制验收口径通过。真实模型与真实目标项目从零�
 `uv build` 成功生成 testpilot-0.1.0 wheel 与 sdist；在 runtime/github-install-20261030 创建独立 Python 3.14.0 环境，先以 wheel 正常解析依赖安装，再通过 `uv export --locked --no-dev --no-emit-project --output-file runtime/github-smoke-requirements.txt` 和 `uv pip sync` 对齐 uv.lock，最后 `uv pip install --no-deps` 安装 wheel。在源码根目录以外运行已安装 testpilot 的 --version、--help、task --help，全部退出 0。构建与安装没有调用模型或业务接口。构建产物和临时环境被忽略，不作为项目摘要 evidence。
 
 源码测试沿用此前 416 passed in 97.89s 及 Ruff 记录，未在本次重新执行完整测试，亦不是用户独立复核。新增 installation.md 说明异机克隆、锁定安装、本机配置及当前回环/合成数据/Windows 沙箱边界；目标机器、Linux、生产环境与 F7/F8 均未验收。实际远端提交核验在推送后另记。
+
+
+### GitHub 远端核验结果（2026-10-30）
+
+源码提交 `51bc48101d5fb43e6f5765b1d2949f005b84cb0e`（feat: add reviewed task workflows and evidence-backed execution）已通过 `git push -u origin master` 上传。随后 `git rev-parse HEAD` 与 `git ls-remote origin refs/heads/master` 均为该完整哈希；`gh repo view loonslo/TestPilot --json nameWithOwner,visibility,url,defaultBranchRef` 返回私有仓库、默认 master。仓库链接：https://github.com/loonslo/TestPilot 。当前保留原两次本地提交历史，没有强制推送或改写历史。
+
+补充安装文档后最终暂存扫描 137 个路径未匹配凭据模式/进程可见相关密钥值，目标源码、runtime、本机配置均未纳入。新增 SVG 的行末空白规范化后 `git diff --cached --check` 通过；Ruff check 通过，format --check 为 97 files already formatted。本次仅打包、独立安装 CLI 冒烟和 Git 远端核验，不重新声称全量 416 项已在新机器或生产环境复测。上述源码提交之后仅追加上传验收记录与摘要，另以文档提交同步远端。
