@@ -1,10 +1,10 @@
 ---
-project_id: api-test-agent
-updated: 2026-10-30
+project_id: TestPilot
+updated: 2026-11-02
 status: active
-overview: "TestPilot（测试领航员），唯一入口 uv run testpilot；目标由用户逐任务选择。F1–F6 统一资产、接口发现、用例生成与审核材料、冻结批准、执行引擎与报告守恒对账已完成修复与二次机制验收，F7 真实验收与 F8 统一维护待开始。"
-progress: "2026-10-30 F5/F6 三项 P2 修复后源码 416 项测试及 Ruff 通过（非用户独立复核）；用户授权的 GitHub 私有备份已推送并核对源码提交 51bc481，打包及锁定依赖的独立安装 CLI 冒烟通过。F7/F8 未验收。"
-next: "在实际使用环境按安装说明拉取版本，再确定 F7 的项目、提交、读取范围、执行环境与模型条件；F8 待验收。"
+overview: "TestPilot（测试领航员），唯一入口 uv run testpilot；目标由用户逐任务选择。F1–F6 统一资产、接口发现、用例生成与审核材料、冻结批准、执行引擎与报告守恒对账已完成修复与二次机制验收，F7 真实验收推进中（支持通用模型与用户本地实测），F8 待开始。"
+progress: "2026-11-02 为支持用户在另一台电脑直接下载与本地实测（F7），解除了单一模型硬编码限制，支持任意 OpenAI 兼容模型及自定义 API Key 环境变量；补充执行配置模板 execution.example.toml 并更新安装实测文档；全量 417 项测试与 Ruff 检查通过。F7 端到端实测待在测试机完成。"
+next: "在另一台电脑拉取最新代码，配置本地被测项目与模型，按 docs/installation.md 走通从零接口发现到执行报告的完整流程，并实时修改与回传问题；F8 待验收。"
 evidence:
   - docs/task-assets.md
   - README.md
@@ -66,3 +66,7 @@ evidence:
 2026-10-30 用户授权私有 GitHub 源码备份；推送前检查、打包及异机安装说明详见 TASKS.md 与 docs/acceptance.md。未复测全量源码测试或生产环境，未访问日常同步工具。
 
 2026-10-30 GitHub 私有备份完成：源码提交 51bc481 已在远端 master 核验，URL 和完整提交号记录在 TASKS.md 与 docs/acceptance.md。后续文档提交仅同步上传事实，不表示已验证生产环境。已自检摘要字段及证据路径，未访问日常同步工具。
+
+2026-11-02：为支持在另一台电脑直接下载源码并使用自定义模型实测（F7 演练），解除 `design_model.py` 中对免费模型的硬编码拦截，放开 `base_url` 允许 `http://` 接入本地 Ollama/vLLM 等模型，支持通过任意环境变量名注入 API Key，并对本地环回模型端点提供虚拟 key 适配。补充 `examples/tasks/execution.example.toml` 执行配置模板，并在 `docs/installation.md` 增加双机端到端演练指南。全量 417 项测试通过，Ruff 检查与格式化全通。用户授权直接 commit 与 push。
+
+本轮交付前已在本项目自检 PROJECT_STATUS：frontmatter 字段无重复、必填项合规，evidence 路径均为项目内现存非运行目录文件；未通过项为零，未调用日常同步工具。

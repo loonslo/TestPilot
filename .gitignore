@@ -15,6 +15,7 @@ wheels/
 
 # Local-only configuration and generated data (never commit)
 config.local.toml
+*.local.toml
 runtime/
 artifacts/
 

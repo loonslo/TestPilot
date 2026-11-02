@@ -42,7 +42,7 @@ class ModelSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     base_url: str = Field(
-        default="https://openrouter.ai/api/v1", pattern=r"^https://[\w.-]+(:\d+)?(/[\w./-]*)?$"
+        default="https://openrouter.ai/api/v1", pattern=r"^https?://[\w.-]+(:\d+)?(/[\w./-]*)?$"
     )
     model_id: str = Field(pattern=r"^[\w.:/-]+$")
     api_key_env: str = Field(default="API_TEST_AGENT_MODEL_API_KEY", pattern=r"^[A-Z][A-Z0-9_]*$")

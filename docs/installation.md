@@ -27,6 +27,61 @@ GitHub CLI 仅用于私有仓库认证/克隆；已配置 Git 凭据管理器时
 
 先生成小批用例、核对审核材料，再批准执行；更换机器/解释器/执行器可能使旧批准指纹失效，应在实际执行环境重新审核。模型调用仍沿用预算约束；付费 DeepSeek 调用需逐次批准。上述安装与帮助命令不会调用模型或发送业务 HTTP。
 
+## 在另一台电脑实测自定义项目与模型（F7 演练）
+
+### 1. 配置模型与凭据
+从 `examples/tasks/model.example.toml` 复制为 `model.local.toml`（该文件已在 `.gitignore` 或不提交）：
+```powershell
+# 设置环境变量（以 DeepSeek 为例）
+$env:DEEPSEEK_API_KEY = "sk-xxxxxxxx"
+
+# 或设置 OpenRouter
+$env:API_TEST_AGENT_MODEL_API_KEY = "sk-or-v1-xxxx"
+```
+修改 `model.local.toml` 中的 `base_url`、`model_id` 与 `api_key_env`（若使用本地 Ollama，填 `base_url = "http://127.0.0.1:11434/v1"` 且无需真实 key）。
+
+### 2. 配置执行环境
+从 `examples/tasks/execution.example.toml` 复制为 `execution.local.toml`：
+- 填写被测服务在本地监听的环回地址（如 `http://127.0.0.1:8000`）；
+- 填写被测项目的 40 位 Git Commit SHA（测试期间可填具体 commit，需满足 40 位十六进制字符）；
+- 填写允许执行的 `allowed_operations` 列表。
+
+### 3. 运行完整闭环命令
+```powershell
+# 1. 登记任务（指定被测项目文档或源码）
+uv run testpilot task create real-test `
+  --project "TargetProject" `
+  --commit "0000000000000000000000000000000000000000" `
+  --scope "GET /api/*" "POST /api/*" `
+  --document-paths "path/to/openapi.json"
+
+# 2. 离线发现接口
+uv run testpilot task discover real-test --materials-root "path/to/materials"
+
+# 3. 驱动模型生成用例
+uv run testpilot task design real-test --model-config model.local.toml
+
+# 4. 导出审核材料
+uv run testpilot task review real-test
+
+# 5. 人工审核并在 decisions.json 记录批准决定后冻结
+uv run testpilot task approve real-test decisions.json --execution-config execution.local.toml
+
+# 6. 启动被测服务并执行
+uv run testpilot task execute real-test
+
+# 7. 导出报告与对账
+uv run testpilot task report real-test
+```
+
+### 4. 发现问题并修改代码的回传
+在另一台电脑上修改代码后：
+```powershell
+uv run python -m pytest -q -p no:cacheprovider
+git commit -am "fix: ..."
+git push origin master
+```
+
 ## 验证范围
 
 本机源码测试 416 项及 Ruff 已通过，记录见 [acceptance.md](acceptance.md)，不是用户独立复核结论。本次额外构建 wheel/sdist，并将 wheel 安装到独立 Python 3.14 环境，依赖从 uv.lock 导出锁定；在源码根目录以外验证 --version、--help、task --help。新机器仍需按实际环境验收；GitHub 上传不代表 F7/F8 或生产环境验证已完成。

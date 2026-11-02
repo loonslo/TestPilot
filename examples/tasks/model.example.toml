@@ -1,11 +1,38 @@
+# 用例设计模型配置文件模板
+# 复制此文件为本地使用的配置文件（如 model.local.toml），填入该电脑使用的模型参数。
+# 密钥不直接写在文件中，只填写环境变量名称，程序从环境变量中安全读取。
+
 [model]
+# 模型服务地址（OpenAI 兼容接口）
+# 示例 1 - OpenRouter: https://openrouter.ai/api/v1
+# 示例 2 - DeepSeek: https://api.deepseek.com/v1
+# 示例 3 - 本地 Ollama: http://127.0.0.1:11434/v1
 base_url = "https://openrouter.ai/api/v1"
+
+# 模型 ID
+# 示例 1 - OpenRouter: openrouter/free 或 google/gemma-4-31b-it:free
+# 示例 2 - DeepSeek: deepseek-chat
+# 示例 3 - 本地 Ollama: qwen2.5-coder
 model_id = "openrouter/free"
+
+# 存放 API Key 的环境变量名称（本地 Ollama 可任意填写）
 api_key_env = "API_TEST_AGENT_MODEL_API_KEY"
+
+# 模型单次回答最大 Token 数
 max_output_tokens = 8192
 
+# 超时时间（秒）
+timeout_seconds = 90.0
+
 [budget]
+# 单次设计任务允许的最大模型调用次数
 max_model_calls = 1
-max_cost_usd = 0
+
+# 允许的最大金额（美元，0 表示仅限免费调用；付费模型可配置预期金额上限）
+max_cost_usd = 0.0
+
+# 每天最大请求数上限（避免误操作产生高频请求）
 max_requests_per_day = 45
-min_seconds_between_model_calls = 3
+
+# 模型调用之间的最小冷却时间（秒）
+min_seconds_between_model_calls = 3.0

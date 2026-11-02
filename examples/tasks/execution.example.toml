@@ -1,0 +1,41 @@
+# 统一测试执行配置模板（供 task approve 与 task execute 使用）
+# 复制此文件为本地使用的配置文件（如 execution.local.toml）并修改。
+
+# 执行引擎标识（目前支持 structured-http-v1）
+engine = "structured-http-v1"
+
+# 测试环境标识名称
+environment = "local-test"
+
+# 被测系统的 40 位 Git Commit SHA（测试期间填写被测项目 commit，满足 40 位十六进制字符）
+target_commit = "0000000000000000000000000000000000000000"
+
+# 被测服务本地监听地址（必须为 http://127.0.0.1:<端口>，严禁向外网发请求）
+base_url = "http://127.0.0.1:8000"
+
+# 安全守卫开关：仅允许在合成数据测试环境运行（必须为 true）
+synthetic_only = true
+
+# 外部版本未经自动化密码学核验标记（必须为 false）
+version_verified = false
+
+# 单请求超时（秒）与单次任务最大请求数限制
+timeout_seconds = 15.0
+max_requests = 30
+max_response_bytes = 1000000
+
+# 本次允许执行的接口 operation_id 列表（必须在 task discover 发现的清单中）
+allowed_operations = [
+    "get_users",
+    "create_user"
+]
+
+# 账号别名到宿主环境变量名的映射（若被测接口无需认证，留空字典即可）
+# 用例只引用别名（如 user_a），执行器从环境变量注入真实 Bearer Token 或密钥，落盘证据自动深度递归脱敏
+[accounts]
+# admin = "TARGET_ADMIN_TOKEN"
+# user_a = "TARGET_USER_A_TOKEN"
+
+# 接口确认原因（可选；若接口有特定前置要求或高风险副作用）
+[operation_confirmations]
+# create_user = "测试环境允许创建临时测试数据"

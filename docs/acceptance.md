@@ -555,3 +555,20 @@ F4/F5/F6 按机制验收口径通过。真实模型与真实目标项目从零�
 源码提交 `51bc48101d5fb43e6f5765b1d2949f005b84cb0e`（feat: add reviewed task workflows and evidence-backed execution）已通过 `git push -u origin master` 上传。随后 `git rev-parse HEAD` 与 `git ls-remote origin refs/heads/master` 均为该完整哈希；`gh repo view loonslo/TestPilot --json nameWithOwner,visibility,url,defaultBranchRef` 返回私有仓库、默认 master。仓库链接：https://github.com/loonslo/TestPilot 。当前保留原两次本地提交历史，没有强制推送或改写历史。
 
 补充安装文档后最终暂存扫描 137 个路径未匹配凭据模式/进程可见相关密钥值，目标源码、runtime、本机配置均未纳入。新增 SVG 的行末空白规范化后 `git diff --cached --check` 通过；Ruff check 通过，format --check 为 97 files already formatted。本次仅打包、独立安装 CLI 冒烟和 Git 远端核验，不重新声称全量 416 项已在新机器或生产环境复测。上述源码提交之后仅追加上传验收记录与摘要，另以文档提交同步远端。
+
+## 2026-11-02：F7 实测准备——通用模型适配与双机测试模板
+
+**目标：** 解除对单一测试模型（`openrouter/free`）和固定环境变量的硬编码限制，支持测试机本地配置任意 OpenAI 兼容模型（DeepSeek、OpenAI、本地 Ollama 等），并补充端到端测试配置模板供异机实测。
+
+**改动：**
+- `src/api_test_agent/settings.py`：放宽 `ModelSettings.base_url` 正则，支持 `http://` 协议（用于本地 Ollama 等测试端点）。
+- `src/api_test_agent/tasks/design_model.py`：移除 `openrouter/free` 与硬编码费用为 0 的强制校验；支持从配置指定的 `api_key_env` 动态读取密钥；本地环回端点缺省时自动使用虚拟本地 key；费用校验适配用户设置的 `max_cost_usd`。
+- `tests/test_task_design.py`：更新测试以覆盖自定义 `api_key_env` 与本地端点免 Key 逻辑。
+- `examples/tasks/model.example.toml`：完善 DeepSeek / Ollama / OpenRouter 示例与参数说明。
+- `examples/tasks/execution.example.toml`：新增统一执行配置模板，并通过 Pydantic 校验。
+- `docs/installation.md`：补充双机实测操作流水线与修改回传指南。
+- `.gitignore`：追加 `*.local.toml`。
+
+**实测结果：**
+- 全量测试：`uv run python -m pytest -q -p no:cacheprovider`：**417 passed in 40.93s**。
+- 代码风格：`uv run python -m ruff check .` 与 `uv run python -m ruff format --check .` 全部通过（97 files already formatted）。

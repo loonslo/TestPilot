@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict
 
@@ -42,17 +43,6 @@ def live_generator(
     config_path: Path, *, sleep: Callable[[float], None] = time.sleep
 ) -> Callable[[str], GeneratedText]:
     config = DesignModelSettings.model_validate(tomllib.loads(config_path.read_text("utf-8")))
-    if (
-        config.model.base_url != "https://openrouter.ai/api/v1"
-        or config.model.model_id != "openrouter/free"
-        or config.budget.max_cost_usd != 0
-    ):
-        raise ValueError(
-            "Task generation allows only the approved free router; "
-            "paid calls require an amount guard"
-        )
-    if config.model.api_key_env != "API_TEST_AGENT_MODEL_API_KEY":
-        raise ValueError("task generation only reads API_TEST_AGENT_MODEL_API_KEY")
     ledger_path = Path.cwd() / "runtime" / "model-usage.json"
 
     def generate(request: str) -> GeneratedText:
@@ -70,9 +60,16 @@ def live_generator(
                 date.fromisoformat(ledger["date"])
             except ValueError:
                 raise ValueError("model daily ledger date needs reconciliation") from None
-        key = read_env("API_TEST_AGENT_MODEL_API_KEY")
+        key = read_env(config.model.api_key_env)
         if not key:
-            raise ValueError("API_TEST_AGENT_MODEL_API_KEY is not set")
+            parsed = urlsplit(config.model.base_url)
+            if parsed.hostname in {"127.0.0.1", "localhost"}:
+                key = "local-endpoint-dummy-key"
+            else:
+                raise ValueError(
+                    f"{config.model.api_key_env} is not set; "
+                    "set it as a process or user environment variable"
+                )
         budget = Budget(
             Limits.for_task(config.budget, {"max_model_calls": 1}),
             DailyLedger(ledger_path),
@@ -108,8 +105,21 @@ def live_generator(
             "latency_seconds": reply.latency_seconds,
         }
         cost = reply.usage.cost_usd
-        if cost is not None and (not math.isfinite(cost) or cost != 0):
-            raise GenerationRefused("provider reported cost; drafts not imported", metadata)
+        if cost is not None:
+            if not math.isfinite(cost) or cost < 0:
+                raise GenerationRefused(
+                    "provider reported invalid cost; drafts not imported", metadata
+                )
+            if config.budget.max_cost_usd == 0.0 and cost > 0:
+                raise GenerationRefused(
+                    "provider reported cost but budget specifies free model only; "
+                    "drafts not imported",
+                    metadata,
+                )
+            if config.budget.max_cost_usd > 0.0 and cost > config.budget.max_cost_usd:
+                raise GenerationRefused(
+                    "provider reported cost exceeded budget; drafts not imported", metadata
+                )
         if budget.elapsed > budget.limits.max_seconds or budget.tokens > budget.limits.max_tokens:
             raise GenerationRefused(
                 "model response exceeded configured budget; drafts not imported", metadata

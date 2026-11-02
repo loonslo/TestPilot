@@ -282,14 +282,52 @@ def test_live_adapter_budget_and_model_metadata_with_fake_provider(tmp_path, mon
     assert "synthetic-key-for-fake-client" not in ledger
 
 
-def test_live_adapter_refuses_paid_config_without_reading_key(tmp_path, monkeypatch):
+def test_live_adapter_reads_configured_api_key_env(tmp_path, monkeypatch):
     from api_test_agent.tasks import design_model
 
     config = tmp_path / "model.toml"
-    config.write_text('[model]\nmodel_id="paid-model"\n', encoding="utf-8")
-    monkeypatch.setattr(design_model, "read_env", lambda name: pytest.fail("must not read key"))
-    with pytest.raises(ValueError, match="free router"):
-        design_model.live_generator(config)
+    config.write_text(
+        '[model]\nmodel_id="deepseek-chat"\nbase_url="https://api.deepseek.com/v1"\napi_key_env="CUSTOM_KEY"\n',
+        encoding="utf-8",
+    )
+    generator = design_model.live_generator(config, sleep=lambda seconds: None)
+    with pytest.raises(ValueError, match="CUSTOM_KEY is not set"):
+        generator("test request")
+
+
+def test_live_adapter_allows_local_endpoint_without_key(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from api_test_agent.tasks import design_model
+
+    monkeypatch.chdir(tmp_path)
+    config = tmp_path / "model.toml"
+    config.write_text(
+        '[model]\nmodel_id="qwen2.5-coder"\nbase_url="http://127.0.0.1:11434/v1"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(design_model, "read_env", lambda name: None)
+
+    class FakeClient:
+        model_id = "qwen2.5-coder"
+
+        def __init__(self, settings, key):
+            assert key == "local-endpoint-dummy-key"
+
+        def chat(self, messages, tools, **kwargs):
+            return SimpleNamespace(
+                content='{"cases":[]}',
+                tool_calls=(),
+                served_by="local-ollama",
+                usage=SimpleNamespace(total_tokens=10, cost_usd=None),
+                latency_seconds=0.01,
+                finish_reason="stop",
+            )
+
+    monkeypatch.setattr(design_model, "ModelClient", FakeClient)
+    generator = design_model.live_generator(config, sleep=lambda seconds: None)
+    reply = generator("test request")
+    assert reply.metadata["model"] == "local-ollama"
 
 
 def test_small_batch_keeps_full_inventory_gaps(prepared):
