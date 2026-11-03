@@ -12,6 +12,7 @@ import shlex
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -51,6 +52,23 @@ def pytest_command(
 
     executable = shlex.split(python)[0] if python else sys.executable
     return [executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", *(extra_args or []), *entry]
+
+
+RunnerCommandBuilder = Callable[[str | None, list[str], Path, list[str] | None], list[str]]
+
+RUNNER_REGISTRY: dict[str, RunnerCommandBuilder] = {
+    "pytest": pytest_command,
+}
+
+
+def register_runner(name: str, builder: RunnerCommandBuilder) -> None:
+    RUNNER_REGISTRY[name] = builder
+
+
+def get_runner(name: str) -> RunnerCommandBuilder:
+    if name not in RUNNER_REGISTRY:
+        raise ValueError(f"unknown test runner: {name}")
+    return RUNNER_REGISTRY[name]
 
 
 def invoke(command: list[str], cwd: Path, extra_env: dict[str, str], timeout: float) -> Invocation:
@@ -147,6 +165,7 @@ def run_plan(
     extra_args: list[str] | None = None,
     extra_env: dict[str, str] | None = None,
     dry_run: bool = False,
+    runner: str | RunnerCommandBuilder = "pytest",
     invoke_fn=invoke,
     on_case=None,
 ) -> RunRecord:
@@ -166,8 +185,9 @@ def run_plan(
         record.state = "planned"
         record.errors.append("dry-run：只解析命令，未实际执行用例")
     env = dict(extra_env or {})
+    command_builder = runner if callable(runner) else get_runner(runner)
     for entry in plan.entries:
-        command = pytest_command(python, entry.entry, repo, extra_args)
+        command = command_builder(python, entry.entry, repo, extra_args)
         if dry_run:
             record.results.append(
                 CaseRunResult(

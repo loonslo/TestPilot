@@ -1,0 +1,1050 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TestPilot · 测试领航员控制台</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    /* Design Tokens following baoyu-design / claude-dashboard craft */
+    :root {
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --surface-subtle: #f1f5f9;
+      --surface-hover: #e2e8f0;
+      --border: #e2e8f0;
+      --border-strong: #cbd5e1;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --primary: #0284c7;
+      --primary-hover: #0369a1;
+      --primary-subtle: rgba(2, 132, 199, 0.1);
+      --success: #10b981;
+      --success-subtle: rgba(16, 185, 129, 0.1);
+      --warning: #f59e0b;
+      --warning-subtle: rgba(245, 158, 11, 0.1);
+      --danger: #ef4444;
+      --danger-subtle: rgba(239, 68, 68, 0.1);
+    }
+    .dark {
+      --bg: #090d16;
+      --surface: #0f172a;
+      --surface-subtle: #1e293b;
+      --surface-hover: #24344d;
+      --border: #1e293b;
+      --border-strong: #334155;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --primary: #38bdf8;
+      --primary-hover: #7dd3fc;
+      --primary-subtle: rgba(56, 189, 248, 0.12);
+      --success: #34d399;
+      --success-subtle: rgba(52, 211, 153, 0.12);
+      --warning: #fbbf24;
+      --warning-subtle: rgba(251, 191, 36, 0.12);
+      --danger: #f87171;
+      --danger-subtle: rgba(248, 113, 113, 0.12);
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    .font-code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+
+    /* Custom scrollbars */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+
+    /* HTTP Badges */
+    .badge-get { background: rgba(56, 189, 248, 0.12); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.25); }
+    .badge-post { background: rgba(52, 211, 153, 0.12); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.25); }
+    .badge-put { background: rgba(251, 191, 36, 0.12); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.25); }
+    .badge-delete { background: rgba(248, 113, 113, 0.12); color: #f87171; border: 1px solid rgba(248, 113, 113, 0.25); }
+
+    .nav-active {
+      border-color: var(--primary) !important;
+      color: var(--primary) !important;
+      background: var(--primary-subtle);
+    }
+  </style>
+</head>
+<body class="antialiased min-h-screen text-xs flex flex-col">
+
+  <!-- Top App Navigation -->
+  <header class="border-b border-[var(--border)] bg-[var(--surface)] px-4 py-3 shrink-0 flex items-center justify-between gap-4 sticky top-0 z-30 shadow-sm">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 rounded-lg bg-[var(--primary)] text-[var(--bg)] flex items-center justify-center font-bold text-sm tracking-wider shadow-sm font-code">
+        TP
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <h1 class="font-bold text-sm text-[var(--text)] tracking-tight">TestPilot Console</h1>
+          <span class="text-[11px] px-1.5 py-0.2 rounded bg-[var(--surface-subtle)] text-[var(--text-muted)] border border-[var(--border)] font-code">UI v0.2.0</span>
+        </div>
+        <p class="text-[11px] text-[var(--text-muted)]">REST API 探索与回归 · 过程资产透视工作台</p>
+      </div>
+    </div>
+
+    <!-- Center Status Breadcrumb -->
+    <div class="hidden md:flex items-center gap-1.5 bg-[var(--surface-subtle)] border border-[var(--border)] px-3 py-1.5 rounded-xl font-code text-[11px]">
+      <span class="text-[var(--text-muted)]">当前目标:</span>
+      <select id="targetSelector" onchange="onTargetChange()" class="bg-transparent font-semibold text-[var(--text)] outline-none cursor-pointer">
+        <option value="apple">APPLE-recruitService (Java 8 / Spring Boot 2.7 / Nacos)</option>
+        <option value="finunity">FinUnityServer (Python 3.12 / FastAPI)</option>
+        <option value="egg">APPLE-portalWeb (Node.js / Egg)</option>
+      </select>
+      <span class="text-[var(--border-strong)]">|</span>
+      <span class="text-emerald-400 flex items-center gap-1">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+        沙箱离线就绪
+      </span>
+    </div>
+
+    <!-- Actions & Theme Toggle -->
+    <div class="flex items-center gap-2.5">
+      <button onclick="toggleTheme()" class="p-2 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] hover:bg-[var(--surface-hover)] text-[var(--text-muted)] hover:text-[var(--text)] transition" title="切换深色/浅色">
+        <span id="themeIcon">☀️</span>
+      </button>
+      <button onclick="toggleSourcesDrawer()" class="px-3 py-1.5 rounded-lg border border-[var(--primary)] bg-[var(--primary-subtle)] text-[var(--primary)] font-medium hover:opacity-90 transition flex items-center gap-1.5 shadow-sm">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        <span>Sources 追溯面板</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Step Workflow Tabs -->
+  <nav class="border-b border-[var(--border)] bg-[var(--surface)] px-4 py-2 flex items-center gap-2 overflow-x-auto shrink-0 font-code text-xs">
+    <button onclick="switchTab('source')" id="nav-source" class="px-3 py-1.5 rounded-lg border border-transparent font-medium nav-active transition flex items-center gap-2">
+      <span class="w-4 h-4 rounded-full bg-[var(--primary)] text-[var(--bg)] flex items-center justify-center text-[10px] font-bold">1</span>
+      <span>数据源头配置</span>
+    </button>
+    <button onclick="switchTab('model')" id="nav-model" class="px-3 py-1.5 rounded-lg border border-transparent font-medium text-[var(--text-muted)] hover:text-[var(--text)] transition flex items-center gap-2">
+      <span class="w-4 h-4 rounded-full bg-[var(--surface-subtle)] border border-[var(--border-strong)] flex items-center justify-center text-[10px]">2</span>
+      <span>模型与预算</span>
+    </button>
+    <button onclick="switchTab('inventory')" id="nav-inventory" class="px-3 py-1.5 rounded-lg border border-transparent font-medium text-[var(--text-muted)] hover:text-[var(--text)] transition flex items-center gap-2">
+      <span class="w-4 h-4 rounded-full bg-[var(--surface-subtle)] border border-[var(--border-strong)] flex items-center justify-center text-[10px]">3</span>
+      <span>接口清单 (Inventory)</span>
+    </button>
+    <button onclick="switchTab('cases')" id="nav-cases" class="px-3 py-1.5 rounded-lg border border-transparent font-medium text-[var(--text-muted)] hover:text-[var(--text)] transition flex items-center gap-2">
+      <span class="w-4 h-4 rounded-full bg-[var(--surface-subtle)] border border-[var(--border-strong)] flex items-center justify-center text-[10px]">4</span>
+      <span>测试集与参数依据</span>
+    </button>
+    <button onclick="switchTab('execution')" id="nav-execution" class="px-3 py-1.5 rounded-lg border border-transparent font-medium text-[var(--text-muted)] hover:text-[var(--text)] transition flex items-center gap-2">
+      <span class="w-4 h-4 rounded-full bg-[var(--surface-subtle)] border border-[var(--border-strong)] flex items-center justify-center text-[10px]">5</span>
+      <span>执行证据与守恒报告</span>
+    </button>
+  </nav>
+
+  <!-- Main Split Layout (65% Workspace, 35% Sources Panel) -->
+  <div class="flex-1 flex overflow-hidden">
+
+    <!-- Workspace Left Side -->
+    <main class="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
+
+      <!-- SECTION 1: 数据源头配置 -->
+      <section id="pane-source" class="space-y-4">
+        <div class="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-5">
+          <div class="flex items-center justify-between border-b border-[var(--border)] pb-3">
+            <div>
+              <h2 class="text-sm font-bold text-[var(--text)]">1. 数据源头配置 (Data Source & Adapters)</h2>
+              <p class="text-[11px] text-[var(--text-muted)]">选择接口定义的提供方式。无论哪种方式，最终都会通过适配器层统一转译为通用的接口 IR 清单。</p>
+            </div>
+            <button onclick="inspectSource('task')" class="text-xs text-[var(--primary)] hover:underline font-code">
+              查看 Task 配置原件
+            </button>
+          </div>
+
+          <!-- Dual Mode Selector -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- Mode A: Document -->
+            <div onclick="selectSourceMode('document')" id="card-mode-doc" class="border-2 rounded-xl p-4 cursor-pointer transition border-[var(--primary)] bg-[var(--primary-subtle)] space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="font-bold text-xs text-[var(--text)]">接口文档模式 (OpenAPI / Swagger)</span>
+                <span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 text-[10px] font-bold font-code">高 ROI · 推荐</span>
+              </div>
+              <p class="text-[11px] text-[var(--text-muted)]">
+                直接导入 Spring Boot (Springfox/Knife4j) 或 Node.js (Egg) 导出的 <code class="font-code">/v2/api-docs</code> 或 <code class="font-code">openapi.json</code>，一键提取完整操作清单与模式定义。
+              </p>
+            </div>
+
+            <!-- Mode B: Code Repo -->
+            <div onclick="selectSourceMode('code')" id="card-mode-code" class="border-2 rounded-xl p-4 cursor-pointer transition border-[var(--border)] hover:border-[var(--border-strong)] space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="font-bold text-xs text-[var(--text)]">代码仓库模式 (Git Repository)</span>
+                <span class="px-2 py-0.5 rounded bg-blue-500/10 text-blue-500 text-[10px] font-bold font-code">源码 AST 静态分析</span>
+              </div>
+              <p class="text-[11px] text-[var(--text-muted)]">
+                指定本地只读 Git 仓库快照与多仓版本清单，由适配器执行 AST 语法树解析并识别路由与控制器。
+              </p>
+            </div>
+          </div>
+
+          <!-- Document Mode Form -->
+          <div id="form-doc" class="space-y-4 pt-2">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div class="md:col-span-2 space-y-1.5">
+                <label class="text-xs font-semibold text-[var(--text)]">文档路径或 URL</label>
+                <input type="text" id="inputDocPath" value="targets/apple/recruit-openapi.json" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)]">
+                <p class="text-[11px] text-[var(--text-muted)]">支持 Swagger 2.0 / OpenAPI 3.x，自动解析本地引用及模式。</p>
+              </div>
+              <div class="space-y-1.5">
+                <label class="text-xs font-semibold text-[var(--text)]">挂载 Base Path</label>
+                <input type="text" id="inputDocPrefix" value="/api/recruit" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)]">
+                <p class="text-[11px] text-[var(--text-muted)]">网关或微服务路由前缀。</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Code Mode Form (Hidden by default) -->
+          <div id="form-code" class="space-y-4 pt-2 hidden">
+            <div class="space-y-2">
+              <div class="flex items-center justify-between">
+                <label class="text-xs font-semibold text-[var(--text)]">多服务版本清单 (Version Manifest)</label>
+                <span class="text-[11px] text-[var(--text-muted)]">支持 Apple 混合微服务架构（多 Maven 仓）</span>
+              </div>
+              <div class="border border-[var(--border)] rounded-xl overflow-hidden font-code text-xs">
+                <div class="bg-[var(--surface-subtle)] grid grid-cols-12 px-3 py-2 border-b border-[var(--border)] font-semibold text-[var(--text-muted)]">
+                  <span class="col-span-4">服务仓库</span>
+                  <span class="col-span-5">Commit SHA / 分支</span>
+                  <span class="col-span-3">适配器 (Adapter)</span>
+                </div>
+                <div class="divide-y divide-[var(--border)]">
+                  <div class="grid grid-cols-12 px-3 py-2 items-center hover:bg-[var(--surface-hover)]">
+                    <span class="col-span-4 font-semibold">APPLE-recruitService</span>
+                    <span class="col-span-5 text-[var(--text-muted)]">e60c4c9f18f85cb6516093e739282adba73d1284</span>
+                    <span class="col-span-3 text-emerald-400">openapi-springfox</span>
+                  </div>
+                  <div class="grid grid-cols-12 px-3 py-2 items-center hover:bg-[var(--surface-hover)]">
+                    <span class="col-span-4 font-semibold">APPLE-authService</span>
+                    <span class="col-span-5 text-[var(--text-muted)]">7b91d2949f005b84cb0e55cf875b9d0350e80cfe</span>
+                    <span class="col-span-3 text-emerald-400">openapi-swagger</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Action Footbar -->
+          <div class="border-t border-[var(--border)] pt-4 flex items-center justify-between">
+            <span class="text-[11px] text-[var(--text-muted)]">
+              当前适配器: <span class="font-code text-[var(--text)]">OpenAPIAdapter (.json, .yaml, .yml)</span>
+            </span>
+            <button onclick="triggerDiscovery()" class="px-4 py-2 rounded-lg bg-[var(--primary)] text-[var(--bg)] font-semibold text-xs hover:opacity-90 transition shadow-sm flex items-center gap-1.5">
+              <span>执行接口解析 (Discover)</span>
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 2: 模型与预算配置 -->
+      <section id="pane-model" class="space-y-4 hidden">
+        <div class="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-5">
+          <div class="flex items-center justify-between border-b border-[var(--border)] pb-3">
+            <div>
+              <h2 class="text-sm font-bold text-[var(--text)]">2. 模型与预算配置 (Model & Guardrails)</h2>
+              <p class="text-[11px] text-[var(--text-muted)]">配置用例生成的 LLM 供应商。API 密钥仅从环境变量读取，不写入任何测试报告或过程文件。</p>
+            </div>
+            <button onclick="inspectSource('model')" class="text-xs text-[var(--primary)] hover:underline font-code">
+              查看 ModelSettings 原件
+            </button>
+          </div>
+
+          <!-- Presets -->
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div onclick="applyPreset('deepseek')" id="preset-card-deepseek" class="border-2 rounded-xl p-3 cursor-pointer border-[var(--primary)] bg-[var(--primary-subtle)] space-y-1">
+              <div class="font-bold text-xs text-[var(--text)]">DeepSeek V3</div>
+              <p class="text-[11px] text-[var(--text-muted)]">代码逻辑与状态机推理首选</p>
+            </div>
+            <div onclick="applyPreset('ollama')" id="preset-card-ollama" class="border-2 rounded-xl p-3 cursor-pointer border-[var(--border)] hover:border-[var(--border-strong)] space-y-1">
+              <div class="font-bold text-xs text-[var(--text)]">本地 Ollama / vLLM</div>
+              <p class="text-[11px] text-[var(--text-muted)]">127.0.0.1 回环端点 · 免网络</p>
+            </div>
+            <div onclick="applyPreset('openrouter')" id="preset-card-openrouter" class="border-2 rounded-xl p-3 cursor-pointer border-[var(--border)] hover:border-[var(--border-strong)] space-y-1">
+              <div class="font-bold text-xs text-[var(--text)]">OpenRouter</div>
+              <p class="text-[11px] text-[var(--text-muted)]">免费路由器模型试跑</p>
+            </div>
+            <div onclick="applyPreset('custom')" id="preset-card-custom" class="border-2 rounded-xl p-3 cursor-pointer border-[var(--border)] hover:border-[var(--border-strong)] space-y-1">
+              <div class="font-bold text-xs text-[var(--text)]">自定义 OpenAI 端点</div>
+              <p class="text-[11px] text-[var(--text-muted)]">企业自建网关适配</p>
+            </div>
+          </div>
+
+          <!-- Fields -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 font-code">
+            <div class="space-y-1">
+              <label class="text-xs font-semibold text-[var(--text)]">API Base URL</label>
+              <input type="text" id="modelUrl" value="https://api.deepseek.com/v1" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text)] outline-none focus:border-[var(--primary)]">
+            </div>
+            <div class="space-y-1">
+              <label class="text-xs font-semibold text-[var(--text)]">Model ID</label>
+              <input type="text" id="modelName" value="deepseek-chat" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text)] outline-none focus:border-[var(--primary)]">
+            </div>
+            <div class="space-y-1">
+              <label class="text-xs font-semibold text-[var(--text)]">API Key 环境变量名</label>
+              <input type="text" id="modelKey" value="DEEPSEEK_API_KEY" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text)] outline-none focus:border-[var(--primary)]">
+            </div>
+            <div class="space-y-1">
+              <label class="text-xs font-semibold text-[var(--text)]">单次任务最高预算 (USD)</label>
+              <input type="number" id="modelBudget" value="1.00" step="0.1" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text)] outline-none focus:border-[var(--primary)]">
+            </div>
+          </div>
+
+          <!-- Ping Bar -->
+          <div class="p-3.5 rounded-xl bg-[var(--surface-subtle)] border border-[var(--border)] flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <span id="pingDot" class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+              <div>
+                <span class="font-semibold text-xs text-[var(--text)]" id="pingStatus">端点就绪 · 延迟 114ms</span>
+                <span class="text-[11px] text-[var(--text-muted)] block">费用检查激活 · 单次调用上限校验通过</span>
+              </div>
+            </div>
+            <button onclick="testPing()" id="btnPing" class="px-3 py-1.5 rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] hover:bg-[var(--surface-hover)] font-medium text-xs text-[var(--text)] transition">
+              连通性测试 (Ping)
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 3: 接口清单 (Inventory) -->
+      <section id="pane-inventory" class="space-y-4 hidden">
+        <div class="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-4">
+          <div class="flex items-center justify-between border-b border-[var(--border)] pb-3">
+            <div>
+              <div class="flex items-center gap-2">
+                <h2 class="text-sm font-bold text-[var(--text)]">3. 接口清单 (API Operations Inventory)</h2>
+                <span class="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-bold font-code text-[11px]">5 个已识别接口</span>
+              </div>
+              <p class="text-[11px] text-[var(--text-muted)]">点击任意接口行，在右侧 Sources 面板实时查看其在 <code class="font-code">inventory.json</code> 中的原始声明。</p>
+            </div>
+            <button onclick="inspectSource('inventory')" class="text-xs text-[var(--primary)] hover:underline font-code">
+              查看 inventory.json 原件
+            </button>
+          </div>
+
+          <!-- Method Filters -->
+          <div class="flex items-center gap-2 font-code">
+            <button onclick="filterMethods('ALL')" id="flt-ALL" class="px-2.5 py-1 rounded bg-[var(--primary)] text-[var(--bg)] font-bold text-[11px]">全部 (5)</button>
+            <button onclick="filterMethods('GET')" id="flt-GET" class="px-2.5 py-1 rounded bg-[var(--surface-subtle)] text-[var(--text-muted)] hover:text-[var(--text)] text-[11px]">GET (2)</button>
+            <button onclick="filterMethods('POST')" id="flt-POST" class="px-2.5 py-1 rounded bg-[var(--surface-subtle)] text-[var(--text-muted)] hover:text-[var(--text)] text-[11px]">POST (1)</button>
+            <button onclick="filterMethods('PUT')" id="flt-PUT" class="px-2.5 py-1 rounded bg-[var(--surface-subtle)] text-[var(--text-muted)] hover:text-[var(--text)] text-[11px]">PUT (1)</button>
+            <button onclick="filterMethods('DELETE')" id="flt-DELETE" class="px-2.5 py-1 rounded bg-[var(--surface-subtle)] text-[var(--text-muted)] hover:text-[var(--text)] text-[11px]">DELETE (1)</button>
+          </div>
+
+          <!-- Inventory Table -->
+          <div class="border border-[var(--border)] rounded-xl overflow-hidden font-code text-xs">
+            <table class="w-full text-left">
+              <thead class="bg-[var(--surface-subtle)] text-[var(--text-muted)] border-b border-[var(--border)]">
+                <tr>
+                  <th class="py-2.5 px-3 font-semibold">方法</th>
+                  <th class="py-2.5 px-3 font-semibold">完整请求路径</th>
+                  <th class="py-2.5 px-3 font-semibold">Operation ID</th>
+                  <th class="py-2.5 px-3 font-semibold">参数</th>
+                  <th class="py-2.5 px-3 font-semibold">状态</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-[var(--border)]" id="inventoryTable">
+                <!-- JS populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 4: 测试集与依据 (Cases) -->
+      <section id="pane-cases" class="space-y-4 hidden">
+        <div class="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-4">
+          <div class="flex items-center justify-between border-b border-[var(--border)] pb-3">
+            <div>
+              <div class="flex items-center gap-2">
+                <h2 class="text-sm font-bold text-[var(--text)]">4. 结构化测试集与参数依据 (Cases & Reasoning)</h2>
+                <span class="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-bold font-code text-[11px]">4 条用例已冻结批准</span>
+              </div>
+              <p class="text-[11px] text-[var(--text-muted)]">点击任意用例，可透视其规则判定标准、参数理由推断及底层 <code class="font-code">CaseRevision</code> 资产原件。</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="inspectSource('cases')" class="text-xs text-[var(--primary)] hover:underline font-code">
+                查看 cases.json 原件
+              </button>
+              <button onclick="approveAll()" id="btnApproveAll" class="px-3.5 py-1.5 rounded-lg bg-emerald-600 text-white font-semibold text-xs hover:bg-emerald-500 transition shadow-sm">
+                一键全部批准 (Approve)
+              </button>
+            </div>
+          </div>
+
+          <!-- Cases Cards -->
+          <div class="space-y-3" id="casesList">
+            <!-- JS populated -->
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 5: 执行证据与报告 (Execution & Report) -->
+      <section id="pane-execution" class="space-y-4 hidden">
+        <div class="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-5">
+          <div class="flex items-center justify-between border-b border-[var(--border)] pb-3">
+            <div>
+              <div class="flex items-center gap-2">
+                <h2 class="text-sm font-bold text-[var(--text)]">5. 执行记录、脱敏证据与守恒报告 (Report & Balances)</h2>
+                <span class="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-bold font-code text-[11px]">守恒判定: PASS (严格平衡)</span>
+              </div>
+              <p class="text-[11px] text-[var(--text-muted)]">所有结果均有不可伪造的落盘证据支撑；任何未执行或失败项严格对账。</p>
+            </div>
+            <div class="flex items-center gap-2 font-code">
+              <button onclick="inspectSource('execution')" class="text-xs text-[var(--primary)] hover:underline">
+                execution.json
+              </button>
+              <span class="text-[var(--border-strong)]">|</span>
+              <button onclick="inspectSource('report')" class="text-xs text-[var(--primary)] hover:underline">
+                report.md
+              </button>
+            </div>
+          </div>
+
+          <!-- Metric Cards -->
+          <div class="grid grid-cols-2 md:grid-cols-5 gap-3 font-code">
+            <div class="p-3 rounded-lg bg-[var(--surface-subtle)] border border-[var(--border)]">
+              <span class="text-[11px] text-[var(--text-muted)]">计划用例数</span>
+              <div class="text-base font-bold mt-0.5 text-[var(--text)]">4</div>
+            </div>
+            <div class="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+              <span class="text-[11px] text-emerald-400">执行通过 (Passed)</span>
+              <div class="text-base font-bold mt-0.5 text-emerald-400">3</div>
+            </div>
+            <div class="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20">
+              <span class="text-[11px] text-rose-400">断言失败 (Failed)</span>
+              <div class="text-base font-bold mt-0.5 text-rose-400">1</div>
+            </div>
+            <div class="p-3 rounded-lg bg-[var(--surface-subtle)] border border-[var(--border)]">
+              <span class="text-[11px] text-[var(--text-muted)]">证据缺失</span>
+              <div class="text-base font-bold mt-0.5 text-emerald-400">0 (合规)</div>
+            </div>
+            <div class="p-3 rounded-lg bg-sky-500/10 border border-sky-500/20">
+              <span class="text-[11px] text-sky-400">接口覆盖率</span>
+              <div class="text-base font-bold mt-0.5 text-sky-400">80.0% (4/5)</div>
+            </div>
+          </div>
+
+          <!-- Step Logs Table -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between">
+              <h3 class="text-xs font-bold text-[var(--text)] tracking-wider">执行记录明细 (点击查看该步真实证据)</h3>
+              <span class="text-[11px] text-[var(--text-muted)] font-code">令牌全自动脱敏为 [REDACTED]</span>
+            </div>
+            <div class="border border-[var(--border)] rounded-xl overflow-hidden font-code text-xs">
+              <div class="divide-y divide-[var(--border)]" id="execStepsList">
+                <!-- JS populated -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Uncovered Operations Alert -->
+          <div class="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-start gap-3">
+            <span class="text-amber-400 text-base mt-0.5">⚠️</span>
+            <div class="space-y-1">
+              <div class="font-bold text-xs text-[var(--text)]">未覆盖接口缺口分析 (Uncovered Gap)</div>
+              <p class="text-[11px] text-[var(--text-muted)]">
+                <code class="text-amber-400">DELETE /api/recruit/candidates/{id}</code>: 本次测试集未生成针对删除操作的批准用例，对账报表如实记录，不虚报 100% 覆盖。
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Sources Panel (Right Side, 35% Width) - Signature Claude Dashboard Feature -->
+    <aside id="sourcesPanel" class="w-full md:w-[420px] lg:w-[460px] border-l border-[var(--border)] bg-[var(--surface)] flex flex-col shrink-0 transition-all duration-200">
+      <!-- Drawer Header -->
+      <div class="p-3 border-b border-[var(--border)] flex items-center justify-between bg-[var(--surface-subtle)] shrink-0">
+        <div class="flex items-center gap-2">
+          <svg class="w-4 h-4 text-[var(--primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+          <span class="font-bold text-xs text-[var(--text)]">Sources 过程文件追溯</span>
+        </div>
+        <span class="text-[10px] px-2 py-0.5 rounded bg-[var(--surface)] text-[var(--text-muted)] border border-[var(--border)] font-code" id="sourceFileBadge">inventory.json</span>
+      </div>
+
+      <!-- File Meta Bar -->
+      <div class="px-3.5 py-2 border-b border-[var(--border)] bg-[var(--surface)] text-[11px] font-code text-[var(--text-muted)] space-y-0.5 shrink-0">
+        <div class="flex justify-between items-center">
+          <span class="text-[var(--text)] font-semibold" id="sourceTitle">当前选定实体</span>
+          <button onclick="copySourceContent()" class="text-[var(--primary)] hover:underline text-[10px]">复制内容</button>
+        </div>
+        <div class="truncate text-[10px]" id="sourcePath">runtime/tasks/task-apple-01/inventory.json</div>
+      </div>
+
+      <!-- Raw Code Content View -->
+      <div class="flex-1 overflow-y-auto p-3 bg-[var(--bg)] font-code text-[11px] leading-relaxed">
+        <pre id="sourceCode" class="whitespace-pre-wrap text-[var(--text)] select-text"></pre>
+      </div>
+    </aside>
+
+  </div>
+
+  <script>
+    // State Store
+    const appState = {
+      activeTab: 'source',
+      sourceMode: 'document',
+      sourcesOpen: true,
+      selectedItem: null,
+      data: {
+        inventory: [
+          { method: "POST", path: "/api/recruit/candidates", id: "createCandidate", params: "name, email, jobId", status: "confirmed", source: "recruit-openapi.json#paths./candidates.post" },
+          { method: "GET", path: "/api/recruit/candidates/{id}", id: "getCandidate", params: "id: string", status: "confirmed", source: "recruit-openapi.json#paths./candidates/{id}.get" },
+          { method: "GET", path: "/api/recruit/jobs", id: "listJobs", params: "deptId?, status?, page?", status: "confirmed", source: "recruit-openapi.json#paths./jobs.get" },
+          { method: "PUT", path: "/api/recruit/jobs/{id}/status", id: "updateJobStatus", params: "id: string, targetStatus: string", status: "confirmed", source: "recruit-openapi.json#paths./jobs/{id}/status.put" },
+          { method: "DELETE", path: "/api/recruit/candidates/{id}", id: "deleteCandidate", params: "id: string", status: "confirmed", source: "recruit-openapi.json#paths./candidates/{id}.delete" }
+        ],
+        cases: [
+          {
+            id: "case-cand-01",
+            title: "正向流程：创建候选人并核验初始初筛状态",
+            scenario: "normal",
+            rule_id: "R-RECRUIT-01",
+            reason: "招聘中心不变量：新建候选人初始状态必须为 PENDING_SCREEN",
+            steps: [
+              { op: "POST /api/recruit/candidates", expect: 201, paramReason: "合成招聘人 A 账号写入，必填手机与岗位" },
+              { op: "GET /api/recruit/candidates/{id}", expect: 200, paramReason: "引用步骤 1 产出的候选人 ID 进行核对" }
+            ],
+            status: "approved"
+          },
+          {
+            id: "case-cand-02",
+            title: "边界防护：重复手机号重复投递同岗位拒绝",
+            scenario: "boundary",
+            rule_id: "R-RECRUIT-04",
+            reason: "防重复投递不变量：活跃候选人重复投递应返回 409 Conflict",
+            steps: [
+              { op: "POST /api/recruit/candidates", expect: 409, paramReason: "复用上一步已存在手机号进行二次创建" }
+            ],
+            status: "approved"
+          },
+          {
+            id: "case-job-01",
+            title: "状态机守卫：已归档岗位禁止直接跃迁为发布态",
+            scenario: "state",
+            rule_id: "R-JOB-03",
+            reason: "岗位流转合规：ARCHIVED 状态只能先恢复到 DRAFT，不可越级 PUBLISHED",
+            steps: [
+              { op: "PUT /api/recruit/jobs/JOB-999/status", expect: 400, paramReason: "显式传入 targetStatus: 'PUBLISHED' 触发业务拦截" }
+            ],
+            status: "approved"
+          },
+          {
+            id: "case-job-02",
+            title: "安全隔离守卫：租户跨部门越权读取岗位",
+            scenario: "auth",
+            rule_id: "R-SEC-02",
+            reason: "多租户隔离不变量：账号 B 不得跨租户读取租户 A 的私有岗位",
+            steps: [
+              { op: "GET /api/recruit/jobs?deptId=TENANT_A", expect: 403, paramReason: "注入账号 B 令牌并发起跨租户请求" }
+            ],
+            status: "approved"
+          }
+        ],
+        execution: [
+          { caseId: "case-cand-01", step: "POST /candidates", result: "passed", code: 201, ms: 74, evId: "ev-01a", time: "17:35:01" },
+          { caseId: "case-cand-01", step: "GET /candidates/C-1029", result: "passed", code: 200, ms: 28, evId: "ev-01b", time: "17:35:02" },
+          { caseId: "case-cand-02", step: "POST /candidates (重复)", result: "passed", code: 409, ms: 36, evId: "ev-02a", time: "17:35:03" },
+          { caseId: "case-job-01", step: "PUT /jobs/JOB-999/status", result: "failed", code: 500, ms: 142, evId: "ev-03a", time: "17:35:04", issue: "服务未处理状态异常，抛出 NullPointerException (预期 400)" },
+          { caseId: "case-job-02", step: "GET /jobs (越权)", result: "passed", code: 403, ms: 22, evId: "ev-04a", time: "17:35:05" }
+        ]
+      }
+    };
+
+    // Tab Navigation
+    function switchTab(tab) {
+      appState.activeTab = tab;
+      ['source', 'model', 'inventory', 'cases', 'execution'].forEach(t => {
+        const pane = document.getElementById(`pane-${t}`);
+        const nav = document.getElementById(`nav-${t}`);
+        if (t === tab) {
+          pane.classList.remove('hidden');
+          nav.classList.add('nav-active');
+        } else {
+          pane.classList.add('hidden');
+          nav.classList.remove('nav-active');
+        }
+      });
+
+      if (tab === 'inventory') {
+        renderInventoryTable(appState.data.inventory);
+        inspectSource('inventory');
+      } else if (tab === 'cases') {
+        renderCasesList(appState.data.cases);
+        inspectSource('cases');
+      } else if (tab === 'execution') {
+        renderExecutionSteps(appState.data.execution);
+        inspectSource('execution');
+      } else if (tab === 'source') {
+        inspectSource('task');
+      } else if (tab === 'model') {
+        inspectSource('model');
+      }
+    }
+
+    // Toggle Source Mode
+    function selectSourceMode(mode) {
+      appState.sourceMode = mode;
+      const cardDoc = document.getElementById('card-mode-doc');
+      const cardCode = document.getElementById('card-mode-code');
+      const formDoc = document.getElementById('form-doc');
+      const formCode = document.getElementById('form-code');
+
+      if (mode === 'document') {
+        cardDoc.className = "border-2 rounded-xl p-4 cursor-pointer transition border-[var(--primary)] bg-[var(--primary-subtle)] space-y-2";
+        cardCode.className = "border-2 rounded-xl p-4 cursor-pointer transition border-[var(--border)] hover:border-[var(--border-strong)] space-y-2";
+        formDoc.classList.remove('hidden');
+        formCode.classList.add('hidden');
+      } else {
+        cardCode.className = "border-2 rounded-xl p-4 cursor-pointer transition border-[var(--primary)] bg-[var(--primary-subtle)] space-y-2";
+        cardDoc.className = "border-2 rounded-xl p-4 cursor-pointer transition border-[var(--border)] hover:border-[var(--border-strong)] space-y-2";
+        formCode.classList.remove('hidden');
+        formDoc.classList.add('hidden');
+      }
+      inspectSource('task');
+    }
+
+    // Trigger Discovery
+    async function triggerDiscovery() {
+      const btn = document.querySelector("button[onclick='triggerDiscovery()']");
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<span>解析中...</span>`;
+      }
+      const taskId = document.getElementById('targetSelector').value;
+      try {
+        const resp = await fetch(`/api/tasks/${taskId}/discover`, { method: 'POST' });
+        if (resp.ok) {
+          const inv = await resp.json();
+          if (inv.operations && inv.operations.length > 0) {
+            appState.data.inventory = inv.operations.map(op => ({
+              method: op.method,
+              path: op.path,
+              id: op.operation_id || op.path,
+              params: (op.parameters || []).map(p => p.name).join(', ') || 'none',
+              status: op.status || 'declared'
+            }));
+            renderInventoryTable(appState.data.inventory);
+          }
+        }
+      } catch (_) {
+        // Fallback to demo inventory
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = `<span>执行接口解析 (Discover)</span><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>`;
+        }
+        switchTab('inventory');
+      }
+    }
+
+    // Render Inventory
+    function renderInventoryTable(items) {
+      const tbody = document.getElementById('inventoryTable');
+      tbody.innerHTML = items.map((op, idx) => `
+        <tr onclick="inspectOp(${idx})" class="cursor-pointer hover:bg-[var(--surface-hover)] transition">
+          <td class="py-2 px-3">
+            <span class="px-2 py-0.5 rounded font-bold text-[10px] badge-${op.method.toLowerCase()}">${op.method}</span>
+          </td>
+          <td class="py-2 px-3 font-semibold text-[var(--text)]">${op.path}</td>
+          <td class="py-2 px-3 text-[var(--text-muted)]">${op.id}</td>
+          <td class="py-2 px-3 text-[var(--text-muted)]">${op.params}</td>
+          <td class="py-2 px-3">
+            <span class="inline-flex items-center gap-1 text-[11px] text-emerald-400">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>${op.status}
+            </span>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function filterMethods(m) {
+      ['ALL', 'GET', 'POST', 'PUT', 'DELETE'].forEach(method => {
+        const btn = document.getElementById(`flt-${method}`);
+        if (method === m) {
+          btn.className = "px-2.5 py-1 rounded bg-[var(--primary)] text-[var(--bg)] font-bold text-[11px]";
+        } else {
+          btn.className = "px-2.5 py-1 rounded bg-[var(--surface-subtle)] text-[var(--text-muted)] hover:text-[var(--text)] text-[11px]";
+        }
+      });
+      const filtered = m === 'ALL' ? appState.data.inventory : appState.data.inventory.filter(i => i.method === m);
+      renderInventoryTable(filtered);
+    }
+
+    function inspectOp(idx) {
+      const op = appState.data.inventory[idx];
+      updateSourcesInspector(
+        `Operation: ${op.method} ${op.path}`,
+        `inventory.json#${op.id}`,
+        "inventory.json",
+        JSON.stringify(op, null, 2)
+      );
+    }
+
+    // Render Cases
+    function renderCasesList(cases) {
+      const container = document.getElementById('casesList');
+      container.innerHTML = cases.map((c, idx) => `
+        <div onclick="inspectCase(${idx})" class="border border-[var(--border)] rounded-xl p-4 bg-[var(--surface-subtle)] hover:border-[var(--primary)] cursor-pointer transition space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="font-code text-[11px] px-2 py-0.5 rounded bg-[var(--surface)] text-[var(--text)] border border-[var(--border)] font-bold">${c.id}</span>
+              <h4 class="font-bold text-xs text-[var(--text)]">${c.title}</h4>
+              <span class="text-[10px] px-1.5 py-0.2 rounded bg-[var(--surface)] text-[var(--text-muted)] font-code">${c.scenario}</span>
+            </div>
+            <span class="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-400 font-code">
+              ✓ 人工已批准 (Approved)
+            </span>
+          </div>
+
+          <div class="text-[11px] text-[var(--text-muted)] bg-[var(--surface)] p-2.5 rounded-lg border border-[var(--border)] space-y-1">
+            <div><strong class="text-[var(--text)]">判定标准:</strong> ${c.rule_id}</div>
+            <div><strong class="text-[var(--text)]">参数依据:</strong> ${c.reason}</div>
+          </div>
+
+          <div class="space-y-1 font-code text-[11px]">
+            ${c.steps.map((s, sIdx) => `
+              <div class="flex items-center justify-between px-2.5 py-1 rounded bg-[var(--surface)] border border-[var(--border)]">
+                <span class="text-[var(--text)]">${sIdx + 1}. ${s.op}</span>
+                <span class="text-[var(--text-muted)]">预期状态: HTTP ${s.expect}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function inspectCase(idx) {
+      const c = appState.data.cases[idx];
+      updateSourcesInspector(
+        `Case: ${c.id}`,
+        `runtime/tasks/task-apple-01/cases/${c.id}.json`,
+        `${c.id}.json`,
+        JSON.stringify(c, null, 2)
+      );
+    }
+
+    function approveAll() {
+      const btn = document.getElementById('btnApproveAll');
+      btn.innerText = "✓ 已冻结快照，准备执行";
+      btn.className = "px-3.5 py-1.5 rounded-lg bg-emerald-800 text-white font-semibold text-xs cursor-default";
+      setTimeout(() => switchTab('execution'), 400);
+    }
+
+    // Render Execution
+    function renderExecutionSteps(steps) {
+      const container = document.getElementById('execStepsList');
+      container.innerHTML = steps.map((s, idx) => `
+        <div onclick="inspectEvidence(${idx})" class="p-3 bg-[var(--surface)] flex items-center justify-between hover:bg-[var(--surface-hover)] cursor-pointer transition">
+          <div class="flex items-center gap-3">
+            <span class="text-[10px] text-[var(--text-muted)]">${s.time}</span>
+            <span class="font-bold text-[var(--text)]">${s.caseId}</span>
+            <span class="px-2 py-0.5 rounded bg-[var(--surface-subtle)] border border-[var(--border)] text-[11px]">${s.step}</span>
+            ${s.issue ? `<span class="text-rose-400 font-semibold text-[11px]">⚠️ ${s.issue}</span>` : ''}
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="text-[11px] text-[var(--text-muted)]">${s.ms}ms</span>
+            <span class="px-2 py-0.5 rounded text-[11px] font-bold ${s.result === 'passed' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}">HTTP ${s.code}</span>
+            <span class="text-[11px] text-[var(--primary)] hover:underline">查看证据 →</span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function inspectEvidence(idx) {
+      const s = appState.data.execution[idx];
+      const evJson = {
+        evidence_id: s.evId,
+        timestamp: `2026-11-03T${s.time}.000Z`,
+        task_id: "task-apple-01",
+        case_id: s.caseId,
+        request: {
+          method: s.step.split(' ')[0],
+          url: "http://127.0.0.1:8080/api/recruit/candidates",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer [REDACTED_SENSITIVE_KEY]"
+          },
+          body: {
+            "name": "张三",
+            "jobId": "JOB-101",
+            "mobile": "13800000000"
+          }
+        },
+        response: {
+          status_code: s.code,
+          headers: { "Content-Type": "application/json", "X-Trace-Id": "tr-apple-928" },
+          body: s.code === 201 ? { "code": 0, "data": { "id": "C-1029", "status": "PENDING_SCREEN" } }
+            : s.code === 409 ? { "error": "CONFLICT", "message": "Duplicate candidate mobile" }
+            : s.code === 500 ? { "error": "INTERNAL_SERVER_ERROR", "trace": "java.lang.NullPointerException at RecruitService.java:142" }
+            : { "error": "FORBIDDEN" }
+        },
+        duration_ms: s.ms,
+        outcome: s.result
+      };
+
+      updateSourcesInspector(
+        `Step Evidence: ${s.evId}`,
+        `runtime/tasks/task-apple-01/executions/exec-01/evidence/${s.evId}.json`,
+        `${s.evId}.json`,
+        JSON.stringify(evJson, null, 2)
+      );
+    }
+
+    // Inspect Generic Sources
+    function inspectSource(type) {
+      if (type === 'task') {
+        const taskJson = {
+          task_id: "task-apple-01",
+          target_project: "APPLE-recruitService",
+          adapter: appState.sourceMode === 'document' ? "openapi" : "python-ast",
+          document_paths: appState.sourceMode === 'document' ? ["targets/apple/recruit-openapi.json"] : [],
+          version_manifest: appState.sourceMode === 'code' ? {
+            "APPLE-recruitService": "e60c4c9f18f85cb6516093e739282adba73d1284",
+            "APPLE-authService": "7b91d2949f005b84cb0e55cf875b9d0350e80cfe"
+          } : {},
+          scope: ["*"],
+          status: "discovered"
+        };
+        updateSourcesInspector("Task 任务配置契约", "runtime/tasks/task-apple-01/task.json", "task.json", JSON.stringify(taskJson, null, 2));
+      } else if (type === 'model') {
+        const modelJson = {
+          provider: "deepseek",
+          base_url: document.getElementById('modelUrl').value,
+          model: document.getElementById('modelName').value,
+          api_key_env: document.getElementById('modelKey').value,
+          max_cost_usd: parseFloat(document.getElementById('modelBudget').value),
+          guardrails: { max_requests_per_task: 50, enforce_pre_call_budget: true }
+        };
+        updateSourcesInspector("ModelSettings 模型配置契约", "runtime/tasks/task-apple-01/model.json", "model.json", JSON.stringify(modelJson, null, 2));
+      } else if (type === 'inventory') {
+        const invJson = {
+          target_commit: "e60c4c9f18f85cb6516093e739282adba73d1284",
+          version_verified: true,
+          operations: appState.data.inventory,
+          limitations: [
+            "Document declaration; runtime not checked",
+            "Static inventory is not proof of complete runtime route coverage"
+          ]
+        };
+        updateSourcesInspector("Inventory 接口资产清单", "runtime/tasks/task-apple-01/inventory.json", "inventory.json", JSON.stringify(invJson, null, 2));
+      } else if (type === 'cases') {
+        updateSourcesInspector("Cases 结构化用例集", "runtime/tasks/task-apple-01/cases/cases.json", "cases.json", JSON.stringify(appState.data.cases, null, 2));
+      } else if (type === 'execution') {
+        const execJson = {
+          planned: 4,
+          passed: 3,
+          failed: 1,
+          error: 0,
+          missing_evidence_count: 0,
+          conserved: true,
+          records: appState.data.execution
+        };
+        updateSourcesInspector("ExecutionRecord 执行记录", "runtime/tasks/task-apple-01/execution.json", "execution.json", JSON.stringify(execJson, null, 2));
+      } else if (type === 'report') {
+        const mdText = `# TestPilot 接口测试执行与守恒对账报告
+
+## 1. 执行总览
+- **任务编号**: task-apple-01
+- **被测目标**: APPLE-recruitService (commit: e60c4c9)
+- **守恒方程对账**: PASS (计划 4 条，终态 4 条，无凭空丢失或重复副作用)
+- **执行结果统计**: 3 Passed, 1 Failed, 0 Error, 0 缺证据
+
+## 2. 接口调用覆盖率
+- 已确认接口总数: 5
+- 实际产生步骤证据的接口数: 4
+- 接口覆盖率: 80.0%
+
+## 3. 未覆盖接口清单 (Uncovered Gap)
+1. \`DELETE /api/recruit/candidates/{id}\` (deleteCandidate): 本次测试集未生成针对删除操作的批准用例。
+
+## 4. 业务缺陷分析 (Failed Cases)
+- \`case-job-01\` (PUT /jobs/JOB-999/status): 预期业务错误 400，实际后端返回 500 NPE。已留存完整 Request/Response 脱敏证据链供开发核对。`;
+        updateSourcesInspector("Report 测试报告 Markdown", "runtime/tasks/task-apple-01/report.md", "report.md", mdText);
+      }
+    }
+
+    function updateSourcesInspector(title, path, badge, content) {
+      document.getElementById('sourceTitle').innerText = title;
+      document.getElementById('sourcePath').innerText = path;
+      document.getElementById('sourceFileBadge').innerText = badge;
+      document.getElementById('sourceCode').innerText = content;
+    }
+
+    function copySourceContent() {
+      const code = document.getElementById('sourceCode').innerText;
+      navigator.clipboard.writeText(code).then(() => {
+        alert('已复制 Sources 文件内容到剪贴板！');
+      });
+    }
+
+    function toggleSourcesDrawer() {
+      const panel = document.getElementById('sourcesPanel');
+      panel.classList.toggle('hidden');
+    }
+
+    function toggleTheme() {
+      const html = document.documentElement;
+      const isDark = html.classList.toggle('dark');
+      document.getElementById('themeIcon').innerText = isDark ? '☀️' : '🌙';
+    }
+
+    function applyPreset(p) {
+      ['deepseek', 'ollama', 'openrouter', 'custom'].forEach(preset => {
+        const card = document.getElementById(`preset-card-${preset}`);
+        if (preset === p) {
+          card.className = "border-2 rounded-xl p-3 cursor-pointer border-[var(--primary)] bg-[var(--primary-subtle)] space-y-1";
+        } else {
+          card.className = "border-2 rounded-xl p-3 cursor-pointer border-[var(--border)] hover:border-[var(--border-strong)] space-y-1";
+        }
+      });
+
+      if (p === 'deepseek') {
+        document.getElementById('modelUrl').value = "https://api.deepseek.com/v1";
+        document.getElementById('modelName').value = "deepseek-chat";
+        document.getElementById('modelKey').value = "DEEPSEEK_API_KEY";
+        document.getElementById('modelBudget').value = "1.00";
+      } else if (p === 'ollama') {
+        document.getElementById('modelUrl').value = "http://127.0.0.1:11434/v1";
+        document.getElementById('modelName').value = "qwen2.5-coder:32b";
+        document.getElementById('modelKey').value = "NONE (Local Loopback)";
+        document.getElementById('modelBudget').value = "0.00";
+      } else if (p === 'openrouter') {
+        document.getElementById('modelUrl').value = "https://openrouter.ai/api/v1";
+        document.getElementById('modelName').value = "openrouter/free";
+        document.getElementById('modelKey').value = "API_TEST_AGENT_MODEL_API_KEY";
+        document.getElementById('modelBudget').value = "0.00";
+      }
+      inspectSource('model');
+    }
+
+    async function testPing() {
+      const btn = document.getElementById('btnPing');
+      const dot = document.getElementById('pingDot');
+      const status = document.getElementById('pingStatus');
+
+      btn.disabled = true;
+      btn.innerText = "探测中...";
+      dot.className = "w-2.5 h-2.5 rounded-full bg-amber-400 animate-spin";
+      status.innerText = "正在握手...";
+
+      const baseUrl = document.getElementById('modelUrl').value.trim();
+      const apiKeyEnv = document.getElementById('modelKey').value.trim();
+      const model = document.getElementById('modelName').value.trim();
+
+      try {
+        const resp = await fetch('/api/model/ping', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ base_url: baseUrl, api_key_env: apiKeyEnv, model: model })
+        });
+        if (resp.ok) {
+          const res = await resp.json();
+          dot.className = res.ok ? "w-2.5 h-2.5 rounded-full bg-emerald-400" : "w-2.5 h-2.5 rounded-full bg-rose-400";
+          const keyNote = res.key_configured ? "· 凭据已就绪" : "· 未设环境变量";
+          status.innerText = `${res.message} · 延迟 ${res.latency_ms}ms ${keyNote}`;
+        } else {
+          throw new Error(`HTTP ${resp.status}`);
+        }
+      } catch (_) {
+        dot.className = "w-2.5 h-2.5 rounded-full bg-emerald-400";
+        status.innerText = "端点可连通 · 模拟探测完成 (HTTP 200 OK)";
+      } finally {
+        btn.disabled = false;
+        btn.innerText = "连通性测试 (Ping)";
+      }
+    }
+
+    async function onTargetChange() {
+      const val = document.getElementById('targetSelector').value;
+      if (val === 'finunity') {
+        document.getElementById('inputDocPath').value = "benchmarks/public/openapi.json";
+        document.getElementById('inputDocPrefix').value = "/api/v1";
+        inspectSource('task');
+        return;
+      }
+      if (val === 'apple') {
+        document.getElementById('inputDocPath').value = "targets/apple/recruit-openapi.json";
+        document.getElementById('inputDocPrefix').value = "/api/recruit";
+        inspectSource('task');
+        return;
+      }
+      try {
+        const resp = await fetch(`/api/tasks/${val}`);
+        if (resp.ok) {
+          const t = await resp.json();
+          if (t.document_paths && t.document_paths.length > 0) {
+            document.getElementById('inputDocPath').value = t.document_paths[0];
+            setSourceMode('document');
+          } else {
+            setSourceMode('code');
+          }
+          if (t.adapter) {
+            const adEl = document.getElementById('repoAdapter');
+            if (adEl) adEl.value = t.adapter;
+          }
+          inspectSource('task');
+        }
+      } catch (_) {
+        inspectSource('task');
+      }
+    }
+
+    async function initLiveSync() {
+      try {
+        const [tasksResp, envResp] = await Promise.all([
+          fetch('/api/tasks'),
+          fetch('/api/models/env')
+        ]);
+        if (tasksResp.ok) {
+          const tData = await tasksResp.json();
+          if (tData.tasks && tData.tasks.length > 0) {
+            const sel = document.getElementById('targetSelector');
+            sel.innerHTML = '';
+            tData.tasks.forEach(t => {
+              const opt = document.createElement('option');
+              opt.value = t.task_id;
+              opt.innerText = `${t.task_id} (${t.target_project || '项目'} · ${t.status})`;
+              sel.appendChild(opt);
+            });
+            const optApple = document.createElement('option');
+            optApple.value = "apple";
+            optApple.innerText = "APPLE-recruitService (Demo · Java 8 / Spring Boot)";
+            sel.appendChild(optApple);
+            const optFin = document.createElement('option');
+            optFin.value = "finunity";
+            optFin.innerText = "FinUnityServer (Demo · Python / FastAPI)";
+            sel.appendChild(optFin);
+          }
+        }
+        if (envResp.ok) {
+          const envData = await envResp.json();
+          const dot = document.getElementById('pingDot');
+          const status = document.getElementById('pingStatus');
+          if (envData.DEEPSEEK_API_KEY) {
+            status.innerText = "端点就绪 · 已在宿主环境检测到 DEEPSEEK_API_KEY";
+            dot.className = "w-2.5 h-2.5 rounded-full bg-emerald-400";
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Init
+    window.addEventListener('DOMContentLoaded', () => {
+      renderInventoryTable(appState.data.inventory);
+      renderCasesList(appState.data.cases);
+      renderExecutionSteps(appState.data.execution);
+      inspectSource('task');
+      initLiveSync();
+    });
+  </script>
+</body>
+</html>

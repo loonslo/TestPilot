@@ -118,3 +118,17 @@ F1 基础验收已完成，下一步开发 F2 通用适配，不等待用户现�
 - `design_model.py` 移除强制 `openrouter/free` 与硬编码费用限制，动态读取配置中的 `api_key_env`，本地端点自动提供虚拟 key；
 - 补齐 `execution.example.toml`，更新 `model.example.toml` 与 `installation.md`；
 - 全量测试 417 passed in 40.93s，Ruff 检查与格式化全通。用户授权直接 commit 并 push 至远端 master。
+
+## 2026-11-03：多语言与多仓库适配架构落地（P0/P1/P2 完成）与可视化测试控制台（UI）
+
+针对混合技术栈项目（如多 Maven 仓库、多 Node 前端仓库）与现有硬编码假设不匹配的问题，完成基础架构解耦与缺陷修复，并提供无状态、过程文件全景透视的交互式 Web 控制台：
+- **P0 缺陷修复**：全库扫描并规范异常捕获语法，消除无括号异常元组；
+- **P1 适配器层抽取**：新增 `src/api_test_agent/adapters/` 模块与注册表，将 FastAPI 静态提取收编为 `PythonAstAdapter`，并在 `tasks/fastapi_static.py` 保留向下兼容重导出；
+- **P2 OpenAPI 通用适配**：实现 `OpenAPIAdapter`，支持 OpenAPI 3.x 与 Swagger 2.0 规格的统一提取，无缝承接带 springfox/knife4j 的各类后端服务（如 Java Spring Boot / Egg.js）；
+- **执行器与版本清单扩展**：`CaseRevision.execution_kind` 放宽为可扩展字符串（允许 `junit` / `http` 等，保留 `pytest` 守卫）；`Task` 扩展 `version_manifest`（支持多仓库独立 SHA）与 `adapter` 指定；`TaskStore.configure` 支持配置新字段；`regression/runner.py` 引入 `RUNNER_REGISTRY` 支持执行器插拔；`discovery.permitted()` 动态支持各适配器声明的文件后缀；
+- **可视化控制台与过程透视工作台**：
+  - 新增命令 `uv run testpilot ui`（支持 `--port`、`--host`、`--root`、`--no-open`），内置零依赖 `ThreadingHTTPServer`；
+  - 遵循 `baoyu-design` 工业级美学（清晰设计 Token、深浅色模式、严禁 AI 泛滥紫灰噪点）；
+  - 落地三大配置板块（代码库/接口文档双模式数据源、模型与预算配置及安全端点探活、用例集与全过程对账）；
+  - 核心特色 **Sources 追溯面板 (Sources Panel)**：全流程透明透视任意环节的过程资产（`task.json`、`model.json`、`inventory.json`、`cases.json`、`active-execution.json`、`evidence/*.json`、`report.md`）；
+- 全量测试 433 passed in 40.54s（新增 `tests/test_adapters.py` 10 项与 `tests/test_ui_server.py` 6 项，合计 16 项新测试），Ruff 检查与格式化全通（105 files）。

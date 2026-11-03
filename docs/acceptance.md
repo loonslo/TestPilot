@@ -572,3 +572,28 @@ F4/F5/F6 按机制验收口径通过。真实模型与真实目标项目从零�
 **实测结果：**
 - 全量测试：`uv run python -m pytest -q -p no:cacheprovider`：**417 passed in 40.93s**。
 - 代码风格：`uv run python -m ruff check .` 与 `uv run python -m ruff format --check .` 全部通过（97 files already formatted）。
+
+## 2026-11-03：多语言/多仓库架构落地（P0/P1/P2）与可视化测试控制台（UI）
+
+**目标：** 解除 TestPilot 对 Python 单仓单 commit 的硬编码限制，建立语言无关的适配器体系（支持通用 OpenAPI / Swagger 提取及多执行器支持），消除历史语法隐患；同时交付交互式 Web 控制台与过程文件全景透视工作台，支持免手写配置文件的可视化交互。
+
+**环境：** Windows 10 Pro；Python 3.14.4；全新测试临时目录（禁用缓存）。
+
+**改动：**
+- **P0 异常语法规范**：全库扫描并消除 unparenthesized `except` 异常，统一使用标准括号元组格式。
+- **P1 适配器层与注册表**：创建 `src/api_test_agent/adapters/` 核心包，提供 `DiscoveryAdapter` 协议与 `AdapterRegistry`。将 FastAPI 静态提取拆分收编为 `PythonAstAdapter`，`tasks/fastapi_static.py` 保留 100% 兼容重导出。
+- **P2 OpenAPI 通用适配器**：实现 `OpenAPIAdapter`，支持 OpenAPI 3.x 及 Swagger 2.0 规格解析与 Operation 提取；`tasks/discovery.py` 支持按任务显式指定 adapter 或按文档类型通用接入。
+- **扩展性增强**：
+  - `tasks/discovery.py` 的 `permitted()` 动态汇集所有已注册适配器的扩展名（支持 `.java` 等由插件声明），保留敏感凭据过滤；
+  - `tasks/models.py` 的 `CaseRevision.execution_kind` 放宽为字符串（支持 `http`、`junit` 等，保留 `pytest` 守卫）；`Task` 扩展 `version_manifest: dict[str, str]` 支持多仓库独立 SHA 版本，并扩展可选 `adapter` 字段；`TaskStore.configure` 放行新增字段；
+  - `regression/runner.py` 引入 `RUNNER_REGISTRY` 与 `register_runner`，支持通过注册表自定义构建执行器命令（默认保持 `pytest`）。
+- **交互式 Web 控制台与过程文件透视工作台**：
+  - 实现 `src/api_test_agent/ui/server.py` 与 `ui/dashboard.html`，提供 `uv run testpilot ui` 入口（支持 `--port`、`--host`、`--root`、`--no-open`）；
+  - 遵循 `baoyu-design` 工业级美学，支持深浅色模式、设计 Token 严格遵循界面层级；
+  - 交付三大核心板块：数据源配置（代码库/接口文档双模式）、模型与预算配置（支持端点连通性探活与凭据环境安全检测）、测试集与执行报告；
+  - 落地核心 signature **Sources 追溯面板 (Sources Panel)**：支持在界面中逐项下钻并完整查验 `task.json`、`model.json`、`inventory.json`、`cases.json`、`execution.json`、`evidence/*.json` 与 `report.md`，全流程资产双向印证。
+- **新增测试**：新增 `tests/test_adapters.py`（10 项）与 `tests/test_ui_server.py`（6 项），累计 16 项新测试，覆盖适配器注册与提取、版本清单、多执行器插拔、UI 控制台静态资产服务、API 任务生命周期、安全 Ping 端点及 CLI 解析。
+
+**实测结果：**
+- 全量测试：`uv run python -m pytest -q -p no:cacheprovider --basetemp=runtime/test_clean_ui`：**433 passed in 40.54s**（较此前 417 项净增 16 项）。
+- 代码风格：`uv run ruff check .` 与 `uv run ruff format --check .` 全部通过（105 files already formatted）。

@@ -18,6 +18,7 @@ from api_test_agent.model import ModelClient, ModelError
 from api_test_agent.regression import cli as regression_cli
 from api_test_agent.settings import Settings
 from api_test_agent.tasks import cli as task_cli
+from api_test_agent.ui import register_ui_command
 
 
 def _model_client(settings: Settings) -> ModelClient:
@@ -207,6 +208,7 @@ def _build_parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
     regression_cli.register_commands(commands)
     task_cli.register_commands(commands)
+    register_ui_command(commands)
     commands.add_parser(
         "doctor", help="check local prerequisites without calling any model"
     ).set_defaults(handler=_cmd_doctor)
@@ -275,6 +277,8 @@ def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     if hasattr(args, "task_handler"):
         return args.task_handler(args)
+    if hasattr(args, "ui_handler"):
+        return args.ui_handler(args)
     if hasattr(args, "func"):
         return regression_cli.execute(args)
     config_path = args.config or Path("config.local.toml")

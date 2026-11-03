@@ -94,7 +94,7 @@ class CaseRevision(Contract):
     scenario: Literal["normal", "validation", "boundary", "combination", "auth", "state", "repeat"]
     rules: tuple[Rule, ...] = Field(min_length=1)
     preconditions: tuple[str, ...] = ()
-    execution_kind: Literal["http", "pytest"] = "http"
+    execution_kind: str = Field(default="http", min_length=1)
     steps: tuple[Step, ...] = Field(min_length=1)
     assertions: tuple[Assertion, ...] = Field(min_length=1)
     change_summary: str = Field(min_length=1)
@@ -151,6 +151,8 @@ class Task(Contract):
     source_paths: tuple[str, ...] = ()
     document_paths: tuple[str, ...] = ()
     environment: str | None = Field(default=None, min_length=1)
+    adapter: str | None = Field(default=None, min_length=1)
+    version_manifest: dict[str, str] = Field(default_factory=dict)
 
     @field_validator("source_paths", "document_paths")
     @classmethod
@@ -162,7 +164,11 @@ class Task(Contract):
         return values
 
     def require_target(self) -> None:
-        if not self.target_project or not self.target_commit or not self.scope:
+        if (
+            not self.target_project
+            or not (self.target_commit or self.version_manifest)
+            or not self.scope
+        ):
             raise ValueError("select project, full commit and scope for this task first")
         if not self.document_paths and not (self.repository and self.source_paths):
             raise ValueError("select document paths or repository with explicit source paths")

@@ -78,6 +78,18 @@ class TaskStore:
             raise ValueError("task identity differs from directory")
         return task
 
+    def list_tasks(self) -> list[Task]:
+        if not self.root.is_dir():
+            return []
+        tasks: list[Task] = []
+        for task_dir in sorted(self.root.iterdir()):
+            if task_dir.is_dir() and (task_dir / "task.json").is_file():
+                try:
+                    tasks.append(self.load(task_dir.name))
+                except Exception:
+                    continue
+        return tasks
+
     def configure(self, task_id: str, **updates: Any) -> Task:
         task = self.load(task_id)
         allowed = {
@@ -88,6 +100,8 @@ class TaskStore:
             "source_paths",
             "document_paths",
             "environment",
+            "adapter",
+            "version_manifest",
         }
         if not updates.keys() <= allowed:
             raise ValueError("only target settings can be configured")

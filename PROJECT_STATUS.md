@@ -1,10 +1,10 @@
 ---
 project_id: TestPilot
-updated: 2026-11-02
+updated: 2026-11-03
 status: active
-overview: "TestPilot（测试领航员），唯一入口 uv run testpilot；目标由用户逐任务选择。F1–F6 统一资产、接口发现、用例生成与审核材料、冻结批准、执行引擎与报告守恒对账已完成修复与二次机制验收，F7 真实验收推进中（支持通用模型与用户本地实测），F8 待开始。"
-progress: "2026-11-02 为支持用户在另一台电脑直接下载与本地实测（F7），解除了单一模型硬编码限制，支持任意 OpenAI 兼容模型及自定义 API Key 环境变量；补充执行配置模板 execution.example.toml 并更新安装实测文档；全量 417 项测试与 Ruff 检查通过。F7 端到端实测待在测试机完成。"
-next: "在另一台电脑拉取最新代码，配置本地被测项目与模型，按 docs/installation.md 走通从零接口发现到执行报告的完整流程，并实时修改与回传问题；F8 待验收。"
+overview: "TestPilot（测试领航员），唯一入口 uv run testpilot；目标由用户逐任务选择。F1–F6 统一资产、接口发现、用例生成与审核材料、冻结批准、执行引擎与报告对账已完成机制验收；已落地多语言/多仓库通用适配架构与可视化 Web 控制台（testpilot ui），F7 真实验收推进中，F8 待开始。"
+progress: "2026-11-03 完成多语言/多仓库通用适配与可视化控制台（UI）：规范全库异常语法（P0）；抽取 adapters 适配器层与注册表并收编 FastAPI AST（P1）；实现 OpenAPI/Swagger 统一提取适配器（P2）；扩展多执行器与多仓库版本清单。发布 testpilot ui 交互式控制台，遵循 baoyu-design 美学并落地全流程 Sources 追溯面板。全量 433 项测试与 Ruff 检查/格式化全通。"
+next: "针对混合架构目标（如 Apple 24 仓微服务）测试导出的 openapi.json/swagger 接口发现与端到端执行；推进 F7 真实项目效果验收；F8 待验收。"
 evidence:
   - docs/task-assets.md
   - README.md
@@ -68,5 +68,15 @@ evidence:
 2026-10-30 GitHub 私有备份完成：源码提交 51bc481 已在远端 master 核验，URL 和完整提交号记录在 TASKS.md 与 docs/acceptance.md。后续文档提交仅同步上传事实，不表示已验证生产环境。已自检摘要字段及证据路径，未访问日常同步工具。
 
 2026-11-02：为支持在另一台电脑直接下载源码并使用自定义模型实测（F7 演练），解除 `design_model.py` 中对免费模型的硬编码拦截，放开 `base_url` 允许 `http://` 接入本地 Ollama/vLLM 等模型，支持通过任意环境变量名注入 API Key，并对本地环回模型端点提供虚拟 key 适配。补充 `examples/tasks/execution.example.toml` 执行配置模板，并在 `docs/installation.md` 增加双机端到端演练指南。全量 417 项测试通过，Ruff 检查与格式化全通。用户授权直接 commit 与 push。
+
+本轮交付前已在本项目自检 PROJECT_STATUS：frontmatter 字段无重复、必填项合规，evidence 路径均为项目内现存非运行目录文件；未通过项为零，未调用日常同步工具。
+
+2026-11-03：完成多语言/多仓库适配架构改造与可视化测试控制台（UI）。
+1. 规范全库 unparenthesized `except` 异常语法（P0）；
+2. 抽取 `src/api_test_agent/adapters/` 核心层与插件注册表，收编 `PythonAstAdapter` 并保留 `tasks/fastapi_static.py` 100% 兼容（P1）；
+3. 实现 `OpenAPIAdapter`（支持 OpenAPI 3.x / Swagger 2.0）（P2）；
+4. 扩展 `execution_kind`、`version_manifest` 及执行器注册表 `RUNNER_REGISTRY`，支持按适配器扩展文件后缀白名单；
+5. 新增 `testpilot ui` 命令，启动零依赖 Web 控制台（`api_test_agent.ui`），遵循 `baoyu-design` 工业级美学，支持数据源双模式、模型端点安全探测、测试集查看与核心 signature **Sources 追溯面板 (Sources Panel)**，透视全流程所有过程文件（`task.json`、`model.json`、`inventory.json`、`cases.json`、`execution.json`、`evidence/*.json`、`report.md`）；
+6. 新增 `tests/test_adapters.py`（10 项）与 `tests/test_ui_server.py`（6 项），全量 433 项测试与 Ruff 检查/格式化全通。
 
 本轮交付前已在本项目自检 PROJECT_STATUS：frontmatter 字段无重复、必填项合规，evidence 路径均为项目内现存非运行目录文件；未通过项为零，未调用日常同步工具。
