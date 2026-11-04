@@ -92,16 +92,18 @@
 
     <!-- Center Status Breadcrumb -->
     <div class="hidden md:flex items-center gap-1.5 bg-[var(--surface-subtle)] border border-[var(--border)] px-3 py-1.5 rounded-xl font-code text-[11px]">
-      <span class="text-[var(--text-muted)]">当前目标:</span>
-      <select id="targetSelector" onchange="onTargetChange()" class="bg-transparent font-semibold text-[var(--text)] outline-none cursor-pointer">
-        <option value="apple">APPLE-recruitService (Java 8 / Spring Boot 2.7 / Nacos)</option>
-        <option value="finunity">FinUnityServer (Python 3.12 / FastAPI)</option>
-        <option value="egg">APPLE-portalWeb (Node.js / Egg)</option>
+      <span class="text-[var(--text-muted)]">当前项目:</span>
+      <select id="targetSelector" onchange="onTargetChange()" class="bg-transparent font-semibold text-[var(--text)] outline-none cursor-pointer max-w-[240px] truncate">
+        <option value="apple">APPLE-recruitService</option>
+        <option value="finunity">FinUnityServer</option>
       </select>
+      <button onclick="openNewTaskModal()" class="px-2 py-0.5 rounded bg-[var(--primary)] text-[var(--bg)] font-semibold hover:opacity-90 transition shrink-0" title="新建项目测试任务">
+        + 新建项目
+      </button>
       <span class="text-[var(--border-strong)]">|</span>
       <span class="text-emerald-400 flex items-center gap-1">
         <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-        沙箱离线就绪
+        就绪
       </span>
     </div>
 
@@ -169,7 +171,7 @@
                 <span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 text-[10px] font-bold font-code">高 ROI · 推荐</span>
               </div>
               <p class="text-[11px] text-[var(--text-muted)]">
-                解析 Spring Boot (Springfox/Knife4j) 或 Node.js (Egg) 导出的 OpenAPI/Swagger 文件。服务 URL 导入请使用 CLI：<code class="font-code">task discover &lt;任务&gt; --openapi-url http://服务/v2/api-docs</code>。清单仅代表所提供文档，不保证运行系统全集。
+                支持在线服务 URL 直接抓取（Spring Boot / Springfox / Knife4j / FastAPI）或本地规格文件（.json / .yaml），自动拉取并解析接口资产清单。
               </p>
             </div>
 
@@ -185,47 +187,79 @@
             </div>
           </div>
 
-          <!-- Document Mode Form -->
+          <!-- Document Mode Form (Interactive) -->
           <div id="form-doc" class="space-y-4 pt-2">
+            <!-- Source Selector: Online URL vs Local File -->
+            <div class="flex items-center gap-4 border-b border-[var(--border)] pb-2.5">
+              <span class="text-xs font-semibold text-[var(--text)]">规格来源类型:</span>
+              <label class="flex items-center gap-1.5 text-xs text-[var(--text)] cursor-pointer">
+                <input type="radio" name="docSourceType" id="radioDocUrl" value="url" checked onchange="toggleDocSourceType('url')" class="accent-[var(--primary)]">
+                <span>在线服务文档 URL (Spring Boot / FastAPI / Knife4j)</span>
+              </label>
+              <label class="flex items-center gap-1.5 text-xs text-[var(--text)] cursor-pointer">
+                <input type="radio" name="docSourceType" id="radioDocFile" value="file" onchange="toggleDocSourceType('file')" class="accent-[var(--primary)]">
+                <span>本地规格文件 (Local JSON / YAML)</span>
+              </label>
+            </div>
+
+            <!-- URL Input Block -->
+            <div id="blockDocUrl" class="space-y-1.5">
+              <label class="text-xs font-semibold text-[var(--text)]">服务在线 OpenAPI / Swagger URL</label>
+              <input type="text" id="inputDocUrl" placeholder="例如 http://127.0.0.1:8080/v2/api-docs 或 http://localhost:8000/openapi.json" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)]">
+              <p class="text-[11px] text-[var(--text-muted)]">直接从运行中的微服务拉取 OpenAPI 3.x 或 Swagger 2.0 规格并建立快照。</p>
+            </div>
+
+            <!-- File Input Block -->
+            <div id="blockDocFile" class="space-y-1.5 hidden">
+              <label class="text-xs font-semibold text-[var(--text)]">本地文档相对路径 (Document Path)</label>
+              <input type="text" id="inputDocPath" placeholder="例如 benchmarks/public/openapi.json 或 targets/apple/recruit-openapi.json" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)]">
+              <p class="text-[11px] text-[var(--text-muted)]">被测项目内或本地的 OpenAPI/Swagger JSON 或 YAML 规格文件相对路径。</p>
+            </div>
+
+            <!-- Metadata Row -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div class="md:col-span-2 space-y-1.5">
-                <label class="text-xs font-semibold text-[var(--text)]">本地文档路径（URL 导入使用 CLI）</label>
-                <input type="text" id="inputDocPath" value="targets/apple/recruit-openapi.json" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)]">
-                <p class="text-[11px] text-[var(--text-muted)]">支持 Swagger 2.0 / OpenAPI 3.x，自动解析本地引用及模式。</p>
+              <div class="space-y-1.5">
+                <label class="text-xs font-semibold text-[var(--text)]">目标微服务名称 (Target Project)</label>
+                <input type="text" id="inputDocProject" placeholder="例如 APPLE-recruitService" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)]">
               </div>
               <div class="space-y-1.5">
-                <label class="text-xs font-semibold text-[var(--text)]">挂载 Base Path</label>
-                <input type="text" id="inputDocPrefix" value="/api/recruit" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)]">
-                <p class="text-[11px] text-[var(--text-muted)]">网关或微服务路由前缀。</p>
+                <label class="text-xs font-semibold text-[var(--text)]">目标版本 Commit SHA (40位)</label>
+                <input type="text" id="inputDocCommit" value="0000000000000000000000000000000000000000" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)]">
+              </div>
+              <div class="space-y-1.5">
+                <label class="text-xs font-semibold text-[var(--text)]">挂载 Base Path (可选前缀)</label>
+                <input type="text" id="inputDocPrefix" placeholder="例如 /api/v1 或留空" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)]">
               </div>
             </div>
           </div>
 
-          <!-- Code Mode Form (Hidden by default) -->
+          <!-- Code Mode Form (Interactive) -->
           <div id="form-code" class="space-y-4 pt-2 hidden">
-            <div class="space-y-2">
-              <div class="flex items-center justify-between">
-                <label class="text-xs font-semibold text-[var(--text)]">多服务版本清单 (Version Manifest)</label>
-                <span class="text-[11px] text-[var(--text-muted)]">支持 Apple 混合微服务架构（多 Maven 仓）</span>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="space-y-1.5">
+                <label class="text-xs font-semibold text-[var(--text)]">本地 Git 仓库根目录 (Repository Path)</label>
+                <input type="text" id="inputRepoPath" placeholder="例如 D:/workspace/my-fastapi-service" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)]">
+                <p class="text-[11px] text-[var(--text-muted)]">被测服务的本地 Git 仓库路径。系统通过只读 Git 树提取文件快照。</p>
               </div>
-              <div class="border border-[var(--border)] rounded-xl overflow-hidden font-code text-xs">
-                <div class="bg-[var(--surface-subtle)] grid grid-cols-12 px-3 py-2 border-b border-[var(--border)] font-semibold text-[var(--text-muted)]">
-                  <span class="col-span-4">服务仓库</span>
-                  <span class="col-span-5">Commit SHA / 分支</span>
-                  <span class="col-span-3">适配器 (Adapter)</span>
-                </div>
-                <div class="divide-y divide-[var(--border)]">
-                  <div class="grid grid-cols-12 px-3 py-2 items-center hover:bg-[var(--surface-hover)]">
-                    <span class="col-span-4 font-semibold">APPLE-recruitService</span>
-                    <span class="col-span-5 text-[var(--text-muted)]">e60c4c9f18f85cb6516093e739282adba73d1284</span>
-                    <span class="col-span-3 text-emerald-400">openapi-springfox</span>
-                  </div>
-                  <div class="grid grid-cols-12 px-3 py-2 items-center hover:bg-[var(--surface-hover)]">
-                    <span class="col-span-4 font-semibold">APPLE-authService</span>
-                    <span class="col-span-5 text-[var(--text-muted)]">7b91d2949f005b84cb0e55cf875b9d0350e80cfe</span>
-                    <span class="col-span-3 text-emerald-400">openapi-swagger</span>
-                  </div>
-                </div>
+              <div class="space-y-1.5">
+                <label class="text-xs font-semibold text-[var(--text)]">目标 Commit SHA (Target Commit)</label>
+                <input type="text" id="inputRepoCommit" placeholder="40 位完整 SHA (例如 git rev-parse HEAD)" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)]">
+                <p class="text-[11px] text-[var(--text-muted)]">被测代码的固定提交版本，保障测试证据的确定性与可复现。</p>
+              </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div class="md:col-span-2 space-y-1.5">
+                <label class="text-xs font-semibold text-[var(--text)]">源码扫描目录/文件 (Source Paths)</label>
+                <input type="text" id="inputSourcePaths" value="src/" placeholder="例如 src/ 或 app/，多个用逗号隔开" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)]">
+                <p class="text-[11px] text-[var(--text-muted)]">仓库内需做 AST 语法分析提取路由控制器的相对目录或文件。</p>
+              </div>
+              <div class="space-y-1.5">
+                <label class="text-xs font-semibold text-[var(--text)]">AST 解析适配器 (Adapter)</label>
+                <select id="selectAdapter" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)] cursor-pointer">
+                  <option value="python-ast" selected>Python AST (FastAPI / Starlette)</option>
+                  <option value="openapi">OpenAPI 适配器 (仓内 JSON/YAML)</option>
+                </select>
+                <p class="text-[11px] text-[var(--text-muted)]">非 Python 项目（Java/Go）请使用左侧“文档模式”导入 OpenAPI。</p>
               </div>
             </div>
           </div>
@@ -612,16 +646,135 @@
       inspectSource('task');
     }
 
-    // Trigger Discovery
+    function getAuthHeaders() {
+      return {
+        'Content-Type': 'application/json',
+        'X-TestPilot-Token': window.TESTPILOT_TOKEN || ''
+      };
+    }
+
+    function toggleDocSourceType(type) {
+      const isUrl = (type === 'url');
+      const radioUrl = document.getElementById('radioDocUrl');
+      const radioFile = document.getElementById('radioDocFile');
+      if (radioUrl) radioUrl.checked = isUrl;
+      if (radioFile) radioFile.checked = !isUrl;
+      const blockUrl = document.getElementById('blockDocUrl');
+      const blockFile = document.getElementById('blockDocFile');
+      if (blockUrl) blockUrl.classList.toggle('hidden', !isUrl);
+      if (blockFile) blockFile.classList.toggle('hidden', isUrl);
+    }
+
+    function openNewTaskModal() {
+      document.getElementById('modalNewTask').classList.remove('hidden');
+      document.getElementById('modalTaskId').focus();
+    }
+
+    function closeNewTaskModal() {
+      document.getElementById('modalNewTask').classList.add('hidden');
+    }
+
+    async function submitNewTask() {
+      const taskId = document.getElementById('modalTaskId').value.trim();
+      const projName = document.getElementById('modalProjectName').value.trim() || taskId;
+      const mode = document.getElementById('modalTaskType').value;
+      if (!taskId) {
+        alert('请输入任务标识 (Task ID)');
+        return;
+      }
+      const createBody = {
+        task_id: taskId,
+        target_project: projName,
+        target_commit: "0000000000000000000000000000000000000000",
+        adapter: mode === 'code' ? 'python-ast' : 'openapi',
+        scope: ['*']
+      };
+      const docInput = (document.getElementById('modalDocInput')?.value || '').trim();
+      if (docInput) {
+        if (docInput.startsWith('http://') || docInput.startsWith('https://')) {
+          createBody.openapi_url = docInput;
+        } else {
+          createBody.document_paths = [docInput];
+        }
+      }
+      try {
+        const resp = await fetch('/api/tasks/create', {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify(createBody)
+        });
+        if (!resp.ok) {
+          const err = await resp.json();
+          alert('创建任务失败: ' + (err.error || resp.statusText));
+          return;
+        }
+        closeNewTaskModal();
+        await initLiveSync();
+        document.getElementById('targetSelector').value = taskId;
+        selectSourceMode(mode);
+        onTargetChange();
+      } catch (err) {
+        alert('网络请求失败: ' + err.message);
+      }
+    }
+
+    // Trigger Discovery with configuration auto-save
     async function triggerDiscovery() {
       const btn = document.querySelector("button[onclick='triggerDiscovery()']");
       if (btn) {
         btn.disabled = true;
-        btn.innerHTML = `<span>解析中...</span>`;
+        btn.innerHTML = `<span>保存配置并解析中...</span>`;
       }
       const taskId = document.getElementById('targetSelector').value;
       try {
-        const resp = await fetch(`/api/tasks/${taskId}/discover`, { method: 'POST' });
+        // 1. Auto-save configuration before discovery
+        if (taskId !== 'apple' && taskId !== 'finunity' && taskId !== 'egg') {
+          const configPayload = {};
+          if (appState.sourceMode === 'code') {
+            const repo = document.getElementById('inputRepoPath').value.trim();
+            const commit = document.getElementById('inputRepoCommit').value.trim();
+            const sourcePaths = document.getElementById('inputSourcePaths').value.split(',').map(s => s.trim()).filter(Boolean);
+            const adapter = document.getElementById('selectAdapter').value;
+            if (repo) configPayload.repository = repo;
+            if (commit) configPayload.target_commit = commit;
+            if (sourcePaths.length > 0) configPayload.source_paths = sourcePaths;
+            configPayload.adapter = adapter;
+          } else {
+            const isUrl = document.getElementById('radioDocUrl')?.checked ?? true;
+            const docUrl = (document.getElementById('inputDocUrl')?.value || '').trim();
+            const docPath = (document.getElementById('inputDocPath')?.value || '').trim();
+            const docProject = (document.getElementById('inputDocProject')?.value || '').trim();
+            const docCommit = (document.getElementById('inputDocCommit')?.value || '').trim();
+
+            if (isUrl && docUrl) {
+              configPayload.openapi_url = docUrl;
+              configPayload.document_paths = [];
+            } else if (!isUrl && docPath) {
+              configPayload.document_paths = [docPath];
+              configPayload.openapi_url = null;
+            } else if (docUrl) {
+              configPayload.openapi_url = docUrl;
+            } else if (docPath) {
+              configPayload.document_paths = [docPath];
+            }
+            if (docProject) configPayload.target_project = docProject;
+            if (docCommit) configPayload.target_commit = docCommit;
+            configPayload.adapter = 'openapi';
+          }
+          configPayload.scope = ['*'];
+
+          await fetch(`/api/tasks/${taskId}/configure`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(configPayload)
+          });
+        }
+
+        // 2. Trigger Discover
+        const resp = await fetch(`/api/tasks/${taskId}/discover`, {
+          method: 'POST',
+          headers: getAuthHeaders()
+        });
         if (resp.ok) {
           const inv = await resp.json();
           if (inv.operations && inv.operations.length > 0) {
@@ -634,9 +787,12 @@
             }));
             renderInventoryTable(appState.data.inventory);
           }
+        } else {
+          const err = await resp.json();
+          alert('接口解析提示: ' + (err.error || resp.statusText));
         }
-      } catch (_) {
-        // Fallback to demo inventory
+      } catch (err) {
+        alert('解析请求异常: ' + err.message);
       } finally {
         if (btn) {
           btn.disabled = false;
@@ -966,14 +1122,20 @@
     async function onTargetChange() {
       const val = document.getElementById('targetSelector').value;
       if (val === 'finunity') {
+        toggleDocSourceType('file');
         document.getElementById('inputDocPath').value = "benchmarks/public/openapi.json";
         document.getElementById('inputDocPrefix').value = "/api/v1";
+        document.getElementById('inputDocProject').value = "FinUnityServer";
+        selectSourceMode('document');
         inspectSource('task');
         return;
       }
       if (val === 'apple') {
+        toggleDocSourceType('file');
         document.getElementById('inputDocPath').value = "targets/apple/recruit-openapi.json";
         document.getElementById('inputDocPrefix').value = "/api/recruit";
+        document.getElementById('inputDocProject').value = "APPLE-recruitService";
+        selectSourceMode('document');
         inspectSource('task');
         return;
       }
@@ -981,11 +1143,26 @@
         const resp = await fetch(`/api/tasks/${val}`);
         if (resp.ok) {
           const t = await resp.json();
-          if (t.document_paths && t.document_paths.length > 0) {
+          if (t.openapi_url) {
+            toggleDocSourceType('url');
+            document.getElementById('inputDocUrl').value = t.openapi_url;
+            if (t.target_project) document.getElementById('inputDocProject').value = t.target_project;
+            if (t.target_commit) document.getElementById('inputDocCommit').value = t.target_commit;
+            selectSourceMode('document');
+          } else if (t.document_paths && t.document_paths.length > 0) {
+            toggleDocSourceType('file');
             document.getElementById('inputDocPath').value = t.document_paths[0];
-            setSourceMode('document');
+            if (t.target_project) document.getElementById('inputDocProject').value = t.target_project;
+            if (t.target_commit) document.getElementById('inputDocCommit').value = t.target_commit;
+            selectSourceMode('document');
+          } else if (t.repository || (t.source_paths && t.source_paths.length > 0)) {
+            if (t.repository) document.getElementById('inputRepoPath').value = t.repository;
+            if (t.target_commit) document.getElementById('inputRepoCommit').value = t.target_commit;
+            if (t.source_paths && t.source_paths.length > 0) document.getElementById('inputSourcePaths').value = t.source_paths.join(', ');
+            if (t.adapter) document.getElementById('selectAdapter').value = t.adapter;
+            selectSourceMode('code');
           } else {
-            setSourceMode('code');
+            selectSourceMode(appState.sourceMode || 'document');
           }
           if (t.adapter) {
             const adEl = document.getElementById('repoAdapter');
@@ -1008,6 +1185,7 @@
           const tData = await tasksResp.json();
           if (tData.tasks && tData.tasks.length > 0) {
             const sel = document.getElementById('targetSelector');
+            const prevVal = sel.value;
             sel.innerHTML = '';
             tData.tasks.forEach(t => {
               const opt = document.createElement('option');
@@ -1023,6 +1201,10 @@
             optFin.value = "finunity";
             optFin.innerText = "FinUnityServer (Demo · Python / FastAPI)";
             sel.appendChild(optFin);
+            if (prevVal && [...sel.options].some(o => o.value === prevVal)) {
+              sel.value = prevVal;
+            }
+            onTargetChange();
           }
         }
         if (envResp.ok) {
@@ -1046,5 +1228,41 @@
       initLiveSync();
     });
   </script>
+  <!-- New Task Modal -->
+  <div id="modalNewTask" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-[var(--border)] pb-3">
+        <h3 class="font-bold text-sm text-[var(--text)]">新建项目测试任务</h3>
+        <button onclick="closeNewTaskModal()" class="text-[var(--text-muted)] hover:text-[var(--text)] font-bold text-base">✕</button>
+      </div>
+      <div class="space-y-3 font-code text-xs">
+        <div class="space-y-1">
+          <label class="font-semibold text-[var(--text)]">任务标识 (Task ID) <span class="text-red-400">*</span></label>
+          <input type="text" id="modalTaskId" placeholder="例如 my-fastapi-service" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 outline-none focus:border-[var(--primary)]">
+          <p class="text-[10px] text-[var(--text-muted)]">小写字母、数字与横线组合。</p>
+        </div>
+        <div class="space-y-1">
+          <label class="font-semibold text-[var(--text)]">项目名称 (Project Name)</label>
+          <input type="text" id="modalProjectName" placeholder="例如 MyFastAPIService" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 outline-none focus:border-[var(--primary)]">
+        </div>
+        <div class="space-y-1">
+          <label class="font-semibold text-[var(--text)]">分析模式</label>
+          <select id="modalTaskType" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 outline-none focus:border-[var(--primary)] cursor-pointer">
+            <option value="code">代码仓库模式 (Git 源码 AST 静态分析)</option>
+            <option value="document" selected>接口文档模式 (OpenAPI / Swagger 规格)</option>
+          </select>
+        </div>
+        <div class="space-y-1">
+          <label class="font-semibold text-[var(--text)]">规格 URL 或本地文件 (可选)</label>
+          <input type="text" id="modalDocInput" placeholder="例如 http://127.0.0.1:8080/v2/api-docs 或 openapi.json" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 outline-none focus:border-[var(--primary)]">
+          <p class="text-[10px] text-[var(--text-muted)]">若为 http:// 开头则作为在线 URL 抓取，否则作为本地文件路径。</p>
+        </div>
+      </div>
+      <div class="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border)]">
+        <button onclick="closeNewTaskModal()" class="px-3 py-1.5 rounded-lg border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)] text-xs">取消</button>
+        <button onclick="submitNewTask()" class="px-4 py-1.5 rounded-lg bg-[var(--primary)] text-[var(--bg)] font-semibold text-xs hover:opacity-90">确认创建</button>
+      </div>
+    </div>
+  </div>
 </body>
 </html>

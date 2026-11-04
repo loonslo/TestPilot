@@ -218,6 +218,7 @@ class UIRequestHandler(BaseHTTPRequestHandler):
                         "scope": list(task.scope),
                         "repository": task.repository,
                         "document_paths": list(task.document_paths),
+                        "openapi_url": task.openapi_url,
                         "source_paths": list(task.source_paths),
                         "environment": task.environment,
                         "inventory_count": inv_count,
@@ -472,6 +473,8 @@ class UIRequestHandler(BaseHTTPRequestHandler):
                     repository=data.get("repository") or None,
                     adapter=data.get("adapter") or None,
                     document_paths=tuple(data.get("document_paths", [])),
+                    openapi_url=data.get("openapi_url") or None,
+                    openapi_options=data.get("openapi_options") or None,
                     source_paths=tuple(data.get("source_paths", [])),
                     environment=data.get("environment") or None,
                     version_manifest=data.get("version_manifest") or {},
@@ -525,7 +528,8 @@ class UIRequestHandler(BaseHTTPRequestHandler):
                 self._send_error(str(exc), status=HTTPStatus.BAD_REQUEST)
                 return
             try:
-                inventory_path = discover(self.store, task_id)
+                materials_root = getattr(self.server, "materials_root", None) or Path.cwd()
+                inventory_path = discover(self.store, task_id, materials_root=materials_root)
                 inv_text = inventory_path.read_text("utf-8")
                 self._send_text(inv_text, content_type="application/json; charset=utf-8")
             except Exception as exc:

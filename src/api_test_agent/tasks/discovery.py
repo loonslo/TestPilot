@@ -173,7 +173,7 @@ def _discover(
         ]
     if task.document_paths:
         if materials_root is None:
-            raise ValueError("document selection requires --materials-root")
+            materials_root = Path.cwd()
         root = materials_root.resolve()
         for path in task.document_paths:
             candidate = (root / path).resolve()

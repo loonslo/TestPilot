@@ -277,3 +277,17 @@ UI 的“直接导入服务/完整清单”和“文档路径或 URL”文案已
 - SourceRef.source_url 与 Task.openapi_options 在为空时不进入序列化，保留旧任务绑定兼容；导入配置纳入任务锁定和绑定。
 
 验证详见 docs/acceptance.md 本日“文档导入开箱接入改进”：508项全量测试、Ruff、打包及内置示例通过。未连接真实Apple或模型；UI导入表单、交互登录、多来源不同凭据自动分配不在本次实现范围。
+
+## 2026-11-05：多项目交互、本地源码与接口文档双模式支持
+
+解决 Web 控制台代码仓库模式静态表格无交互字段、接口文档模式仅有写死路径且不支持 URL 输入/缺少 materials_root 崩溃、顶栏无法动态新建项目，以及 CLI task create 缺少参数的问题：
+- Web 端：
+  - 接口文档模式（`form-doc`）：新增单选切换在线 URL（Spring Boot/Knife4j/FastAPI）与本地规格文件（.json/.yaml），提供 URL 输入框、文件相对路径、微服务名、Commit SHA 与 Base Path 前缀；
+  - 代码仓库模式（`form-code`）：重构为交互表单，支持 Git 本地仓库路径、Commit SHA、源码相对路径与适配器选择；
+  - 顶栏增加 `+ 新建项目` 弹窗，支持录入 Task ID、项目名及文档 URL/文件；
+  - 发现接口前自动保存配置并携带 Token，切换项目反显表单；
+  - 修复 `server.py` 在 UI 触发发现接口时未传 `materials_root` 导致 `ValueError: document selection requires --materials-root` 的崩溃。
+- CLI 端：`task create` 一步支持 `--repository`、`--source-paths`、`--document-paths`、`--openapi-url` 与 `--adapter`；`task configure` 补充 `--adapter`。
+- 免命令启动：`start.bat` 选项 3 兼容在线 URL 与本地 JSON/YAML 规格文件；选项 4 支持一键扫描本地 Git 仓库并自动识别 HEAD 提交。
+
+实测：全量 510 passed（新增 UI 服务端文档发现测试与 CLI openapi-url 测试）；Ruff check/format 通过；UI 11 项全通。源码 AST 静态分析仅面向 Python（FastAPI/Starlette），非 Python 服务走 OpenAPI 路线。

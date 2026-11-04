@@ -33,6 +33,11 @@ def register_commands(commands: argparse._SubParsersAction) -> None:
     create.add_argument("--commit", help="用户指定的完整提交 ID；F2 再核验")
     create.add_argument("--scope", nargs="+", default=[])
     create.add_argument("--environment")
+    create.add_argument("--repository", help="本地只读 Git 仓库路径")
+    create.add_argument("--source-paths", nargs="+", default=[], help="仓库内源码目录/文件相对路径")
+    create.add_argument("--document-paths", nargs="+", default=[], help="本地接口文档相对路径")
+    create.add_argument("--openapi-url", help="服务在线 OpenAPI / Swagger 文档 URL")
+    create.add_argument("--adapter", help="指定适配器 (python-ast, openapi)")
     import_cmd = actions.add_parser("import-openapi", help="一步创建任务并导入服务文档或聚合目录")
     import_cmd.add_argument("task_id")
     import_cmd.add_argument("--url", required=True)
@@ -50,7 +55,7 @@ def register_commands(commands: argparse._SubParsersAction) -> None:
     configure.add_argument(
         "--openapi-config", type=Path, help="文档导入 TOML 配置（只写凭据变量名）"
     )
-    for flag in ("project", "commit", "repository", "environment", "openapi-url"):
+    for flag in ("project", "commit", "repository", "environment", "openapi-url", "adapter"):
         configure.add_argument(f"--{flag}")
     for flag in ("scope", "source-paths", "document-paths"):
         configure.add_argument(f"--{flag}", nargs="+")
@@ -269,6 +274,11 @@ def execute_handler(args: argparse.Namespace) -> int:
                 target_commit=args.commit,
                 scope=tuple(args.scope),
                 environment=args.environment,
+                repository=getattr(args, "repository", None),
+                source_paths=tuple(getattr(args, "source_paths", []) or []),
+                document_paths=tuple(getattr(args, "document_paths", []) or []),
+                openapi_url=getattr(args, "openapi_url", None),
+                adapter=getattr(args, "adapter", None),
             )
             print(store.create(task))
         elif args.task_action == "show":
@@ -287,6 +297,7 @@ def execute_handler(args: argparse.Namespace) -> int:
                 "source_paths",
                 "document_paths",
                 "openapi_url",
+                "adapter",
             )
             updates = {
                 mapping.get(k, k): getattr(args, k) for k in fields if getattr(args, k) is not None

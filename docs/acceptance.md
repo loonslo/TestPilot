@@ -813,3 +813,37 @@ UI 的“直接导入服务/完整清单”和“文档路径或 URL”文案已
 - uv build 成功生成 testpilot 0.1.0 sdist 与 wheel。
 
 边界：未验证真实Apple规模、真实认证系统、真实Knife4j部署或新电脑全新安装；实际验证是当前环境安装同步、打包及合成服务。默认容量是可调整策略，不保证所有文档都在20 MB以内。不会浏览器交互登录，也不会向跨源服务转发入口凭据；多来源不同认证应分任务或使用统一网关。UI暂无这些配置表单。执行审批/环境约束保持，导入成功不代表完整业务测试已验收。未提交、推送、访问跨项目同步工具。
+
+## 2026-11-05：多项目交互、本地源码与接口文档双模式全链路支持
+
+**背景与问题：**
+用户反馈存在两大痛点：
+1. **代码仓库模式**：此前 Web 控制台“代码仓库模式”为静态只读示例表格，缺少本地 Git 仓库路径、目标 Commit 与源码目录的交互式配置字段，顶栏亦缺少自由新建项目的交互；CLI 的 `task create` 仅支持基础标识与提交，强制二次 `task configure`。
+2. **接口文档模式**：此前文档模式在 Web 控制台仅有一个写死示例文件路径的单一输入框，并在卡片上注明“服务 URL 导入请使用 CLI”，无法在界面中直接填入微服务的在线 OpenAPI/Swagger URL 或自由选择本地规格文件；创建任务弹窗未提供规格入口；且服务端在 UI 执行 Discover 时因未传 `materials_root` 导致内部抛出 `ValueError: document selection requires --materials-root` 导致解析崩溃；CLI `task create` 缺少 `--openapi-url`。
+
+**实现内容：**
+1. **Web 控制台（`dashboard.html` / `server.py`）：**
+   - **双模式表单全面交互化**：
+     - **接口文档模式（`form-doc`）**：新增单选切换“在线服务文档 URL (Spring Boot / FastAPI / Knife4j)”与“本地规格文件 (Local JSON / YAML)”，提供 `inputDocUrl`（服务规格抓取地址）、`inputDocPath`（本地文件相对路径）、`inputDocProject`（目标微服务名）、`inputDocCommit`（版本标识）与 `inputDocPrefix`（网关路由前缀）。
+     - **代码仓库模式（`form-code`）**：提供 `inputRepoPath`（本地只读 Git 仓库路径）、`inputRepoCommit`（40 位目标提交 SHA）、`inputSourcePaths`（源码相对路径列表）与 `selectAdapter`（AST 语法适配器）。
+   - **顶栏新建项目弹窗（`modalNewTask`）**：支持录入 Task ID、项目名称、分析模式（代码模式 / 文档模式）及文档 URL 或文件路径；点击确认后自动创建并切换。
+   - **自动配置持久化与反显**：点击“执行接口解析 (Discover)”时自动将当前模式的参数（URL 或本地文件或 Git 仓库）通过 `/api/tasks/<task_id>/configure` 携带 `X-TestPilot-Token` 持久化，切换任务时自动切换单选框并反显配置。
+   - **服务端接口发现容错**：`server.py` 的 `/api/tasks/create` 正式接收 `openapi_url` 与 `openapi_options`；`/api/tasks/<task_id>/discover` 传入 `materials_root=getattr(self.server, "materials_root", None) or Path.cwd()`，并在 `discovery.py` 中为 `materials_root is None` 提供 `Path.cwd()` 优雅回退，彻底解决 UI 解析文档抛错的缺陷。
+2. **CLI 任务管理（`tasks/cli.py`）：**
+   - `task create` 一步支持 `--repository`、`--source-paths`、`--document-paths`、`--openapi-url` 与 `--adapter`，单命令即可完成任意模式的任务注册与绑定。
+   - `task configure` 补充 `--adapter` 参数支持。
+3. **免命令行启动器（`start.bat`）：**
+   - 选项 `[3] Import OpenAPI / Swagger (URL or Local File)`：同时兼容在线 URL 与本地 JSON/YAML 规格文件；
+   - 选项 `[4] Scan Local Git Repository (Python / FastAPI)`：输入本地 Git 目录后自动通过 `git rev-parse HEAD` 识别最新提交并一键建任务与发现。
+
+**验证结果：**
+- 环境：Windows，Python 3.14.4，合成仓库与单测环境。
+- 新增单测：
+  - `tests/test_ui_server.py::test_ui_task_create_with_openapi_and_discover`（通过 UI HTTP API 创建文档任务并执行 discover 成功生成 inventory）。
+  - `tests/test_task_discovery.py` 中 `test_task_create_and_configure_cli_supports_repo_and_adapter` 增加 `--openapi-url` 断言通过。
+- 全量回归：`.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider --basetemp=runtime/test_suite_all2`：**510 passed in 78.45s**（全绿，较历史 508 项净增 2 项）。
+- 代码风格：`ruff check src tests` 全部通过；`ruff format --check src tests`（89 files 已格式化）；`git diff --check` 通过。
+
+**边界说明：**
+- 源码 AST 静态分析（`python-ast`）当前仅支持 Python（FastAPI / Starlette 路由提取）；Java / Spring Boot 或其他非 Python 服务统一通过 OpenAPI/Swagger 文档路线（文件或服务在线 URL 抓取）接入。
+- 未访问日常同步工具。

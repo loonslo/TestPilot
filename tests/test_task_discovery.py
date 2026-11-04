@@ -548,3 +548,74 @@ def test_explicit_openapi_adapter_parses_each_document_once(tmp_path):
     assert len(by_key["GET /v1/items"].sources) == 1
     assert inv.materials[0].path == "api.json"
     assert not any("openapi" in note and "duplicate" in note for note in inv.limitations)
+
+
+def test_task_create_and_configure_cli_supports_repo_and_adapter(tmp_path):
+    from api_test_agent.cli import main
+
+    store_root = tmp_path / "runtime" / "tasks"
+    rc = main(
+        [
+            "task",
+            "--root",
+            str(store_root),
+            "create",
+            "my-svc",
+            "--project",
+            "MyProject",
+            "--commit",
+            "b" * 40,
+            "--repository",
+            str(tmp_path / "repo"),
+            "--source-paths",
+            "src/",
+            "app/",
+            "--adapter",
+            "python-ast",
+        ]
+    )
+    assert rc == 0
+    store = TaskStore(store_root)
+    t = store.load("my-svc")
+    assert t.target_project == "MyProject"
+    assert t.target_commit == "b" * 40
+    assert t.repository == str(tmp_path / "repo")
+    assert t.source_paths == ("src/", "app/")
+    assert t.adapter == "python-ast"
+
+    rc2 = main(
+        [
+            "task",
+            "--root",
+            str(store_root),
+            "configure",
+            "my-svc",
+            "--adapter",
+            "openapi",
+        ]
+    )
+    assert rc2 == 0
+    t2 = store.load("my-svc")
+    assert t2.adapter == "openapi"
+
+    rc3 = main(
+        [
+            "task",
+            "--root",
+            str(store_root),
+            "create",
+            "my-doc-svc",
+            "--project",
+            "MyDocProject",
+            "--commit",
+            "0" * 40,
+            "--openapi-url",
+            "http://127.0.0.1:8080/v2/api-docs",
+            "--adapter",
+            "openapi",
+        ]
+    )
+    assert rc3 == 0
+    t3 = store.load("my-doc-svc")
+    assert t3.openapi_url == "http://127.0.0.1:8080/v2/api-docs"
+    assert t3.adapter == "openapi"

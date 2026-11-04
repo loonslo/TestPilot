@@ -1,10 +1,10 @@
 ---
 project_id: TestPilot
-updated: 2026-11-04
+updated: 2026-11-05
 status: active
-overview: "TestPilot（测试领航员）；统一任务流、接口发现、人工审核、HTTP执行与F8回归桥接。桥接的状态边界、结构化结果分类、凭据转发、显式runner分派与路径问题已修复并通过真实子进程验证；非HTTP执行器与Java/TS源码兜底仍是能力边界。"
-progress: "历史记录：URL导入后全量476项通过，真实Apple/模型质量未验收。2026-11-04审查确认桥接7项缺陷、runner字符串嗅探、绝对--root与私有_folder调用。本次修复：case级执行回到ready、completed可重放、classify_accounting+--accounting-json结构化分类、零执行不再返回成功、凭据按credential_env白名单转发、显式runner元数据分派、--root占位符+配置task_root、case-id校验前移、TaskStore.folder公开化，并修掉被模拟测试掩盖的`-m api_test_agent.cli`空跑缺陷。全量496项通过（较476净增20项），新增4项真实子进程+合成HTTP服务桥接测试与16项定向测试；Ruff与git diff --check通过。未连接真实被测服务、未调用模型；F7真实项目逐项验收、③④执行器与源码兜底仍未验收。 2026-11-04文档接入改进：可配置大文档、环境变量认证、受控重定向/远程引用、聚合目录与一步导入；内置无账号示例跑通，全量508项、Ruff及打包通过。真实Apple服务与新电脑全新安装未验收。"
-next: "使用实际测试环境文档与本机认证变量验证Apple大规格/聚合目录及接口对账；F7真实模型质量、非HTTP执行器与Java/TS源码兜底仍待做。"
+overview: "TestPilot（测试领航员）；统一任务流、接口发现、人工审核、HTTP执行与F8回归桥接。支持多项目管理、代码仓库本地Git与接口文档（在线URL/本地文件）双模式交互配置与自动对账；非HTTP执行器与Java/TS源码兜底仍是能力边界。"
+progress: "历史记录：桥接缺陷修复后全量496项通过，文档接入改进后508项通过。2026-11-05多项目双模式交互支持：Web端新增交互式本地Git仓库路径/Commit/源码目录/适配器表单，接口文档模式新增在线服务URL/本地规格文件切换与参数反显，顶栏支持+新建项目模态框并自动同步保存配置与Token；修复UI触发文档发现时materials_root缺失崩溃；CLI task create一步支持--repository/--source-paths/--document-paths/--openapi-url/--adapter；start.bat选项3/4支持URL/本地文件/本地Git项目一键扫描。全量510项通过（净增2项），Ruff check/format全通。真实Apple服务与非HTTP执行器仍未验收。"
+next: "使用实际测试环境文档或本地FastAPI仓库进行多微服务端到端验证；F7真实模型质量、非HTTP执行器与Java/TS源码兜底仍待做。"
 evidence:
   - docs/openapi-import.md
   - docs/task-assets.md
@@ -117,3 +117,6 @@ evidence:
 2026-11-04 本次仅审查，发现缺陷与验证边界见 TASKS.md、docs/acceptance.md；历史全量结果未重测，未使用日常同步工具。
 
 2026-11-04 F8 桥接缺陷修复：上一节“仅审查”的 7 项缺陷与 ② 显式 runner 分派、绝对 `--root`、私有 `store._folder` 已修复并复测，逐项机制、测试与边界见 docs/acceptance.md 同日“F8 桥接缺陷修复”节。要点：`--case-id` 运行结束回到 `ready`、只有全量运行才 `completed`（`completed` 也可重放）；新增 `classify_accounting` 与 `task execute --accounting-json`，回归侧只按结构化结果判定，`--max-cases 0` 不再算通过，`testpilot run` 未执行完返回 1；凭据按 `task_binding.credential_env` 名单转发给 task 子进程且值不落盘；runner 分派改为显式元数据；入口改为 `--root {task_root}` 加配置 `task_root`；无效 case-id 与版本探针都在状态迁移前校验；`TaskStore.folder` 取代 `_folder`（78 处）。另修掉一个被模拟子进程掩盖的缺陷：`python -m api_test_agent.cli` 无 `__main__` 守卫、只导入不执行却返回 0。全量 496 项通过（较 476 净增 20 项），新增 4 项真实子进程 + 合成 HTTP 服务桥接测试；Ruff 与 `git diff --check` 通过。③ JUnit/Jest 等非 HTTP 执行器与 ④ Java/TS 源码兜底仍未实现，F7 真实项目逐项验收与真实模型质量仍未验收；未连接真实被测服务、未调用模型、未提交或推送。本轮摘要在本项目自检：frontmatter 字段无重复、`updated`/`status` 合规，13 条 evidence 均为项目内现存非运行目录相对路径；未通过项为零，未使用跨项目同步工具。
+
+2026-11-05 多项目交互、本地源码与接口文档双模式全链路支持：
+补齐 Web 控制台“代码仓库模式”与“接口文档模式”的双模式动态配置表单，支持自由输入本地 Git 仓库路径、在线微服务 OpenAPI/Swagger URL 或本地 JSON/YAML 文件，并支持通过顶栏直接新建项目；修复 Web UI 执行发现接口时因 materials_root 缺失导致的内部崩溃；CLI 扩展 `task create` 选项以一步注册仓库与文档参数；`start.bat` 全面支持在线 URL、本地规格文件与本地 Git 仓库扫描。全量 510 项单测与 Ruff 校验通过，详细实测见 acceptance.md。AST 静态分析仅支持 Python，非 Python 项目统一走 OpenAPI 规格路线。

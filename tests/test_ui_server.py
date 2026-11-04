@@ -232,3 +232,25 @@ def test_ui_cli_parser_registered() -> None:
     parsed = ui_parser.parse_args(["--port", "9090", "--no-open"])
     assert parsed.port == 9090
     assert parsed.no_open is True
+
+
+def test_ui_task_create_with_openapi_and_discover(test_server: tuple[str, TaskStore]) -> None:
+    base_url, store = test_server
+    create_payload = {
+        "task_id": "doc-task-01",
+        "target_project": "DocProject",
+        "target_commit": "0000000000000000000000000000000000000000",
+        "adapter": "openapi",
+        "document_paths": ["examples/tasks/openapi-demo.json"],
+        "scope": ["*"],
+    }
+    status, created = _request_json(
+        f"{base_url}/api/tasks/create", method="POST", payload=create_payload
+    )
+    assert status == 201
+    assert created["task_id"] == "doc-task-01"
+
+    status, inv = _request_json(f"{base_url}/api/tasks/doc-task-01/discover", method="POST")
+    assert status == 200
+    assert "operations" in inv
+    assert len(inv["operations"]) > 0
