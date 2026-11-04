@@ -1,10 +1,11 @@
-"""Tests for TestPilot Web Console UI Server and API endpoints."""
+"""Tests for TestPilot Web Console UI Server, security guards, and API endpoints."""
 
 from __future__ import annotations
 
 import json
 import threading
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Generator
 from pathlib import Path
@@ -38,11 +39,26 @@ def test_server(tmp_path: Path) -> Generator[tuple[str, TaskStore]]:
 
 
 def _request_json(
-    url: str, method: str = "GET", payload: dict[str, Any] | None = None
+    url: str,
+    method: str = "GET",
+    payload: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
 ) -> tuple[int, dict[str, Any]]:
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
-    headers = {"Content-Type": "application/json"} if payload is not None else {}
-    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    req_headers = {"Content-Type": "application/json"} if payload is not None else {}
+    if headers:
+        req_headers.update(headers)
+    if method == "POST" and "X-TestPilot-Token" not in req_headers:
+        # Fetch token from endpoint
+        parsed = urllib.parse.urlsplit(url)
+        token_url = f"{parsed.scheme}://{parsed.netloc}/api/auth/token"
+        try:
+            with urllib.request.urlopen(token_url) as resp:
+                t_data = json.loads(resp.read().decode("utf-8"))
+                req_headers["X-TestPilot-Token"] = t_data.get("token", "")
+        except Exception:
+            pass
+    req = urllib.request.Request(url, data=data, headers=req_headers, method=method)
     try:
         with urllib.request.urlopen(req) as resp:
             body = resp.read().decode("utf-8")
@@ -63,6 +79,7 @@ def test_ui_serves_static_dashboard(test_server: tuple[str, TaskStore]) -> None:
         content = resp.read().decode("utf-8")
         assert "<title>TestPilot" in content
         assert "Sources 追溯面板" in content
+        assert "testpilot-token" in content
 
 
 def test_ui_api_adapters(test_server: tuple[str, TaskStore]) -> None:
@@ -154,6 +171,55 @@ def test_ui_model_ping(test_server: tuple[str, TaskStore]) -> None:
     assert res["ok"] is True
     assert res["latency_ms"] >= 0
     assert res["key_configured"] is False
+
+
+def test_ui_post_without_token_rejected_403(test_server: tuple[str, TaskStore]) -> None:
+    base_url, _ = test_server
+    # Explicitly pass empty token
+    status, res = _request_json(
+        f"{base_url}/api/tasks/create",
+        method="POST",
+        payload={"task_id": "bad-task"},
+        headers={"X-TestPilot-Token": "invalid_wrong_token"},
+    )
+    assert status == 403
+    assert "Forbidden" in res.get("error", "")
+
+
+def test_ui_post_untrusted_origin_rejected_403(test_server: tuple[str, TaskStore]) -> None:
+    base_url, _ = test_server
+    status, res = _request_json(
+        f"{base_url}/api/tasks/create",
+        method="POST",
+        payload={"task_id": "evil-task"},
+        headers={"Origin": "http://evil.com"},
+    )
+    assert status == 403
+    assert "untrusted Origin" in res.get("error", "")
+
+
+def test_ui_post_cross_port_origin_rejected_403(test_server: tuple[str, TaskStore]) -> None:
+    base_url, _ = test_server
+    status, res = _request_json(
+        f"{base_url}/api/tasks/create",
+        method="POST",
+        payload={"task_id": "port-task"},
+        headers={"Origin": "http://127.0.0.1:9999"},
+    )
+    assert status == 403
+    assert "cross-port Origin" in res.get("error", "")
+
+
+def test_ui_post_cross_site_sec_fetch_site_rejected_403(test_server: tuple[str, TaskStore]) -> None:
+    base_url, _ = test_server
+    status, res = _request_json(
+        f"{base_url}/api/tasks/create",
+        method="POST",
+        payload={"task_id": "sec-task"},
+        headers={"Sec-Fetch-Site": "cross-site"},
+    )
+    assert status == 403
+    assert "cross-site request blocked" in res.get("error", "")
 
 
 def test_ui_cli_parser_registered() -> None:

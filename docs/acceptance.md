@@ -597,3 +597,136 @@ F4/F5/F6 按机制验收口径通过。真实模型与真实目标项目从零�
 **实测结果：**
 - 全量测试：`uv run python -m pytest -q -p no:cacheprovider --basetemp=runtime/test_clean_ui`：**433 passed in 40.54s**（较此前 417 项净增 16 项）。
 - 代码风格：`uv run ruff check .` 与 `uv run ruff format --check .` 全部通过（105 files already formatted）。
+
+
+## 2026-11-04：落实五步优先顺序改进、执行前守卫修补、真实小闭环与 F8 资产桥接
+
+**目标：** 根据“下一步的优先顺序”建议，统一以 `testpilot task` 作为主流程入口，消除术语混淆；建立多仓库、多执行器与 UI 操作的三级能力边界矩阵；修补环境身份、未知执行类型、付费预算与 UI 访问四道执行前守卫；在回环 HTTP 真实服务上从空用例集开始完成端到端真实小闭环验证；实现 F8 回归资产桥接（`export-regression` 与 `task_binding`），使已批准用例真正被回归流程复用。
+
+**环境：** Windows 10 Pro；Python 3.14.4；全新测试临时目录（禁用缓存）。
+
+**改动与实现：**
+1. **主流程与术语统一（建议 1）**：
+   - 确立 `testpilot task` 为主入口，在 `docs/architecture.md` 与 `README.md` 中完整阐述 8 阶段标准生命周期表（Init, Discover, Design, Review, Approve, Execute, Report, Bridge），详细记录每阶段的输入、输出、负责人 (Role)、拒绝条件 (Rejection Conditions) 与恢复方式 (Recovery Mechanisms)。
+2. **能力边界三级对照表（建议 2）**：
+   - 在 `docs/architecture.md` 建立“字段支持 / 机制支持 / 真实验收”三级矩阵：
+     - 单项目/单仓库：已完成机制与端到端小闭环真实验收；
+     - 多仓库联动 (Multi-Repo)：数据模型与配置机制已就绪，跨仓库依赖与多服务编排未做真实验收；
+     - 多执行器 (Multi-Runner)：`RUNNER_REGISTRY` 具备注册与派发机制，除单进程 pytest 与结构化 HTTP 外未做真实验收；
+     - UI 操作 (Web Console)：具备只读资产透视与状态探活机制，无 UI 自动化执行能力，未做 UI 自动化真实验收，POST /execute 接口已被执行前守卫硬性封禁。
+3. **修补执行前安全守卫（建议 3）**：
+   - **环境身份守卫**：`src/api_test_agent/tasks/approval.py` 中的 `ExecutionConfig.environment` 校验器严禁出现 `prod`/`production`/`online` 等生产关键字；`src/api_test_agent/tasks/execution.py` 在发包前核对 `exec_config.environment` 与 `task.environment` 一致，杜绝发包到生产环境或环境混淆；
+   - **未知执行类型守卫**：`src/api_test_agent/tasks/execution.py` 检查 `case.execution_kind in {"http", "structured-http-v1"}`，遇到不支持的外部执行类型时，直接拦截置为 `blocked` 并创建 `environment_issue`，拒绝伪造 HTTP 发包；
+   - **商业模型预算守卫**：`src/api_test_agent/tasks/design_model.py` 在调用商业模型前检查 `max_cost_usd` 且上限必须 <= 0.15 USD（<= 1 元人民币）；`src/api_test_agent/regression/cli.py` 的 `plan` 命令若未指定 `--stub` 或 `--no-ai`，必须显式传递 `--allow-paid`（或环境变量 `TESTPILOT_ALLOW_PAID_MODEL=1`），否则在发起调用前退出；
+   - **UI 访问边界守卫**：`src/api_test_agent/ui/server.py` 移除通配符 CORS，仅信任回环同源；新增 `validate_task_id(task_id)` 防路径穿越；POST `/api/tasks/{task_id}/execute` 返回 403 Forbidden，禁止网页直接触发真实测试执行；
+   - 新增测试 `tests/test_pre_guards.py`，覆盖 4 类守卫共 6 项专项测试。
+4. **真实小闭环验证（建议 4）**：
+   - 新增 `tests/test_closed_loop.py`，启动本地运行在 `127.0.0.1` 上的真实轻量账户服务（包含 `POST /api/v1/accounts` 与 `GET /api/v1/accounts/{account_id}`）；
+   - 从空用例集开始，经 OpenAPI 发现提取、含参数理由用例设计、导出 Markdown 审核材料、人工冻结批准、真实 HTTP 发包与跨步骤参数引用断言校验、宿主敏感凭据自动脱敏，到最终 Markdown 与 JSON 守恒报告导出与覆盖率核算；
+   - 逐条核对规则、响应体、断言判定与报告对账。
+5. **资产维护与回归接入（建议 5 / F8 机制验收）**：
+   - 新增 `src/api_test_agent/tasks/bridge.py`：实现 `export_approved_to_regression_catalog` 函数；
+   - `src/api_test_agent/tasks/cli.py` 新增子命令 `testpilot task export-regression <task_id> [--catalog PATH] [--approval APPROVAL_ID]`；
+   - `src/api_test_agent/regression/models.py` 中的 `TestCase` 模型扩展 `task_binding: dict[str, Any] | None` 字段，使回归模块 `load_catalog` 能够完整解析统一任务导出的用例；
+   - 新增测试 `tests/test_bridge.py`，验证从已批准任务导出用例至 `cases.yaml` 并由回归 `load_catalog` 成功加载与核对。
+
+**实测结果：**
+- 全量测试：`uv run python -m pytest -q -p no:cacheprovider --basetemp=runtime/test_clean_guards_loop`：**441 passed in 40.85s**（较此前 433 项净增 8 项，含 6 项守卫测试、1 项真实小闭环测试与 1 项回归桥接测试）。
+- 代码风格：`uv run python -m ruff check .` 与 `uv run python -m ruff format --check .` 全部通过。
+## 2026-11-04：审查缺陷修补验收——F8 回归桥接执行接通、调用前最坏情况预算预留、UI 服务端授权与版本探针
+
+**目标：** 针对审查报告指出的 5 项缺口（P1 回归桥接未接通执行、P1 预算检查仅查配置值、P1 UI 缺少服务端授权与 CSRF 拦截、P2 环境守卫缺少运行版本探针校验、P2 表述收窄为合成服务集成测试）进行深入完善与机制验收。
+
+**环境：** Windows 10 Pro；Python 3.14.4；uv 0.12.10；pytest 9.1.1；全新测试临时目录（禁用缓存）。
+
+**改动与实现：**
+1. **P1 F8 回归桥接执行链路与目录保护**：
+   - `src/api_test_agent/tasks/bridge.py`：导出 entry 改为离散 token 命令参数列表（`["testpilot", "task", "execute", ...]`），并自动追加 `--case-id <case_id>` 限制单用例执行粒度（避免单用例条目重复执行整个任务用例集）；当 store 根目录非默认时自动传递 `--root`；读取已有 `cases.yaml` 解析失败或格式非法时抛出 `ValueError`，杜绝覆盖损坏已有资产；
+   - `src/api_test_agent/tasks/execution.py` 与 `src/api_test_agent/tasks/cli.py`：`execute_task` 与 CLI `execute` 新增 `--case-id` 参数，支持过滤限定单用例执行，并在执行完成时标准输出 `{passed} passed, {failed} failed`，返回非零退出码；
+   - `src/api_test_agent/regression/runner.py`：新增 `task_command` 并在 `RUNNER_REGISTRY["task"]` 注册；`run_plan` 自动识别 `task_binding` 或 `task execute` 用例并派发执行；`classify` 准确解析统一任务执行器的输出与退出码；
+   - `tests/test_bridge.py`：补充导出单用例参数、损坏 YAML 拒绝覆盖保护、通过 `run_plan` 执行被导出的统一任务用例 3 项测试。
+2. **P1 商业付费模型最坏情况费用预留**：
+   - `src/api_test_agent/settings.py`：`BudgetSettings` 扩展 Token 单价配置（`cost_per_million_input_tokens` 与 `cost_per_million_output_tokens`，以及 `is_free` 显式标识）；
+   - `src/api_test_agent/tasks/design_model.py`：内置基准商业模型价格表；在发起网络发包前，根据输入字符估算 prompt token 上界与模型最大输出 token 计算 `worst_case_cost`；若 `worst_case_cost > max_cost_usd` 直接在发包前抛出异常拦截；对定价未知的外部商业模型，若未显式配置输入/输出单价，直接拒绝调用；响应后若供应商未返回费用，按实际 token 与单价自动对账。
+3. **P1 UI 服务端 Origin 强校验与会话凭据授权**：
+   - `src/api_test_agent/ui/server.py`：服务端启动时由 `make_server` 生成高熵随机会话令牌 `auth_token`，挂载 GET `/api/auth/token` 并在页面加载时注入 `<meta>` 与 `window.TESTPILOT_TOKEN`；
+   - 服务端校验 Host 为回环地址，Origin 端口严格匹配服务端端口，阻断 `Sec-Fetch-Site: cross-site` 恶意跨站发包；所有修改类 POST 请求强制核验 `X-TestPilot-Token` 请求头，缺失或不符直接返回 403 Forbidden；
+   - `tests/test_ui_server.py`：扩充至 10 项测试（覆盖跨端口拦截、跨站 Origin 拦截、无 Token 拦截、Sec-Fetch-Site 拦截及正常生命周期操作）。
+4. **P2 运行环境版本探针核验**：
+   - `src/api_test_agent/tasks/approval.py`：`ExecutionConfig` 扩展 `version_endpoint` 与 `require_version_verification`；
+   - `src/api_test_agent/tasks/execution.py`：执行前向探针端点发起 HTTP 请求获取运行服务的实际提交哈希，核对是否与 `target_commit` 一致；若不符且配置了 `require_version_verification=True` 直接抛出 `ValueError`；执行产物独立记录 `declared_commit`、`actual_commit` 与 `version_verified`；
+   - `src/api_test_agent/tasks/report.py`：报告第 2 节呈现声明版本与实测运行版本，未核验时显式渲染 GitHub-style Alert 警告横幅；
+   - `tests/test_pre_guards.py`：扩充至 9 项测试。
+5. **P2 表述收窄为合成服务集成测试**：
+   - 在 `README.md`、`docs/architecture.md` 与 `docs/task-assets.md` 中，将此前“单项目/单仓库真实验收”表述收窄为“合成服务端到端小闭环验证（Synthetic Service Integration Verification）”，在文档中明确注明：验证了资料提取、导入设计、审核机制、探针预检、HTTP 执行与报告对账的机制链路，未经验收真实模型生成质量、未验证复杂生产业务、未验证真人实际审核效果。
+
+**实测结果：**
+- 全量测试：`uv run python -m pytest -q -p no:cacheprovider --basetemp="D:\workspace\TestPilot\runtime\temp_all_p1"`：**450 passed in 54.33s**（较此前 441 项净增 9 项专项测试，包括 3 项 bridge 测试、9 项 pre_guards 测试、10 项 ui_server 测试与 1 项 closed_loop 测试）。
+- 代码风格：`uv run python -m ruff check .` 与 `uv run python -m ruff format --check .` 全部通过（109 files already formatted）。
+
+**边界与未验证项：**
+- 真实外部商业大模型（如真实 DeepSeek API、OpenAI API）的端到端网络用例生成效果与用例质量（属于 F7，待在具备真实 Key 和网络环境的机器上实测）；
+- 复杂微服务架构下多仓库联合编排与版本一致性检查（当前多仓库处于字段与机制就绪状态）；
+- 外部复杂 Runner（如 Newman、Playwright runner）的对接执行（当前仅验收单进程 pytest 与统一任务 loopback HTTP 发包）；
+- 浏览器端 UI 自动化执行能力（Web 控制台当前仅作为任务配置与资产透视工具，无自动化点击驱动能力）。
+
+## 2026-11-04：接口发现合并伪冲突修复（评审第 6 项）
+
+**目标：** 修复接口采集评审表中标记为应优先实现的第 6 项问题——合并逻辑把完全相同的多次声明误判为冲突（6a）；显式指定 openapi 适配器时同一文档被适配器解析一次、又由通用文档循环再解析一次而造成的重复声明与假冲突（6b）。
+
+**环境：** Windows 10 Pro；Python 3.14；uv 0.12.10；全新测试临时目录（禁用缓存）。未调用模型，未访问被测接口。
+
+**改动与实现：**
+1. **相同声明不再误判为冲突（6a）**：`src/api_test_agent/tasks/discovery.py` 合并段将无条件 `len(rows) > 1` 判冲突，改为先统计声明签名集 `signatures`：仅当同一 `method path` 存在多个**不同签名**声明时才置 `conflict`（reason 记录不同签名数量）；完全相同（相同签名）的重复声明保留底层状态，并在 reason 追加一致声明数量。文档描述不同（签名不同）的声明仍判冲突，等价保持既有 `test_document_conflict_scope_and_unsupported_kept` 预期；仅去掉“完全相同却报冲突”的伪阳性。
+2. **显式 openapi 适配器不再双重解析（6b）**：通用文档循环中，对后缀落在所选适配器 `supported_extensions` 内的文档提前跳过，避免被判过一次的对象又被通用 `openapi()` 解析；无匹配适配器时仍由通用路径处理 `{".yaml",".yml",".json"}`。净效果是 `adapter="openapi"`（或别名 swagger）时该 adapter 是唯一解析器。
+3. **has_code_routes/has_document_routes 改按行 kind 判定**：此前 `has_code_routes = bool(code_rows)`，当所选 adapter 是 openapi 文档适配器时，其产出的 requirement 行会被误当作已存在代码路由，触发 `only_in_document` 降级；现改为按行 `details.kind`（implementation/requirement）判定路由来源，openapi 文档适配器单独解析时操作保持确认而不被降级为 unresolved。
+
+**新增测试**（`tests/test_task_discovery.py`）：
+- `test_identical_duplicate_declarations_are_not_a_conflict`：两个内容完全相同的文档声明不判冲突（状态保持 confirmed、双声明保留、reason 含一致声明说明），同时核对不同描述的两份文档仍判冲突。
+- `test_explicit_openapi_adapter_parses_each_document_once`：显式 `adapter="openapi"` 配单份 `.json` 文档时只产生单一声明与单一 source，状态 confirmed，不出现重复/假冲突。
+
+**实测结果：**
+- 定向：`uv run python -m pytest tests/test_task_discovery.py -q -p no:cacheprovider --basetemp=runtime/test_discovery_issue6`：**14 passed**（原 12 项 + 新增 2 项逻辑相关，含合并/作用域/冲突判定全部保留）。
+- 全量：`uv run python -m pytest -q -p no:cacheprovider --basetemp=runtime/test_all_issue6`：**452 passed in 54.67s**（较此前 450 项净增 2 项）。
+- 代码风格：`uv run python -m ruff check .` 与 `uv run python -m ruff format --check .` 全部通过。
+
+**边界与未验证项：**
+- 此项修复的是发现/合并机制的正确性，不新增或证明运行系统全集采集能力；真实项目逐项接口对账仍属 F7。
+- 未复测真实模型质量、真实被测服务接口、跨平台或断电恢复；本次未调用模型。
+
+## 2026-11-04：审查缺口修补验收——OpenAPI 解析、版本关联与请求模型展开（评审第 4/5/7 项）
+
+**目标：** 修复接口采集评审表中应修复的第 5、7 项与在做的第 4 项实现问题——OpenAPI 仅解析文档内 `$ref` 且只用顶层服务器、正文请求模型未展开、文档与源码版本不对应，导致声明/字段/认证信息不完整。
+
+**环境：** Windows 10 Pro；Python 3.14；uv 0.12.10；全新测试临时目录（禁用缓存）。未调用模型，未访问被测接口。
+
+**改动与实现：**
+1. **OpenAPI 引用、服务器与参数覆盖（第 5 项）**：`src/api_test_agent/adapters/openapi.py` 的本地引用解析由仅限 `#/` 扩展为 `_walk_external_refs` 收集非 `#` 引用并赋含对象路径的引用 id，解析后递归合并；服务器地址在 root/path/operation 三级取首个非空 url（`shortcut` 三元）回退到 `basePath`；路径级参数与操作级参数经 `_merge_parameters` 两遍法按 `(in, name)` 同名单覆盖。未解析的外部引用保持 `unresolved` 并产出告警，不伪报 `confirmed`。
+2. **文档与源码版本关联（第 7 项）**：`src/api_test_agent/tasks/discovery.py` 对提交路径源码盖固定提交，对外部文档本地文件（`document_paths`）盖 `unverified-document` 占位版本；`Inventory.all_materials_version_verified` 仅在既有版本校验通过且无外部文档时为真，`version_verified=False` 时产出 `MIXED_VERSION_WARNING`，避免旧文档对新源码伪报已验证。`src/api_test_agent/tasks/models.py` 的 `SourceRef.version` 保持 `min_length=1`。
+3. **请求模型展开（第 4 项，源码侧）**：`src/api_test_agent/adapters/python_ast.py` 收集快照集内 `BaseModel`/`Model` 子类，路由参数注解若解析到集内类则展开为 `request_body` 条目（字段名/类型/必需项/字面量默认值；`_default_expr` 对动态默认仅记录不评估）。集外不可静态见到的模型保持不展开，不伪报字段。认证如实标注 `unresolved: dependency semantics not evaluated`，不对依赖注入语义作伪宣称。
+
+**新增测试：**
+- `tests/test_adapters.py`：`test_python_ast_adapter_expands_in_set_pydantic_request_model`（快照集内 JobRequest 展开为 request_body，字段名/必需/默认值核对，且 `kind`/`model` 正确）；`test_python_ast_adapter_does_not_expand_out_of_set_model`（仅引用未定义的 `schemas.JobRequest` 时 request_body 为空）。历史项 5 的交叉文件引用/服务器覆盖/参数同名单覆盖测试保留。
+- `tests/test_task_discovery.py`：项 7 的混合版本测试保留（外部文档 `version == "unverified-document"`、`version_verified=False`）。
+
+**实测结果：**
+- 定向：`uv run python -m pytest tests/test_adapters.py tests/test_task_discovery.py::test_cross_module_aliases_nested_mounts_and_repeated_router -q -p no:cacheprovider --basetemp=runtime/test_accept_457`：**18 passed**（含项 4 的两项新增）。
+- 全量：`uv run python -m pytest -q -p no:cacheprovider --basetemp=runtime/test_all_457`：**458 passed in 54.76s**（较第 6 项后的 452 项净增 6 项）。
+- 代码风格：`uv run python -m ruff check src tests` 与 `uv run python -m ruff format --check src tests` 全部通过（86 files already formatted），`python_ast.py` 中的 `_default_expr` 用 `except Exception` 规避 ruff formatter 对多异常元组的改写问题。
+
+**边界与未验证项：**
+- 请求模型展开仅覆盖快照集内静态可见的 Pydantic 类；集外/动态注册模型不展开，认证语义未解析，均如实标注而非伪报。此项为机制修复，不构成运行系统全集采集能力证明。
+- 未复测真实模型质量、真实被测服务接口、跨平台或断电恢复；本次未调用模型。真实项目逐项接口对账仍属 F7。
+
+
+## 2026-11-04：接口采集第 4/5/6/7 项续审与补齐
+
+续审确认：此前第 5 项的 `_walk_external_refs` 仅收集外部引用告警，不能证明跨文件解析；服务器前缀存在操作/路径间串用、空前缀无法覆盖的问题。此前 `all_materials_version_verified` 只是局部变量，不是 Inventory 字段。前述“已完成跨文件解析/已新增字段”的记录由本节更正，历史 458 项通过不证明这些遗漏场景已覆盖。
+
+本次补齐：OpenAPI 引用只从用户已选且有 SourceRef 的快照中按相对路径递归解析，保留引用文件来源；不访问网络或补读磁盘。缺失、远程、循环和深度超限引用保持 unresolved。服务器按 operation > path > root 独立选择，支持空前缀和空服务器列表覆盖，避免跨操作/路径泄漏。参数按 (in,name) 覆盖，无名称或未解析引用参数不相互吞并。默认发现路径与显式 openapi 适配器都接入快照解析，显式适配器保持单次解析。
+
+Inventory 现显式保存 all_materials_version_verified；外部文档使用 unverified-document，包括与提交文件同路径的外部输入；只读提交快照且无外部文档时为真。第 4 项保留现有静态模型字段展开；只证明简单直接类参数和字段，不保证完整 Pydantic 继承、Field/Annotated、嵌套模型、动态默认或 DI 认证语义。认证仍为 unresolved。第 1/2/3/8 项能力边界不变。
+
+验证（Windows，项目 .venv Python 3.14，2026-11-04）：uv 启动器报 `uv trampoline failed to canonicalize script path`，未改环境，使用 `.venv/Scripts/python.exe -m pytest`。全量命令加 `-q -p no:cacheprovider --basetemp=runtime/review-discovery-20261104-a3`：462 passed in 51.57s。随后参数合并保护最终状态定向复测：同样选项，basetemp 为 runtime/review-discovery-20261104-a4，测试 tests/test_adapters.py 与 tests/test_task_discovery.py：34 passed in 1.38s。Ruff check/format --check src tests 通过（86 files）；git diff --check 通过。新增测试覆盖跨文件递归与循环/来源、服务器独立覆盖/空前缀，以及两条发现入口的跨文件集成与版本字段。
+
+未调用模型或真实被测接口，未读取被测仓库、提交或推送；真实项目全集和真实模型质量仍未验收。未使用跨项目同步工具。

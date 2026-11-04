@@ -252,6 +252,21 @@ def generate_report(
                 limitations.append(f"{op.method} {op.path}: {op.status} - {op.reason}")
 
     report_id = uuid4().hex
+    exec_summary_file = (
+        (store._folder(task_id) / "executions" / execution_id / "execution.json")
+        if execution_id
+        else None
+    )
+    actual_commit = None
+    is_version_verified = False
+    if exec_summary_file and exec_summary_file.is_file():
+        try:
+            exec_summary_data = json.loads(exec_summary_file.read_text("utf-8"))
+            is_version_verified = bool(exec_summary_data.get("version_verified", False))
+            actual_commit = exec_summary_data.get("actual_commit")
+        except Exception:
+            pass
+
     report_model = Report(
         report_id=report_id,
         task_id=task_id,
@@ -261,7 +276,9 @@ def generate_report(
         target_commit=task.target_commit,
         repository=task.repository,
         environment=task.environment,
-        version_verified=False,
+        declared_commit=task.target_commit,
+        actual_commit=actual_commit,
+        version_verified=is_version_verified,
         approval_id=active_approval_id,
         execution_id=execution_id,
         accounting=accounting,
@@ -281,11 +298,23 @@ def generate_report(
         f"- **生成时间**：{report_model.generated_at.strftime('%Y-%m-%d %H:%M:%S UTC')}",
         f"- **任务状态**：`{task.status}`",
         f"- **目标项目**：`{task.target_project or '未指定'}`",
-        f"- **目标提交**：`{task.target_commit or '未指定'}`",
-        f"- **测试环境**：`{task.environment or '未指定'}`（version_verified: false）",
+        f"- **声明目标提交**：`{task.target_commit or '未指定'}`",
+        f"- **实测运行版本**：`{actual_commit or '未核验'}`",
+        f"- **测试环境**：`{task.environment or '未指定'}`"
+        f"（version_verified: {str(is_version_verified).lower()}）",
         f"- **批准编号**：`{active_approval_id or '无'}`",
         f"- **执行编号**：`{execution_id or '无'}`",
         "",
+        *(
+            [
+                "> [!WARNING]",
+                "> 运行环境版本未经探针核验（version_verified=false），"
+                "> 无法证明目标端口运行的服务即为声明版本。",
+                "",
+            ]
+            if not is_version_verified
+            else []
+        ),
         "## 1. 执行与守恒对账（Conservation Accounting）",
         "",
         "> [!IMPORTANT]",

@@ -75,6 +75,7 @@ def test_snapshot_uses_commit_and_does_not_touch_worktree(tmp_path, repository):
     path = discover(store, "demo")
     inventory = Inventory.model_validate_json(path.read_text("utf-8"))
     assert inventory.version_verified
+    assert inventory.all_materials_version_verified
     assert "router = APIRouter" in inventory.snapshots["api.py"]
     assert set(inventory.snapshots) == {"api.py"}
     assert (
@@ -91,6 +92,71 @@ def test_snapshot_uses_commit_and_does_not_touch_worktree(tmp_path, repository):
     assert command(repo, "status", "--porcelain") == before
     with pytest.raises(ValueError):
         store.configure("demo", target_commit="a" * 40)
+
+
+def test_mixed_source_and_document_marks_version_unverified(tmp_path, repository):
+    repo, commit = repository
+    document(tmp_path, "api.json")
+    store = TaskStore(tmp_path / "tasks")
+    store.create(
+        Task(
+            task_id="mixed",
+            target_project="synthetic",
+            target_commit=commit,
+            scope=["*"],
+            repository=str(repo),
+            source_paths=["api.py"],
+            document_paths=["api.json"],
+        )
+    )
+    inv = Inventory.model_validate_json(discover(store, "mixed", tmp_path).read_text("utf-8"))
+    # The git source is bound to the commit, but the local document is not.
+    assert not inv.version_verified
+    assert not inv.all_materials_version_verified
+    assert any("Document/source version correspondence" in n for n in inv.limitations)
+    materials = {m.path: m for m in inv.materials}
+    assert materials["api.py"].version == commit
+    # The locally supplied document must not masquerade as commit-verified.
+    assert materials["api.json"].version != commit
+    assert materials["api.json"].version == "unverified-document"
+    # Both kinds still surface as operations.
+    assert {"GET /v1/items"} <= {op.key for op in inv.operations}
+
+
+@pytest.mark.parametrize("adapter", [None, "openapi"])
+def test_discovery_resolves_selected_cross_file_documents(tmp_path, adapter):
+    (tmp_path / "api.json").write_text(
+        json.dumps(
+            {
+                "openapi": "3.0.3",
+                "paths": {"/items": {"post": {"requestBody": {"$ref": "body.json#/body"}}}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "body.json").write_text(
+        json.dumps({"body": {"content": {"application/json": {"schema": {"type": "string"}}}}}),
+        encoding="utf-8",
+    )
+    store = TaskStore(tmp_path / "tasks")
+    store.create(
+        Task(
+            task_id="cross",
+            target_project="synthetic",
+            target_commit="a" * 40,
+            scope=["*"],
+            document_paths=["api.json", "body.json"],
+            adapter=adapter,
+        )
+    )
+    inv = Inventory.model_validate_json(discover(store, "cross", tmp_path).read_text("utf-8"))
+    assert not inv.all_materials_version_verified
+    assert len(inv.operations) == 1
+    operation = inv.operations[0]
+    assert operation.status == "confirmed"
+    assert len(operation.declarations) == 1
+    assert {s.path for s in operation.sources} == {"api.json", "body.json"}
+    assert {s.version for s in operation.sources} == {"unverified-document"}
 
 
 def test_document_conflict_scope_and_unsupported_kept(tmp_path):
@@ -420,3 +486,65 @@ def test_duplicate_document_keys_and_inventory_tampering_rejected(tmp_path):
     data["snapshots"]["api.json"] += "\n"
     with pytest.raises(ValueError, match="hash"):
         Inventory.model_validate(data)
+
+
+def test_identical_duplicate_declarations_are_not_a_conflict(tmp_path):
+    """Bug 6a: identical method+path declarations (same signature) stay non-conflict."""
+    document(tmp_path)
+    # Same content, declared twice from two independent files.
+    (tmp_path / "copy.json").write_text(
+        (tmp_path / "api.json").read_text("utf-8"), encoding="utf-8"
+    )
+    store = TaskStore(tmp_path / "tasks")
+    store.create(
+        Task(
+            task_id="demo",
+            target_project="synthetic",
+            target_commit="a" * 40,
+            scope=["GET *", "POST *"],
+            document_paths=["api.json", "copy.json"],
+        )
+    )
+    inv = Inventory.model_validate_json(discover(store, "demo", tmp_path).read_text("utf-8"))
+    by_key = {op.key: op for op in inv.operations}
+    # Both duplicates collapse into one operation entry that keeps the source status.
+    assert by_key["GET /v1/items"].status == "confirmed"
+    assert len(by_key["GET /v1/items"].declarations) == 2
+    assert "consistent declarations" in by_key["GET /v1/items"].reason
+    # Divergent docs still conflict (existing behavior preserved).
+    document(tmp_path, "other.json", "Changed description")
+    store.create(
+        Task(
+            task_id="div",
+            target_project="synthetic",
+            target_commit="a" * 40,
+            scope=["GET *"],
+            document_paths=["api.json", "other.json"],
+        )
+    )
+    div = Inventory.model_validate_json(discover(store, "div", tmp_path).read_text("utf-8"))
+    assert div.operations[0].status == "conflict"
+
+
+def test_explicit_openapi_adapter_parses_each_document_once(tmp_path):
+    """Bug 6b: an explicitly selected openapi adapter must not cause double parsing."""
+    document(tmp_path)
+    store = TaskStore(tmp_path / "tasks")
+    store.create(
+        Task(
+            task_id="demo",
+            target_project="synthetic",
+            target_commit="a" * 40,
+            scope=["GET *"],
+            document_paths=["api.json"],
+            adapter="openapi",
+        )
+    )
+    inv = Inventory.model_validate_json(discover(store, "demo", tmp_path).read_text("utf-8"))
+    by_key = {op.key: op for op in inv.operations}
+    assert by_key["GET /v1/items"].status == "confirmed"
+    # Exactly one declaration/source: the adapter-offered parse is not duplicated.
+    assert len(by_key["GET /v1/items"].declarations) == 1
+    assert len(by_key["GET /v1/items"].sources) == 1
+    assert inv.materials[0].path == "api.json"
+    assert not any("openapi" in note and "duplicate" in note for note in inv.limitations)

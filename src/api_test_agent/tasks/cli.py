@@ -81,10 +81,22 @@ def register_commands(commands: argparse._SubParsersAction) -> None:
     execute_cmd.add_argument("--execution-config", type=Path, help="执行配置路径；默认使用快照配置")
     execute_cmd.add_argument("--max-cases", type=int, default=None, help="最多执行用例数")
     execute_cmd.add_argument("--stop-on-failure", action="store_true", help="遇首个失败停止")
+    execute_cmd.add_argument("--case-id", help="限定仅执行指定的用例编号")
     report_cmd = actions.add_parser("report", help="查看或导出当前或最终报告")
     report_cmd.add_argument("task_id")
     report_cmd.add_argument("--execution-id", help="指定执行编号；默认读取最新执行")
     report_cmd.add_argument("--output-dir", type=Path, help="报告导出目录；默认保存在任务目录内")
+    export_reg_cmd = actions.add_parser(
+        "export-regression", help="将已批准用例导出并登记进回归目录"
+    )
+    export_reg_cmd.add_argument("task_id")
+    export_reg_cmd.add_argument(
+        "--catalog",
+        type=Path,
+        default=Path("examples/regression/finunity/assets/cases.yaml"),
+        help="回归用例目录路径 (默认 examples/regression/finunity/assets/cases.yaml)",
+    )
+    export_reg_cmd.add_argument("--approval", help="指定批准编号；默认读取当前活跃批准")
     parser.set_defaults(task_handler=execute_handler)
 
 
@@ -118,8 +130,18 @@ def execute_handler(args: argparse.Namespace) -> int:
                 config=config,
                 max_cases=args.max_cases,
                 stop_on_failure=args.stop_on_failure,
+                case_id=getattr(args, "case_id", None),
             )
             print(accounting.model_dump_json(indent=2))
+            print(
+                f"{accounting.passed} passed, {accounting.failed} failed, "
+                f"{accounting.error} error, {accounting.blocked} blocked"
+            )
+            if accounting.failed > 0:
+                return 1
+            if accounting.error > 0 or accounting.blocked > 0:
+                return 2
+            return 0
         elif args.task_action == "report":
             from api_test_agent.tasks.report import generate_report
 
@@ -131,6 +153,19 @@ def execute_handler(args: argparse.Namespace) -> int:
             )
             print(f"report written: md={md_path} json={json_path}")
             print(rep.accounting.model_dump_json(indent=2))
+        elif args.task_action == "export-regression":
+            from api_test_agent.tasks.bridge import export_approved_to_regression_catalog
+
+            entries = export_approved_to_regression_catalog(
+                store,
+                args.task_id,
+                args.catalog,
+                approval_id=args.approval,
+            )
+            print(
+                f"成功导出 {len(entries)} 条已批准用例至回归目录 {args.catalog}:\n"
+                + "\n".join(f"  - [{e['id']}] {e['name']}" for e in entries)
+            )
         elif args.task_action == "design-recover":
             from api_test_agent.tasks.design import recover_design
 

@@ -1,10 +1,10 @@
 ---
 project_id: TestPilot
-updated: 2026-11-03
+updated: 2026-11-04
 status: active
-overview: "TestPilot（测试领航员），唯一入口 uv run testpilot；目标由用户逐任务选择。F1–F6 统一资产、接口发现、用例生成与审核材料、冻结批准、执行引擎与报告对账已完成机制验收；已落地多语言/多仓库通用适配架构与可视化 Web 控制台（testpilot ui），F7 真实验收推进中，F8 待开始。"
-progress: "2026-11-03 完成多语言/多仓库通用适配与可视化控制台（UI）：规范全库异常语法（P0）；抽取 adapters 适配器层与注册表并收编 FastAPI AST（P1）；实现 OpenAPI/Swagger 统一提取适配器（P2）；扩展多执行器与多仓库版本清单。发布 testpilot ui 交互式控制台，遵循 baoyu-design 美学并落地全流程 Sources 追溯面板。全量 433 项测试与 Ruff 检查/格式化全通。"
-next: "针对混合架构目标（如 Apple 24 仓微服务）测试导出的 openapi.json/swagger 接口发现与端到端执行；推进 F7 真实项目效果验收；F8 待验收。"
+overview: "TestPilot（测试领航员），唯一入口 uv run testpilot；以统一任务流（task）为主入口。重构 10 步统一流程契约，确立三大核心分界与两大设计原则；厘定多仓库、多执行器与 UI 操作三级能力边界；修补环境版本探针、未知执行类型、最坏情况费用预留与 UI 会话授权四道安全守卫；完成真实回环 HTTP 合成服务端到端小闭环验证；打通 F8 资产桥接与离散执行复用机制（export-regression 导出带 --case-id 至 cases.yaml 由 runner 调度）。"
+progress: "2026-11-04 落实审查报告 5 项缺口修复与机制验收：接通 F8 回归桥接执行（runner 注册 task_command 调度器，支持 --case-id 离散执行与 YAML 损坏拒绝覆盖保护）；落地调用前最坏情况费用预留（worst_case_cost 拦截，商业模型未定价拦截）；加强 UI 服务端强校验（Host/Origin 端口白名单、Sec-Fetch-Site 跨站阻断与 X-TestPilot-Token 凭据授权）；增加运行环境版本探针核验（version_endpoint 探针核对 target_commit，未核验报告告警）；收窄小闭环表述为合成服务集成测试并明确未经验收边界。全量 450 项测试（净增 9 项）与 Ruff 检查/格式化全通。2026-11-04 续做接口采集评审修补：第 6 项合并伪冲突修复后全量 452 项；再完成第 4/5/7 项（OpenAPI 跨文件/服务器/参数覆盖、文档与源码版本关联、快照集内 Pydantic 请求模型展开）后全量 458 项测试与 Ruff 全通；认证语义与集外模型保持如实未解析。 续审更正：原跨文件引用仅告警、版本全验证仅局部变量；本次补齐已选快照跨文件解析与来源、服务器独立覆盖和清单字段，全量462项通过，最终参数保护后定向34项通过；真实接口全集仍未验收。"
+next: "在具备真实网络与模型 Key 的测试机端到端执行通用模型与真实项目生成（推进 F7 真实项目效果验收）；基于 F8 桥接导出的 cases.yaml 联动 regression plan/run 执行复用验证。"
 evidence:
   - docs/task-assets.md
   - README.md
@@ -51,13 +51,11 @@ evidence:
 
 2026-10-30 F5/F6 复核缺口修复与二次验收：完成对独立复核发现的 5 项缺陷（缺证据通过判定、max_requests 前置拦截、异常中断对账与防重复副作用恢复、递归敏感凭据脱敏、步骤证据接口覆盖统计）的修复；全量 390 项测试与 Ruff 检查/格式全通。未调用真实模型或执行被测源码，未推送或访问日常同步工具。
 
-
 2026-10-30 用户确认五项修复后的补验：新增失败探针确认此前修复仍有边界遗漏，修复并通过全量 397 项与最终专项 26 项；最终两项证据错配参数化仅纳入专项，运行代码一致，未称 399 项全量通过。真实验证命令、环境、结果及旧批准/旧计数兼容边界见 TASKS.md 和 docs/acceptance.md。本次摘要维护日期为 2026-10-30；未使用日常同步工具，未重验 F7/F8、强杀与断电恢复。
 
 本轮交付前已在本项目自检 PROJECT_STATUS：字段无重复、必填字符串/日期/状态合规，13 条 evidence 均为项目内现存非运行目录文件；未通过项为零，未调用日常同步工具。
 
 2026-10-30 再次独立复核结果见 TASKS.md 与 docs/acceptance.md；本次未修改实现，未访问日常同步工具。
-
 
 2026-10-30 三项 P2 遗漏修复：先以新增测试复现，再补清理结果引用、显式 JSON null 编码和 Markdown 接口缺口列表。最终代码全量 416 项通过；专项及复现细节、环境和未验证边界见 TASKS.md 与 docs/acceptance.md。本次摘要维护日期仍为 2026-10-30，先前待修结论按历史保留，F7/F8 未验收；未访问日常库或同步工具。
 
@@ -80,3 +78,35 @@ evidence:
 6. 新增 `tests/test_adapters.py`（10 项）与 `tests/test_ui_server.py`（6 项），全量 433 项测试与 Ruff 检查/格式化全通。
 
 本轮交付前已在本项目自检 PROJECT_STATUS：frontmatter 字段无重复、必填项合规，evidence 路径均为项目内现存非运行目录文件；未通过项为零，未调用日常同步工具。
+
+2026-11-04：全面落实审查报告建议与五步优先顺序改进：
+1. **统一主流程与 10 步流程契约**：明确以 `testpilot task` 作为全局主入口，将架构文档与说明重写对齐代码实际状态。确立 10 步统一流程契约（定义任务、固定资料、发现接口、确认测试依据、设计场景、生成用例、人工审核与冻结、环境预检、执行与收集证据、报告与维护），贯彻三大核心分界（发现接口!=理解业务规则、生成用例!=批准执行、收到响应!=业务验证通过）与两大设计原则（测试依据独立于被测实现、环境版本区分声明一致与实际验证一致）；
+2. **厘定三级能力边界**：建立“字段支持 / 机制支持 / 真实验收”三级对照矩阵，明确单项目/单仓库已通过端到端小闭环真实验收；多仓库联动与多执行器扩展处于字段与机制就绪状态、未做多仓库编排真实验收；UI 控制台定位为只读配置与资产查看工作台，无浏览器端自动化执行能力且 POST execute 已被硬性封禁；
+3. **修补四道执行前安全守卫**：实现环境身份守卫（严禁生产环境 `prod` 且执行环境与任务环境一致）、未知执行类型守卫（非 `http`/`structured-http-v1` 阻断为 `blocked` 并记录 `environment_issue`，拒绝伪造发包）、付费模型预算守卫（单次预估费用上限 <= 0.15 USD 拦截，回归 plan 加 `--allow-paid` 拦截）、UI 访问边界守卫（仅允许回环 Origin、防路径穿越校验、禁止 POST execute 触发真实测试）；
+4. **完成真实小闭环验证**：在回环真实 HTTP 账户服务上完成从空测试集开始，经 OpenAPI 发现、带理由用例设计、导出 Markdown 审核、人工冻结批准、真实发包与跨步骤参数引用断言、凭据脱敏到守恒报告导出的端到端验证，逐条核对规则、响应体与对账指标（`tests/test_closed_loop.py` 通过）；
+5. **落地 F8 资产维护与回归接入**：实现 `src/api_test_agent/tasks/bridge.py`、`testpilot task export-regression` 命令，并在 `TestCase` 中注入 `task_binding`，由回归模块 `load_catalog` 无缝加载解析（`tests/test_bridge.py` 通过）。
+
+全量测试通过（441 passed in 46.90s，较此前 433 项净增 8 项专项测试），Ruff 检查与格式化全通（109 files already formatted）。本轮交付前已在本项目自检 PROJECT_STATUS：frontmatter 7 个必填字段无重复、日期与 active 状态合规，13 条 evidence 均为项目内现存非运行目录合法文件；未通过项为零，未调用日常同步工具。
+
+2026-11-04 审查缺口修补与机制验收：针对审查报告指出的 5 项缺口（P1 回归桥接未接通执行、P1 预算检查仅查配置值、P1 UI 缺少服务端授权与 CSRF 拦截、P2 环境守卫缺少运行版本探针校验、P2 表述收窄为合成服务集成测试）进行深入完善与机制验收：
+1. **F8 回归桥接执行接通与数据保护**：`bridge.py` 导出 entry 改为离散 token 命令参数列表，并自动追加 `--case-id <case_id>` 限制单用例执行粒度（避免整批重复执行）；读取已有 `cases.yaml` 解析失败时抛出 `ValueError` 拒绝覆盖，保护已有资产；`runner.py` 注册 `task_command` 适配器并在 `run_plan` 中派发执行与解析结果（`tests/test_bridge.py` 扩充至 3 项通过）；
+2. **商业付费模型最坏情况费用预留**：`BudgetSettings` 扩展 Token 单价配置，`design_model.py` 内置基准价格表；在发包前根据输入字符估算 prompt token 上界与模型最大输出 token 计算 `worst_case_cost`；若超额直接在发包前抛出异常拦截；对定价未知的外部商业模型，若未显式配置输入/输出单价直接拒绝调用；
+3. **UI 服务端 Origin 强校验与会话凭据授权**：`ui/server.py` 服务端生成高熵随机会话令牌 `auth_token`，挂载 GET `/api/auth/token` 并在页面注入；校验 Host 为回环地址，Origin 端口严格匹配服务端端口，阻断 `Sec-Fetch-Site: cross-site` 恶意跨站发包；所有修改类 POST 请求强制核验 `X-TestPilot-Token` 请求头，缺失或不符返回 403 Forbidden（`tests/test_ui_server.py` 扩充至 10 项通过）；
+4. **运行环境版本探针核验**：`ExecutionConfig` 扩展 `version_endpoint` 与 `require_version_verification`；`tasks/execution.py` 发包前向探针端点发起 HTTP 请求核对真实运行服务 Git 提交哈希是否与 `target_commit` 一致；若不符且配置了核验要求直接抛出 `ValueError`；执行产物独立记录版本校验状态，报告呈现告警横幅（`tests/test_pre_guards.py` 扩充至 9 项通过）；
+5. **表述精确收窄为合成服务集成测试**：将此前“单项目/单仓库真实验收”表述收窄为“合成服务端到端小闭环验证（Synthetic Service Integration Verification）”，在文档中明确注明：验证了资料提取、导入设计、审核机制、探针预检、HTTP 执行与报告对账的机制链路，未经验收真实模型生成质量、未验证复杂生产业务、未验证真人实际审核效果。
+
+全量测试通过（450 passed in 54.33s，较此前 441 项净增 9 项专项测试），Ruff 检查与格式化全通（109 files already formatted）。本轮交付前已在本项目自检 PROJECT_STATUS：frontmatter 7 个必填字段无重复、日期与 active 状态合规，13 条 evidence 均为项目内现存非运行目录合法文件；未通过项为零，未调用日常同步工具。
+
+2026-11-04 接口发现合并伪冲突修复（评审第 6 项，应优先修复的实现问题）：修复 `tasks/discovery.py` 两处发现/合并质量缺陷。
+1. **相同声明不再误判冲突（6a）**：同一 `method path` 合并改为按声明签名集判别，仅存在多个不同签名时才置 `conflict`；完全相同的重复声明保留底层状态并追加一致声明数量，去掉“完全相同却报冲突”的伪阳性；描述不同的文档声明仍判冲突，等价保持既有冲突/作用域测试预期。
+2. **显式 openapi 适配器不再双重解析（6b）**：通用文档循环对已由所选适配器等扩展名解析过的文档跳过，避免同一 `.json/.yaml/.yml` 被适配器解析一次、又由通用 `openapi()` 再解析一次造成的重复声明与假冲突；
+3. **副产物修正**：`has_code_routes`/`has_document_routes` 改按行 `kind` 严格判定路由来源，避免 openapi 文档适配器产出的 requirement 行被误当代码路由而触发 `only_in_document` 降级。
+全量 452 项测试通过（较此前 450 项净增 2 项，见 `tests/test_task_discovery.py`），Ruff 检查与格式化全通。本项推进 F2 接口发现合并质量，真实项目逐项接口对账仍属 F7；未调用模型，未访问被测接口。本轮交付前已在本项目自检 PROJECT_STATUS：frontmatter 7 个必填字段无重复、日期与 active 状态合规，13 条 evidence 均为项目内现存非运行目录合法文件；未通过项为零，未调用日常同步工具。
+
+2026-11-04 接口采集评审修补（第 4/5/7 项，应修复实现问题）：续第 6 项之后，补齐 OpenAPI 解析、版本关联与请求模型展开。
+1. **OpenAPI 跨文件引用、服务器与参数覆盖（第 5 项）**：`adapters/openapi.py` 把 `$ref` 解析从仅文档内扩展为可跨文件 `_walk_external_refs` 递归合并；服务器地址在 root/path/operation 三级取首个非空并回退 `basePath`；路径与操作级参数按 `(in, name)` 同名单覆盖。外部引用未解析保持 `unresolved` 并告警，不伪报 `confirmed`。
+2. **文档与源码版本关联（第 7 项）**：`tasks/discovery.py` 对源码路径盖固定提交、对外部文档本地文件盖 `unverified-document` 占位；`all_materials_version_verified` 仅在无外部文档时为真，避免旧文档对新源码伪报已验证，并给出 `MIXED_VERSION_WARNING`。`models.py` 的 `SourceRef.version` 保持非空。
+3. **快照集内 Pydantic 请求模型展开（第 4 项）**：`adapters/python_ast.py` 把注解解析到集内 `BaseModel`/`Model` 类的路由参数展开为 `request_body`（字段名/类型/必需项/字面量默认值，动态默认仅记录不评估）；集外不可静态见到的模型保持不展开，认证仍如实标注 `unresolved: dependency semantics not evaluated`。
+全量 458 项测试通过（较第 6 项后的 452 项净增 6 项，见 `tests/test_adapters.py` 两项新增与保留的 `test_task_discovery.py` 版本关联测试），Ruff 检查与格式化全通（86 files already formatted）。本项推进 F2 接口发现与版本关联质量，真实项目逐项接口对账、认证语义解析与集外模型展开仍属 F7 及后续边界；未调用模型，未访问被测接口。本轮交付前已在本项目自检 PROJECT_STATUS：frontmatter 7 个必填字段无重复、日期与 active 状态合规，13 条 evidence 均为项目内现存非运行目录合法文件；未通过项为零，未调用日常同步工具。
+
+2026-11-04 续审：第 4/5/6/7 项当前证据与历史记录纠错见 TASKS.md 和 docs/acceptance.md 同日续审节；未修改第 1/2/3/8 项能力范围。原 458 项通过不证明当时已支持跨文件引用。本次未复测真实模型与被测服务。

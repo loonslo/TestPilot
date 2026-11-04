@@ -157,3 +157,33 @@ F3 模型生成与审核材料导出已打通机制验证。已接入调用器�
 POST/PUT/PATCH 请求明确区分整个 JSON 值为 null 和未提供请求体：`body` / `$` 的 literal null 或 reference 解析为 null 时发送 `null` 字节及默认 application/json；omitted 或没有 body 参数时不发送 JSON。具名字段 null 仍编码为对象中的 null。步骤证据 request_parameters 增加 body_provided，保留输入是否提供的区别。
 
 Markdown 第 7 节在限制说明之后逐项输出与 JSON uncovered_operations 相同的接口缺口；当前清单没有缺口时明确注明。此修改不改变接口/场景覆盖率口径；真实项目与模型效果仍属 F7。详细验证见 acceptance.md 最新三项 P2 修复记录。
+
+
+## 执行前安全守卫约束（2026-11-04）
+
+针对生产防护与费用失控风险，系统建立了四道执行前硬性守卫：
+1. **环境身份与版本探针守卫**：`ExecutionConfig.environment` 严禁包含 `prod`/`production`/`online`。`execute_task` 启动时必须核对执行配置中的环境与 `task.environment` 一致。同时支持配置 `version_endpoint` 运行服务探针，发包前请求探针校验真实运行服务的 Git 提交是否与 `target_commit` 一致；若 `require_version_verification=True` 且版本不符直接抛出 `ValueError`，报告中以 GitHub-style Alert 明显警告未核验状态。
+2. **未知执行类型守卫**：执行器严格校验 `case.execution_kind in {"http", "structured-http-v1"}`。遇到未支持的执行类型（如未适配的外部脚本），直接拦截为 `blocked`，生成 `environment_issue`，禁止伪造 HTTP 发包。
+3. **付费预算与最坏情况费用预留守卫**：`BudgetSettings` 支持配置输入/输出 Token 单价（内置 DeepSeek 等基准价）。在发包前根据输入 token 估算与最大生成 token 计算 `worst_case_cost`；若超额或外部商业模型定价未知，直接在发包前抛出异常拦截；回归 `plan` 未加 `--stub` 时必须显式携带 `--allow-paid`。
+4. **UI 边界与会话凭据守卫**：Web Console 服务端限制仅允许回环同端口 Origin，阻断跨站请求；服务启动生成随机 `auth_token`，变更类 POST 请求强制核验 `X-TestPilot-Token`；校验 `task_id` 阻断路径穿越；禁止通过 `POST /api/tasks/{task_id}/execute` 触发执行（返回 403 Forbidden）。
+
+## 合成服务端到端小闭环规范（2026-11-04）
+
+在回环 HTTP 服务上完成从空测试集开始的合成服务端到端小闭环验证（Synthetic Service Integration Verification）：
+- 覆盖接口：`POST /api/v1/accounts` 与 `GET /api/v1/accounts/{account_id}`。
+- 全链路：`task create` → `task discover` → `task design`（含参数理由与前序步骤提取引用）→ `task review`（导出 Markdown）→ `task approve`（人工冻结批准）→ `task execute`（探针预检、真实发送 HTTP、断言提取参数、凭据敏感词自动脱敏）→ `task report`（守恒对账与覆盖率核算）。
+- 验证保证：逐条核对规则、状态码、响应体、断言判定及报告一致性（详见 `tests/test_closed_loop.py`）。
+- 明确边界：本闭环测试验证的是机制链路畅通，未经验收真实模型生成质量、未验证复杂生产业务、未验证真人实际审核效果。
+
+## F8 回归资产桥接与执行规范（2026-11-04）
+
+通过 `testpilot task export-regression <task_id> [--catalog <path>] [--approval <approval_id>]`，将统一任务中经人工审核并冻结的用例导出并合并到回归用例目录（`cases.yaml`）：
+- 导出的条目遵循统一 `TestCase` 模型规范：
+  - `id`: `TC-<TASK_ID>-<CASE_ID>`
+  - `name`: 对应用例标题
+  - `module`: 任务目标项目标识
+  - `entry`: 离散命令行参数列表，携带 `--case-id <case_id>` 限制单用例执行粒度，避免整批重复执行；
+  - `api`: 覆盖的接口路径列表
+  - `task_binding`: 记录源任务绑定信息（`task_id`、`approval_id`、`case_id`、`revision_hash`、`execution_kind`）
+- 回归执行器适配：`regression/runner.py` 注册了 `task_command` 适配器，`testpilot run` 执行到携带 `task_binding` 的用例时自动调度统一任务执行器并解析结果。
+- 目录保护：读取已有 `cases.yaml` 时若解析错误或损坏，直接抛出 `ValueError` 拒绝覆盖已有资产。

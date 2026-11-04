@@ -209,6 +209,18 @@ def cmd_plan(args: argparse.Namespace) -> int:
         print("错误: 项目配置没有 [model] 段；离线演示请加 --stub", file=sys.stderr)
         return EXIT_USAGE
 
+    if not args.stub and not args.no_ai:
+        if not getattr(args, "allow_paid", False) and not os.environ.get(
+            "TESTPILOT_ALLOW_PAID_MODEL"
+        ):
+            print(
+                "错误: 付费模型调用守卫拦截：未获得用户明确批准。\n"
+                "  调用商业模型产生费用（每次 <= 1 元人民币，总额度受控）。\n"
+                "  离线分析请追加 --stub；如已确认批准付费调用，请追加 --allow-paid 参数或设置环境变量 TESTPILOT_ALLOW_PAID_MODEL=1",
+                file=sys.stderr,
+            )
+            return EXIT_USAGE
+
     run_id = args.run_id or new_run_id()
     directory = run_dir(project.artifacts_dir, run_id)
     append_log(directory, f"plan 开始 base={args.base} head={args.head}")
@@ -519,6 +531,11 @@ def register_commands(sub: argparse._SubParsersAction) -> None:
     p_plan.add_argument("--stub", action="store_true", help="离线桩分析，不调用模型")
     p_plan.add_argument("--no-ai", action="store_true", help="完全不分析，只用冒烟集与模块映射")
     p_plan.add_argument("--exclude", action="append", help="额外排除的路径正则，可重复")
+    p_plan.add_argument(
+        "--allow-paid",
+        action="store_true",
+        help="显式批准调用付费模型进行影响分析（单次不超过 1 元）",
+    )
     p_plan.set_defaults(func=cmd_plan)
 
     p_rec = sub.add_parser("reconcile", help="人工修改计划后重新校验并更新指纹")

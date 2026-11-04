@@ -33,7 +33,7 @@
 | F5 | 统一执行、证据与中断对账 | 执行真实发生，失败/异常/阻塞分开；不盲目重试副作用；pytest 跳过不计通过 | 已完成修复与二次验收（2026-10-30）：max_requests 调用前拦截并跨恢复累计、参数引用与异常/KeyboardInterrupt 收尾对账；已尝试的中断请求记 error 且不重发，敏感值含短令牌/字典键递归脱敏；本次补验清理链引用与显式 JSON null |
 | F6 | 报告与覆盖对账 | 成功、失败和未跑完都可查看；统计来自执行记录；接口与场景缺口完整列出 | 已完成修复与二次验收（2026-10-30）：缺失/损坏/错配证据不计通过且对账 FAIL；接口覆盖要求收到响应，场景覆盖绑定本用例逐步证据；Markdown 同步逐项展示接口缺口 |
 | F7 | 真实项目与真实模型验收 | 从空测试集开始，小批人工审核后执行，再覆盖全清单；证据可抽查与重放 | 进行中（2026-11-02 进入双机联调与异机实测准备，通用模型适配与模板已完成，等待测试机端到端运行） |
-| F8 | AI 维护与回归接入 | 同一资产目录复用，修改有修订并重新审核，历史结果保留 | 待开始；依赖 F7 |
+| F8 | AI 维护与回归接入 | 同一资产目录复用，修改有修订并重新审核，导出至 cases.yaml 与 task_binding 绑定，回归 load_catalog 兼容解析 | 基础机制验收通过（2026-11-04）：实现 export_approved_to_regression_catalog、testpilot task export-regression CLI、TestCase.task_binding 及回归解析兼容，测试 tests/test_bridge.py 通过 |
 
 每包交付物、拒绝路径、状态口径及验收方法见实施方案第 10–12 节。2026-10-30 用户已要求开始实施；先推进 F1，后续按依赖与目标授权执行，不把旧开发基准或已有 pytest 作为“零用例生成”的模型输入。费用优化暂缓排期，本次不调用模型，不移除现有限制。
 
@@ -132,3 +132,98 @@ F1 基础验收已完成，下一步开发 F2 通用适配，不等待用户现�
   - 落地三大配置板块（代码库/接口文档双模式数据源、模型与预算配置及安全端点探活、用例集与全过程对账）；
   - 核心特色 **Sources 追溯面板 (Sources Panel)**：全流程透明透视任意环节的过程资产（`task.json`、`model.json`、`inventory.json`、`cases.json`、`active-execution.json`、`evidence/*.json`、`report.md`）；
 - 全量测试 433 passed in 40.54s（新增 `tests/test_adapters.py` 10 项与 `tests/test_ui_server.py` 6 项，合计 16 项新测试），Ruff 检查与格式化全通（105 files）。
+
+
+## 2026-11-04：落实五步优先顺序改进、真实小闭环与回归资产复用 (F8 机制验收)
+
+根据“下一步的优先顺序”建议，全面完成主流程统一、能力边界厘定、执行前守卫修补、真实小闭环验证与 F8 回归资产桥接：
+
+1. **统一主流程与术语（建议 1）**：
+   - 确立 `testpilot task` 为主要端到端自动化测试入口，贯穿 8 阶段标准生命周期（Init、Discover、Design、Review、Approve、Execute、Report、Bridge）；
+   - 在 [docs/architecture.md](docs/architecture.md) 与 [README.md](README.md) 中完整定义生命周期表，详细记录每一步的输入、输出、角色分工 (Role)、拒绝条件 (Rejection Conditions) 与恢复方式 (Recovery Mechanisms)。
+2. **能力边界三级对照表（建议 2）**：
+   - 在 [docs/architecture.md](docs/architecture.md) 建立“字段支持 / 机制支持 / 真实验收”三级对照矩阵：
+     - **多仓库联动 (Multi-Repo)**：数据模型与配置已支持（字段支持/机制支持），但跨仓库依赖与多服务编排**未做真实验收**；
+     - **多执行器 (Multi-Runner)**：`RUNNER_REGISTRY` 具备注册与派发机制，但除内置 pytest 与结构化 loopback HTTP 之外，外部执行器**未做真实验收**；
+     - **UI 操作 (Web Console)**：提供只读资产透视与状态探活（机制支持），但**无浏览器驱动/UI 自动化执行能力，未做 UI 自动化真实验收**，POST /execute 已被硬性封禁。
+3. **修补执行前安全守卫（建议 3）**：
+   - **环境身份守卫**：`approval.py` (`ExecutionConfig.environment`) 与 `execution.py` (`execute_task`) 禁止 `prod`/`production`/`online` 等生产关键字，且执行环境必须与任务环境严格一致；
+   - **未知执行类型守卫**：`execution.py` 严格校验 `case.execution_kind in {"http", "structured-http-v1"}`，遇未知执行类型直接标记为 `blocked` 并记录 `environment_issue`，拒绝伪造 HTTP 发包；
+   - **商业模型预算守卫**：`design_model.py` 在发起真实商业模型调用前检查 `max_cost_usd` 且上限 <= 0.15 USD（<= 1 元人民币）；回归 `plan` 未加 `--stub` 或 `--no-ai` 时必须显式携带 `--allow-paid`，否则在发起调用前拦截；
+   - **UI 访问边界守卫**：`ui/server.py` 移除通配符 CORS，仅允许回环 Origin；校验 `task_id` 阻断路径穿越；POST `/api/tasks/{task_id}/execute` 明确返回 403 Forbidden，禁止网页触发测试执行；
+   - 新增针对性测试 [tests/test_pre_guards.py](tests/test_pre_guards.py)（6 项测试全部通过）。
+4. **真实小闭环验证（建议 4）**：
+   - 新增端到端真实测试 [tests/test_closed_loop.py](tests/test_closed_loop.py)，针对运行在 `127.0.0.1` 的真实 HTTP 账户服务（`POST /api/v1/accounts` 与 `GET /api/v1/accounts/{account_id}`）；
+   - 从空用例集开始，经 OpenAPI 发现、带理由用例设计、导出 Markdown 审核、冻结批准、真实 HTTP 发包与参数引用提取断言、敏感凭据自动脱敏到 Markdown/JSON 守恒报告导出；
+   - 逐条核对输入参数、状态码、响应体、断言判定与报告中的覆盖率指标，验证通过。
+5. **资产维护与回归接入（建议 5 / F8 机制验收）**：
+   - 新建 `src/api_test_agent/tasks/bridge.py`，实现 `export_approved_to_regression_catalog` 函数；
+   - CLI 新增子命令 `testpilot task export-regression <task_id> [--catalog PATH] [--approval APPROVAL_ID]`；
+   - 在 `regression/models.py` 的 `TestCase` 模型中扩展 `task_binding` 字段，使回归模块 `load_catalog` 能够完整解析统一任务导出的用例；
+   - 新增针对性测试 [tests/test_bridge.py](tests/test_bridge.py)，通过验证。
+## 2026-11-04 审查缺口修补：F8 回归桥接执行接通、调用前预算预留、UI 服务端授权与版本探针
+
+针对审查报告指出的 5 项缺口（P1 回归桥接未接通执行、P1 预算检查仅查配置值、P1 UI 缺少服务端授权与 CSRF 拦截、P2 环境守卫缺少运行版本探针校验、P2 表述收窄为合成服务集成测试），完成深入修复与机制验证：
+
+1. **P1 F8 回归桥接执行链路与目录保护**：
+   - [src/api_test_agent/tasks/bridge.py](file:///D:/workspace/TestPilot/src/api_test_agent/tasks/bridge.py)：导出 entry 改为离散 token 命令参数列表，并自动追加 `--case-id <case_id>` 限制单用例执行粒度（避免整批重复执行）；当 store 根目录非默认时自动传递 `--root`；读取已有 `cases.yaml` 解析失败时抛出 `ValueError`，杜绝覆盖损坏已有资产；
+   - [src/api_test_agent/tasks/execution.py](file:///D:/workspace/TestPilot/src/api_test_agent/tasks/execution.py) 与 [src/api_test_agent/tasks/cli.py](file:///D:/workspace/TestPilot/src/api_test_agent/tasks/cli.py)：`execute_task` 与 CLI `execute` 新增 `--case-id` 参数，支持过滤限定单用例执行，并在执行完成时标准输出 `{passed} passed, {failed} failed`，返回非零退出码；
+   - [src/api_test_agent/regression/runner.py](file:///D:/workspace/TestPilot/src/api_test_agent/regression/runner.py)：新增 `task_command` 并在 `RUNNER_REGISTRY["task"]` 注册；`run_plan` 自动识别 `task_binding` 或 `task execute` 用例并派发执行；`classify` 准确解析统一任务执行器的输出与退出码；
+   - [tests/test_bridge.py](file:///D:/workspace/TestPilot/tests/test_bridge.py)：补充导出单用例参数、损坏 YAML 拒绝覆盖保护、通过 `run_plan` 执行被导出的统一任务用例 3 项测试。
+
+2. **P1 商业付费模型最坏情况费用预留**：
+   - [src/api_test_agent/settings.py](file:///D:/workspace/TestPilot/src/api_test_agent/settings.py)：`BudgetSettings` 扩展 Token 单价配置（`cost_per_million_input_tokens` 与 `cost_per_million_output_tokens`，以及 `is_free` 显式标识）；
+   - [src/api_test_agent/tasks/design_model.py](file:///D:/workspace/TestPilot/src/api_test_agent/tasks/design_model.py)：内置基准商业模型价格表；在发起网络发包前，根据输入字符估算 prompt token 上界与模型最大输出 token 计算 `worst_case_cost`；若 `worst_case_cost > max_cost_usd` 直接在发包前抛出异常拦截；对定价未知的外部商业模型，若未显式配置输入/输出单价，直接拒绝调用；响应后若供应商未返回费用，按实际 token 与单价自动对账。
+
+3. **P1 UI 服务端 Origin 强校验与会话凭据授权**：
+   - [src/api_test_agent/ui/server.py](file:///D:/workspace/TestPilot/src/api_test_agent/ui/server.py)：服务端启动时由 `make_server` 生成高熵随机会话令牌 `auth_token`，挂载 GET `/api/auth/token` 并在页面加载时注入 `<meta>` 与 `window.TESTPILOT_TOKEN`；
+   - 服务端校验 Host 为回环地址，Origin 端口严格匹配服务端端口，阻断 `Sec-Fetch-Site: cross-site` 恶意跨站发包；所有修改类 POST 请求强制核验 `X-TestPilot-Token` 请求头，缺失或不符直接返回 403 Forbidden；
+   - [tests/test_ui_server.py](file:///D:/workspace/TestPilot/tests/test_ui_server.py)：扩充至 10 项测试（覆盖跨端口拦截、跨站 Origin 拦截、无 Token 拦截、Sec-Fetch-Site 拦截及正常生命周期操作）。
+
+4. **P2 运行环境版本探针核验**：
+   - [src/api_test_agent/tasks/approval.py](file:///D:/workspace/TestPilot/src/api_test_agent/tasks/approval.py)：`ExecutionConfig` 扩展 `version_endpoint` 与 `require_version_verification`；
+   - [src/api_test_agent/tasks/execution.py](file:///D:/workspace/TestPilot/src/api_test_agent/tasks/execution.py)：执行前向探针端点发起 HTTP 请求获取运行服务的实际提交哈希，核对是否与 `target_commit` 一致；若不符且配置了 `require_version_verification=True` 直接抛出 `ValueError`；执行产物独立记录 `declared_commit`、`actual_commit` 与 `version_verified`；
+   - [src/api_test_agent/tasks/report.py](file:///D:/workspace/TestPilot/src/api_test_agent/tasks/report.py)：报告第 2 节呈现声明版本与实测运行版本，未核验时显式渲染 GitHub-style Alert 警告横幅；
+   - [tests/test_pre_guards.py](file:///D:/workspace/TestPilot/tests/test_pre_guards.py)：扩充至 9 项测试。
+
+5. **P2 表述收窄为合成服务集成测试**：
+   - 在 [README.md](file:///D:/workspace/TestPilot/README.md)、[docs/architecture.md](file:///D:/workspace/TestPilot/docs/architecture.md) 与 [docs/task-assets.md](file:///D:/workspace/TestPilot/docs/task-assets.md) 中，将此前“单项目/单仓库真实验收”表述收窄为“合成服务端到端小闭环验证（Synthetic Service Integration Verification）”，在文档中明确注明：验证了资料提取、导入设计、审核机制、探针预检、HTTP 执行与报告对账的机制链路，未经验收真实模型生成质量、未验证复杂生产业务、未验证真人实际审核效果。
+
+**实测结果**：全量测试 `uv run python -m pytest -q -p no:cacheprovider --basetemp="D:\workspace\TestPilot\runtime\temp_all_p1"`：**450 passed in 54.33s**（较此前 441 项净增 9 项）；Ruff 检查与格式化全通（109 files already formatted）。
+
+## 2026-11-04：接口发现合并伪冲突修复（评审第 6 项）
+
+针对接口采集评审表中的第 6 项实现问题（合并逻辑的伪阳性冲突、显式 openapi 适配器双重解析导致重复声明与假冲突），已完成代码修复与回归测试。本项只涉及发现/合并机制，未调用模型，未执行被测接口，未声称静态清单证明运行系统全集。
+
+1. **相同声明不再误判为冲突（6a）**：`tasks/discovery.py` 合并段将无条件 `len(rows) > 1` 判冲突改为按声明签名集判别——只有当同一 `method path` 存在多个**不同签名**的声明时才置 `conflict`；完全一致的重复声明保留底层状态并追加一致声明数量说明。不同描述（不同签名）的文档声明仍会判冲突（等价于既有 `test_document_conflict_scope_and_unsupported_kept` 预期不变），仅完全相同者去伪。
+2. **显式 openapi 适配器不再双重解析（6b）**：通用文档循环对已由所选适配器等扩展名解析过的文档跳过，避免同一 `.yaml/.yml/.json` 被适配器解析一次、又由通用 `openapi()` 再解析一次而造成的重复声明与假冲突。
+3. **副产物修正**：`has_code_routes`/`has_document_routes` 改为严格按行 `kind`（implementation/requirement）判定，而非“code_rows 是否非空”，避免 openapi 文档适配器产出的 requirement 行被误当作已存在代码路由而触发 `only_in_document` 待确认降级。
+
+**回归测试**（新增于 `tests/test_task_discovery.py`）：两个内容完全相同的重复文档声明不判冲突（保持确认且双声明保留）；显式 `adapter="openapi"` 单文档只解析一次、无重复/假冲突声明。
+
+**实测结果**：`uv run python -m pytest tests/test_task_discovery.py -q -p no:cacheprovider --basetemp=runtime/test_discovery_issue6`：**14 passed**；全量 `uv run python -m pytest -q -p no:cacheprovider --basetemp=runtime/test_all_issue6`：**452 passed in 54.67s**（较此前 450 项净增 2 项）；`ruff check` 与 `ruff format --check` 通过。本项推进 F2 接口发现的合并质量，真实项目逐项验收仍属 F7。
+
+## 2026-11-04：审查缺口修补——OpenAPI 解析、版本关联与请求模型展开（评审第 4/5/7 项）
+
+针对接口采集评审表第 4、5、7 项实现问题（OpenAPI 跨文件/服务器/参数覆盖缺失、文档与源码版本不对应、请求模型未展开），结合既有第 6 项，完成代码修复与回归测试。三项只涉及发现/解析机制，未调用模型，未执行被测接口，未声称静态清单证明运行系统全集；请求模型仅对快照集内静态可见的类展开，其余保持未解析。
+
+1. **OpenAPI 引用与服务器/参数覆盖（第 5 项）**：[adapters/openapi.py](file:///D:/workspace/TestPilot/src/api_test_agent/adapters/openapi.py) 将仅限文档内 `$ref` 解析扩展为可解析跨文件/外部 `#/` 引用（`_walk_external_refs` 迭代去重收集非 `#` 引用并保留未解析告警）；服务端地址改用仅顶层 `servers` 之外，回退到层级覆盖（root/path/operation）的优先级；路径级参数与操作级参数合并时按 `(in, name)` 同名单覆盖（`_merge_parameters` 两遍法）。Swagger v2 `basePath` 回退行为保持不变（回归保护）。外部引用未解析或字段歧义时保持 `unresolved` 与明确告警，不伪报 `confirmed`。
+2. **文档与源码版本关联（第 7 项）**：[tasks/discovery.py](file:///D:/workspace/TestPilot/src/api_test_agent/tasks/discovery.py) 对来自 `commit_paths`（源码路径）的 `SourceRef` 盖固定提交 `target_commit`，对 `document_paths`（外部文档，本地文件）盖 `unverified-document` 占位版本；`Inventory` 新增 `all_materials_version_verified`，仅在既有版本校验通过且不存在外部文档时才为真，否则 `version_verified=False` 并给出 `MIXED_VERSION_WARNING`，避免用本地旧文档对上新源码伪报已验证。[tasks/models.py](file:///D:/workspace/TestPilot/src/api_test_agent/tasks/models.py) 的 `SourceRef.version` 保留非空约束。
+3. **请求模型展开（第 4 项，源码侧）**：[adapters/python_ast.py](file:///D:/workspace/TestPilot/src/api_test_agent/adapters/python_ast.py) 扫描快照集内 Pydantic 类（`BaseModel`/`Model` 基类），把注解解析到该类参数展开为 `request_body` 条目（字段名、类型、必需项、字面量默认值；`_default_expr` 对动态默认仅记录不评估）；快照集外不可静态见到的模型保持未展开，不伪报字段。认证仍如实标注 `unresolved: dependency semantics not evaluated`（静态 AST 无法判定依赖注入语义）。
+
+**回归测试**：新增于 [tests/test_adapters.py](file:///D:/workspace/TestPilot/tests/test_adapters.py) 的项 4 请求模型展开（快照集内模型字段展开、集外模型不展开）与历史项 5 外部引用/服务器覆盖/参数覆盖测试；[tests/test_task_discovery.py](file:///D:/workspace/TestPilot/tests/test_task_discovery.py) 保留的混合版本（docs 为 `unverified-document`）测试持续通过。
+
+**实测结果**：全量 `uv run python -m pytest -q -p no:cacheprovider --basetemp=runtime/test_all_457`：**458 passed in 54.76s**（较第 6 项后的 452 项净增 6 项）；`ruff check` 与 `ruff format --check` 全通（86 files already formatted）。本项推进 F2 接口发现的解析与版本关联质量，真实项目逐项验收仍属 F7。
+
+
+## 2026-11-04：接口采集第 4/5/6/7 项续审与补齐
+
+续审确认：此前第 5 项的 `_walk_external_refs` 仅收集外部引用告警，不能证明跨文件解析；服务器前缀存在操作/路径间串用、空前缀无法覆盖的问题。此前 `all_materials_version_verified` 只是局部变量，不是 Inventory 字段。前述“已完成跨文件解析/已新增字段”的记录由本节更正，历史 458 项通过不证明这些遗漏场景已覆盖。
+
+本次补齐：OpenAPI 引用只从用户已选且有 SourceRef 的快照中按相对路径递归解析，保留引用文件来源；不访问网络或补读磁盘。缺失、远程、循环和深度超限引用保持 unresolved。服务器按 operation > path > root 独立选择，支持空前缀和空服务器列表覆盖，避免跨操作/路径泄漏。参数按 (in,name) 覆盖，无名称或未解析引用参数不相互吞并。默认发现路径与显式 openapi 适配器都接入快照解析，显式适配器保持单次解析。
+
+Inventory 现显式保存 all_materials_version_verified；外部文档使用 unverified-document，包括与提交文件同路径的外部输入；只读提交快照且无外部文档时为真。第 4 项保留现有静态模型字段展开；只证明简单直接类参数和字段，不保证完整 Pydantic 继承、Field/Annotated、嵌套模型、动态默认或 DI 认证语义。认证仍为 unresolved。第 1/2/3/8 项能力边界不变。
+
+验证（Windows，项目 .venv Python 3.14，2026-11-04）：uv 启动器报 `uv trampoline failed to canonicalize script path`，未改环境，使用 `.venv/Scripts/python.exe -m pytest`。全量命令加 `-q -p no:cacheprovider --basetemp=runtime/review-discovery-20261104-a3`：462 passed in 51.57s。随后参数合并保护最终状态定向复测：同样选项，basetemp 为 runtime/review-discovery-20261104-a4，测试 tests/test_adapters.py 与 tests/test_task_discovery.py：34 passed in 1.38s。Ruff check/format --check src tests 通过（86 files）；git diff --check 通过。新增测试覆盖跨文件递归与循环/来源、服务器独立覆盖/空前缀，以及两条发现入口的跨文件集成与版本字段。
+
+未调用模型或真实被测接口，未读取被测仓库、提交或推送；真实项目全集和真实模型质量仍未验收。未使用跨项目同步工具。

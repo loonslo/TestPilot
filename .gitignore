@@ -27,6 +27,8 @@ subjects/
 examples/regression/demo/_repo/
 examples/regression/finunity/testagent.toml
 .pytest-tmp/
+temp/
+.basetemp*/
 .env
 .env.*
 *.key

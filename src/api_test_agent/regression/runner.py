@@ -56,8 +56,26 @@ def pytest_command(
 
 RunnerCommandBuilder = Callable[[str | None, list[str], Path, list[str] | None], list[str]]
 
+
+def task_command(
+    python: str | None, entry: list[str], repo: Path, extra_args: list[str] | None = None
+) -> list[str]:
+    """固定的统一任务运行方式：<配置的 python> -m api_test_agent.cli task execute ..."""
+    executable = shlex.split(python)[0] if python else sys.executable
+    tokens: list[str] = []
+    for item in entry:
+        if " " in item:
+            tokens.extend(shlex.split(item))
+        else:
+            tokens.append(item)
+    if tokens and tokens[0] == "testpilot":
+        tokens = tokens[1:]
+    return [executable, "-m", "api_test_agent.cli", *(extra_args or []), *tokens]
+
+
 RUNNER_REGISTRY: dict[str, RunnerCommandBuilder] = {
     "pytest": pytest_command,
+    "task": task_command,
 }
 
 
@@ -187,7 +205,18 @@ def run_plan(
     env = dict(extra_env or {})
     command_builder = runner if callable(runner) else get_runner(runner)
     for entry in plan.entries:
-        command = command_builder(python, entry.entry, repo, extra_args)
+        is_task = False
+        if hasattr(entry, "task_binding") and getattr(entry, "task_binding", None):
+            is_task = True
+        elif any("task" in token and "execute" in token for token in entry.entry):
+            is_task = True
+        elif any(token == "task" for token in entry.entry):
+            is_task = True
+
+        if is_task:
+            command = task_command(python, entry.entry, repo, extra_args)
+        else:
+            command = command_builder(python, entry.entry, repo, extra_args)
         if dry_run:
             record.results.append(
                 CaseRunResult(

@@ -53,7 +53,9 @@ class ExecutionConfig(Contract):
     base_url: str
     synthetic_only: Literal[True] = True
     # External endpoint identity cannot be proven by a user-written version label.
-    version_verified: Literal[False] = False
+    version_verified: bool = False
+    version_endpoint: str | None = None
+    require_version_verification: bool = False
     allowed_operations: tuple[str, ...] = Field(min_length=1)
     operation_confirmations: dict[str, str] = Field(default_factory=dict)
     accounts: dict[str, str] = Field(default_factory=dict)
@@ -61,6 +63,17 @@ class ExecutionConfig(Contract):
     timeout_seconds: float = Field(default=15, gt=0, le=120)
     max_requests: int = Field(default=30, ge=1, le=500)
     max_response_bytes: int = Field(default=1_000_000, ge=1, le=10_000_000)
+
+    @field_validator("environment")
+    @classmethod
+    def non_production(cls, value: str) -> str:
+        lowered = value.strip().lower()
+        if lowered in {"prod", "production", "online"} or "prod" in lowered:
+            raise ValueError(
+                f"production environment {value!r} is strictly forbidden; "
+                "TestPilot only runs in local sandbox or synthetic test environments"
+            )
+        return value
 
     @field_validator("base_url")
     @classmethod

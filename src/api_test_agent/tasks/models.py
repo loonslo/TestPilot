@@ -332,6 +332,8 @@ class Report(Contract):
     target_commit: str | None = None
     repository: str | None = None
     environment: str | None = None
+    declared_commit: str | None = None
+    actual_commit: str | None = None
     version_verified: bool = False
     approval_id: str | None = None
     execution_id: str | None = None

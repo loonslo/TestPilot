@@ -62,6 +62,17 @@ def join_path(*parts: str) -> str:
     return "/" + combined + ("/" if parts and parts[-1].endswith("/") and combined else "")
 
 
+def _default_expr(node: ast.AST | None, path: str) -> str | None:
+    """Render a field default; dynamic defaults are reported, not evaluated."""
+    if node is None:
+        return None
+    try:
+        value = ast.literal_eval(node)
+        return repr(value)
+    except Exception:  # noqa: BLE001 - dynamic/unsupported defaults are recorded
+        return f"{path}: dynamic default not evaluated"
+
+
 def extract(
     snapshots: dict[str, str], sources: dict[str, SourceRef]
 ) -> tuple[list[dict], list[str]]:
@@ -163,6 +174,40 @@ def extract(
         matches = [k for k in routers if k.endswith("." + key)]
         return matches[0] if len(matches) == 1 else None
 
+    # Collect Pydantic request models defined inside the selected snapshots so a
+    # body parameter can be expanded into its declared fields. Only models in the
+    # snapshot set are expanded; everything else stays unresolved to avoid claims
+    # about classes we cannot statically see.
+    models: dict[str, dict[str, dict[str, Any]]] = {}
+
+    def model_payload(node: ast.ClassDef, path: str) -> dict[str, dict[str, Any]]:
+        fields: dict[str, dict[str, Any]] = {}
+        for body in node.body:
+            if isinstance(body, (ast.AnnAssign, ast.Assign)) and isinstance(
+                getattr(body, "target", None), ast.Name
+            ):
+                field_name = body.target.id
+                annotation: str | None = None
+                if isinstance(body, ast.AnnAssign) and body.annotation is not None:
+                    annotation = name(path, body.annotation)
+                default = _default_expr(body.value, path) if body.value is not None else None
+                fields[field_name] = {
+                    "name": field_name,
+                    "type": annotation,
+                    "required": body.value is None,
+                    "default": default,
+                }
+        return fields
+
+    for path, tree in trees.items():
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            bases = [name(path, b) for b in node.bases if not isinstance(b, ast.keyword)]
+            if not any(b.rsplit(".", 1)[-1] in {"BaseModel", "Model"} for b in bases):
+                continue
+            models[f"{modules[path]}.{node.name}"] = model_payload(node, path)
+
     edges: dict[str, list[tuple[str, str, SourceRef, list[str]]]] = {}
     routes: list[Route] = []
     for path, call, function in calls:
@@ -223,6 +268,7 @@ def extract(
             ):
                 raise ValueError("dynamic/unsupported HTTP methods")
             parameters = []
+            request_bodies: list[dict[str, Any]] = []
             if function:
                 args = [*function.args.posonlyargs, *function.args.args]
                 defaults = [None] * (len(args) - len(function.args.defaults)) + list(
@@ -231,18 +277,26 @@ def extract(
                 args += list(function.args.kwonlyargs)
                 defaults += list(function.args.kw_defaults)
                 for arg, default in zip(args, defaults, strict=True):
-                    parameters.append(
-                        {
-                            "name": arg.arg,
-                            "annotation": ast.unparse(arg.annotation) if arg.annotation else None,
-                            "default": ast.unparse(default) if default else None,
-                            "required": default is None,
-                        }
-                    )
+                    annotation = ast.unparse(arg.annotation) if arg.annotation else None
+                    qualified = name(path, arg.annotation) if arg.annotation is not None else None
+                    entry: dict[str, Any] = {
+                        "name": arg.arg,
+                        "annotation": annotation,
+                        "default": ast.unparse(default) if default else None,
+                        "required": default is None,
+                    }
+                    expanded = models.get(qualified or "")
+                    if expanded is not None:
+                        entry["kind"] = "request_body"
+                        entry["model"] = qualified
+                        entry["fields"] = list(expanded.values())
+                        request_bodies.append(entry)
+                    parameters.append(entry)
             options = {k.arg: ast.unparse(k.value) for k in call.keywords if k.arg}
             details = {
                 "kind": "implementation",
                 "parameters": parameters,
+                "request_body": request_bodies,
                 "options": options,
                 "locator": f"line {call.lineno}",
                 "authentication": "unresolved: dependency semantics not evaluated",

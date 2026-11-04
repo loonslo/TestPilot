@@ -61,6 +61,9 @@ class BudgetSettings(BaseModel):
     max_tokens: int = Field(default=60_000, gt=0)
     # The configured model is free: any cost the provider reports stops the run.
     max_cost_usd: float = Field(default=0.0, ge=0)
+    cost_per_million_input_tokens: float = Field(default=0.0, ge=0)
+    cost_per_million_output_tokens: float = Field(default=0.0, ge=0)
+    is_free: bool = Field(default=False)
     # Free-tier accounts get 50 requests a day (1000 after 10 credits were bought).
     max_requests_per_day: int = Field(default=45, gt=0)
     min_seconds_between_model_calls: float = Field(default=3.0, ge=0, le=60)

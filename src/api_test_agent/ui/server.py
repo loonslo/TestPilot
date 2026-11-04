@@ -12,6 +12,8 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
+import secrets
 import socket
 import sys
 import time
@@ -36,11 +38,73 @@ logger = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent
 
 
+def validate_task_id(task_id: str) -> None:
+    if not task_id or not re.fullmatch(r"^[a-zA-Z0-9_.-]{1,64}$", task_id) or ".." in task_id:
+        raise ValueError(f"Invalid or unsafe task_id: {task_id!r}")
+
+
 class UIRequestHandler(BaseHTTPRequestHandler):
     """HTTP request handler for the TestPilot Web Console."""
 
     store: TaskStore
     static_dir: Path = STATIC_DIR
+
+    def _apply_cors(self) -> None:
+        origin = self.headers.get("Origin")
+        if origin:
+            parsed = urllib.parse.urlsplit(origin)
+            if parsed.hostname in {"127.0.0.1", "localhost", "::1"}:
+                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Vary", "Origin")
+
+    def _check_mutation_auth(self) -> bool:
+        """Enforce strict host, origin, and session token checks for POST mutations."""
+        # 1. Host header validation
+        host = self.headers.get("Host", "")
+        host_name = host.split(":")[0].strip("[]")
+        if host_name not in {"127.0.0.1", "localhost", "::1"}:
+            self._send_error(f"Forbidden: untrusted Host {host!r}", status=HTTPStatus.FORBIDDEN)
+            return False
+
+        # 2. Origin check: If present, must be loopback and match server port
+        origin = self.headers.get("Origin")
+        if origin:
+            parsed = urllib.parse.urlsplit(origin)
+            if parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
+                self._send_error(
+                    f"Forbidden: untrusted Origin {origin!r}", status=HTTPStatus.FORBIDDEN
+                )
+                return False
+            server_port = getattr(self.server, "server_port", None)
+            if server_port and parsed.port and parsed.port != server_port:
+                self._send_error(
+                    f"Forbidden: cross-port Origin {origin!r} does not match "
+                    f"server port {server_port}",
+                    status=HTTPStatus.FORBIDDEN,
+                )
+                return False
+
+        # 3. Sec-Fetch-Site check
+        sec_fetch_site = self.headers.get("Sec-Fetch-Site", "").lower()
+        if sec_fetch_site == "cross-site":
+            self._send_error("Forbidden: cross-site request blocked", status=HTTPStatus.FORBIDDEN)
+            return False
+
+        # 4. Session Token validation
+        server_token = getattr(self.server, "auth_token", None)
+        if server_token:
+            client_token = (
+                self.headers.get("X-TestPilot-Token")
+                or self.headers.get("Authorization", "").replace("Bearer ", "").strip()
+            )
+            if client_token != server_token:
+                self._send_error(
+                    "Forbidden: invalid or missing X-TestPilot-Token session credential",
+                    status=HTTPStatus.FORBIDDEN,
+                )
+                return False
+
+        return True
 
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
         # Keep console output concise and clean
@@ -51,7 +115,7 @@ class UIRequestHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(payload)))
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self._apply_cors()
         self.end_headers()
         self.wfile.write(payload)
 
@@ -65,7 +129,7 @@ class UIRequestHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(payload)))
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self._apply_cors()
         self.end_headers()
         self.wfile.write(payload)
 
@@ -74,7 +138,7 @@ class UIRequestHandler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self) -> None:
         self.send_response(HTTPStatus.NO_CONTENT)
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self._apply_cors()
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
@@ -85,13 +149,25 @@ class UIRequestHandler(BaseHTTPRequestHandler):
         if not path:
             path = "/"
 
+        # 0. Auth Token Endpoint
+        if path == "/api/auth/token":
+            self._send_json({"token": getattr(self.server, "auth_token", "")})
+            return
+
         # 1. Static Assets
         if path in {"/", "/dashboard.html", "/index.html"}:
             html_file = self.static_dir / "dashboard.html"
             if not html_file.is_file():
                 self._send_error("Dashboard template not found", status=HTTPStatus.NOT_FOUND)
                 return
-            self._send_text(html_file.read_text("utf-8"), content_type="text/html; charset=utf-8")
+            html_content = html_file.read_text("utf-8")
+            token = getattr(self.server, "auth_token", "")
+            injected_meta = (
+                f'<meta name="testpilot-token" content="{token}">\n'
+                f'<script>window.TESTPILOT_TOKEN="{token}";</script>\n'
+            )
+            html_content = html_content.replace("<head>", f"<head>\n{injected_meta}", 1)
+            self._send_text(html_content, content_type="text/html; charset=utf-8")
             return
 
         # 2. Registered Adapters
@@ -162,6 +238,11 @@ class UIRequestHandler(BaseHTTPRequestHandler):
                 return
 
             task_id = parts[0]
+            try:
+                validate_task_id(task_id)
+            except ValueError as exc:
+                self._send_error(str(exc), status=HTTPStatus.BAD_REQUEST)
+                return
             try:
                 task = self.store.load(task_id)
             except Exception as exc:
@@ -339,6 +420,19 @@ class UIRequestHandler(BaseHTTPRequestHandler):
             self._send_error(f"Malformed JSON body: {exc}", status=HTTPStatus.BAD_REQUEST)
             return
 
+        # 0. UI Execution Guard
+        if "execute" in path.split("/"):
+            self._send_error(
+                "UI execution guard rejected: Web UI is strictly limited to pipeline inspection. "
+                "Execute via CLI: testpilot task execute",
+                status=HTTPStatus.FORBIDDEN,
+            )
+            return
+
+        # 0.1 Strict Origin, Host & Token Authorization
+        if not self._check_mutation_auth():
+            return
+
         # 1. Safe Ping (No paid model inference, zero key leak)
         if path == "/api/model/ping":
             base_url = data.get("base_url", "").strip()
@@ -364,8 +458,10 @@ class UIRequestHandler(BaseHTTPRequestHandler):
         # 2. Create Task
         if path == "/api/tasks/create":
             task_id = data.get("task_id", "").strip()
-            if not task_id:
-                self._send_error("task_id is required")
+            try:
+                validate_task_id(task_id)
+            except ValueError as exc:
+                self._send_error(str(exc), status=HTTPStatus.BAD_REQUEST)
                 return
             try:
                 task = Task(
@@ -389,6 +485,11 @@ class UIRequestHandler(BaseHTTPRequestHandler):
         # 3. Configure Task
         if path.startswith("/api/tasks/") and path.endswith("/configure"):
             task_id = path.split("/")[3]
+            try:
+                validate_task_id(task_id)
+            except ValueError as exc:
+                self._send_error(str(exc), status=HTTPStatus.BAD_REQUEST)
+                return
             try:
                 allowed_keys = {
                     "target_project",
@@ -418,6 +519,11 @@ class UIRequestHandler(BaseHTTPRequestHandler):
         # 4. Discover Operations
         if path.startswith("/api/tasks/") and path.endswith("/discover"):
             task_id = path.split("/")[3]
+            try:
+                validate_task_id(task_id)
+            except ValueError as exc:
+                self._send_error(str(exc), status=HTTPStatus.BAD_REQUEST)
+                return
             try:
                 inventory_path = discover(self.store, task_id)
                 inv_text = inventory_path.read_text("utf-8")
@@ -485,9 +591,11 @@ def make_server(
     root: Path,
     host: str = "127.0.0.1",
     port: int = 8080,
+    auth_token: str | None = None,
 ) -> ThreadingHTTPServer:
     """Instantiate a configured ThreadingHTTPServer bound to the given root."""
     store = TaskStore(root)
+    token = auth_token or secrets.token_hex(16)
 
     class CustomHandler(UIRequestHandler):
         pass
@@ -496,6 +604,7 @@ def make_server(
     CustomHandler.static_dir = STATIC_DIR
 
     server = ThreadingHTTPServer((host, port), CustomHandler)
+    server.auth_token = token
     return server
 
 

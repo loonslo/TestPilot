@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -213,6 +213,9 @@ class TestCase(BaseModel):
     api: list[str] = Field(default_factory=list, description="覆盖的接口路径")
     notes: str = ""
     last_verified: str = ""
+    task_binding: dict[str, Any] | None = Field(
+        default=None, description="统一任务绑定（task_id, approval_id, case_id 等元数据）"
+    )
 
     @model_validator(mode="after")
     def _check_entry(self) -> TestCase:
@@ -384,6 +387,7 @@ class PlanEntry(BaseModel):
     entry: list[str]
     priority: CasePriority
     reason: str = ""
+    task_binding: dict[str, Any] | None = None
 
     @classmethod
     def from_case(cls, case: TestCase, priority: CasePriority, reason: str = "") -> PlanEntry:
@@ -394,6 +398,7 @@ class PlanEntry(BaseModel):
             entry=list(case.entry),
             priority=priority,
             reason=reason,
+            task_binding=case.task_binding,
         )
 
 

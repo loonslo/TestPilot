@@ -107,6 +107,78 @@ def test_python_ast_literal_robust_exception_handling():
         literal(dyn_node)
 
 
+def test_python_ast_adapter_expands_in_set_pydantic_request_model():
+    adapter = PythonAstAdapter()
+    source_content = """from fastapi import FastAPI, APIRouter
+from pydantic import BaseModel
+
+app = FastAPI()
+router = APIRouter(prefix="/jobs")
+
+class JobRequest(BaseModel):
+    title: str
+    owner_id: int = 0
+    active: bool = True
+
+@router.post("/create")
+def create_job(payload: JobRequest):
+    pass
+
+app.include_router(router, prefix="/v1")
+"""
+    source = SourceRef(
+        source_id="src01",
+        version="a" * 40,
+        path="app.py",
+        locator="full file",
+        content_hash="0" * 64,
+        summary="code",
+    )
+    rows, warnings = adapter.extract({"app.py": source_content}, {"app.py": source})
+    assert not warnings
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["method"] == "POST"
+    assert row["path"] == "/v1/jobs/create"
+    bodies = row["details"]["request_body"]
+    assert len(bodies) == 1
+    body = bodies[0]
+    assert body["kind"] == "request_body"
+    assert body["model"] == "app.JobRequest"
+    fields = {f["name"]: f for f in body["fields"]}
+    assert set(fields) == {"title", "owner_id", "active"}
+    assert fields["title"]["required"] is True
+    assert fields["owner_id"]["required"] is False
+    assert fields["owner_id"]["default"] == "0"
+    assert fields["active"]["type"].endswith("bool")
+
+
+def test_python_ast_adapter_does_not_expand_out_of_set_model():
+    adapter = PythonAstAdapter()
+    # JobRequest is referenced but defined in another module, so it is not expanded.
+    source_content = """from fastapi import FastAPI
+from schemas import JobRequest
+
+app = FastAPI()
+
+@app.post("/create")
+def create_job(payload: JobRequest):
+    pass
+"""
+    source = SourceRef(
+        source_id="src01",
+        version="a" * 40,
+        path="app.py",
+        locator="full file",
+        content_hash="0" * 64,
+        summary="code",
+    )
+    rows, _ = adapter.extract({"app.py": source_content}, {"app.py": source})
+    assert len(rows) == 1
+    bodies = rows[0]["details"]["request_body"]
+    assert bodies == []
+
+
 def test_openapi_adapter_v3_extraction():
     adapter = OpenAPIAdapter()
     spec = {
@@ -135,6 +207,176 @@ def test_openapi_adapter_v3_extraction():
     assert rows[0]["method"] == "POST"
     assert rows[0]["path"] == "/api/candidates"
     assert rows[0]["original_operation_ids"] == ["createCandidate"]
+
+
+def test_openapi_operation_and_path_server_override_root_prefix():
+    adapter = OpenAPIAdapter()
+    spec = {
+        "openapi": "3.0.0",
+        "servers": [{"url": "http://api.example.com/root"}],
+        "paths": {
+            "/a": {
+                "get": {
+                    "operationId": "opA",
+                    "responses": {"200": {"description": "OK"}},
+                    "servers": [{"url": "http://api.example.com/op"}],
+                }
+            },
+            "/b": {
+                "servers": [{"url": "http://api.example.com/path"}],
+                "get": {
+                    "operationId": "opB",
+                    "responses": {"200": {"description": "OK"}},
+                },
+            },
+        },
+    }
+    source = SourceRef(
+        source_id="spec01",
+        version="a" * 40,
+        path="openapi.json",
+        locator="full file",
+        content_hash="0" * 64,
+        summary="spec",
+    )
+    rows, _ = adapter.extract({"openapi.json": json.dumps(spec)}, {"openapi.json": source})
+    paths = {r["original_operation_ids"][0]: r["path"] for r in rows}
+    assert paths["opA"] == "/op/a"  # operation-level overrides both root and path
+    assert paths["opB"] == "/path/b"  # path-level overrides root
+
+
+def test_openapi_operation_parameter_overrides_path_level():
+    adapter = OpenAPIAdapter()
+    spec = {
+        "openapi": "3.0.0",
+        "servers": [{"url": "http://api.example.com"}],
+        "paths": {
+            "/items/{id}": {
+                "parameters": [
+                    {"name": "id", "in": "path", "required": True, "schema": {"type": "string"}},
+                    {"name": "verbose", "in": "query", "schema": {"type": "boolean"}},
+                ],
+                "get": {
+                    "operationId": "getItem",
+                    "parameters": [
+                        {
+                            "name": "id",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": "integer"},
+                        },
+                        {"name": "verbose", "in": "query", "schema": {"type": "string"}},
+                    ],
+                    "responses": {"200": {"description": "OK"}},
+                },
+            }
+        },
+    }
+    source = SourceRef(
+        source_id="spec01",
+        version="a" * 40,
+        path="openapi.json",
+        locator="full file",
+        content_hash="0" * 64,
+        summary="spec",
+    )
+    rows, _ = adapter.extract({"openapi.json": json.dumps(spec)}, {"openapi.json": source})
+    params = rows[0]["details"]["parameters"]
+    by_name = {p["name"]: p for p in params if isinstance(p, dict)}
+    # Operation-level "id" wins over path-level "id".
+    assert by_name["id"]["schema"]["type"] == "integer"
+    assert by_name["verbose"]["schema"]["type"] == "string"
+    assert len([p for p in params if isinstance(p, dict) and p["name"] == "id"]) == 1
+
+
+def test_openapi_external_ref_warns_and_stays_unresolved():
+    adapter = OpenAPIAdapter()
+    spec = {
+        "openapi": "3.0.0",
+        "servers": [{"url": "http://api.example.com"}],
+        "paths": {
+            "/items": {
+                "get": {
+                    "operationId": "listItems",
+                    "requestBody": {"$ref": "external.json#/body"},
+                    "responses": {"200": {"description": "OK"}},
+                }
+            }
+        },
+    }
+    source = SourceRef(
+        source_id="spec01",
+        version="a" * 40,
+        path="openapi.json",
+        locator="full file",
+        content_hash="0" * 64,
+        summary="spec",
+    )
+    rows, warnings = adapter.extract({"openapi.json": json.dumps(spec)}, {"openapi.json": source})
+    assert rows[0]["status"] == "unresolved"
+    assert any("external/cross-file" in w and "external.json" in w for w in warnings)
+
+
+def test_openapi_cross_file_nested_refs_and_provenance():
+    from api_test_agent.tasks.discovery import ref
+
+    snapshots = {
+        "api/main.json": json.dumps(
+            {
+                "openapi": "3.0.3",
+                "paths": {"/items": {"post": {"requestBody": {"$ref": "parts/body.json#/body"}}}},
+            }
+        ),
+        "api/parts/body.json": json.dumps(
+            {
+                "body": {
+                    "content": {"application/json": {"schema": {"$ref": "../models.json#/Item"}}}
+                }
+            }
+        ),
+        "api/models.json": json.dumps(
+            {
+                "Item": {
+                    "type": "object",
+                    "properties": {"name": {"type": "string"}, "child": {"$ref": "#/Item"}},
+                }
+            }
+        ),
+    }
+    sources = {p: ref(p, c, "a" * 40) for p, c in snapshots.items()}
+    rows, _ = OpenAPIAdapter().extract(snapshots, sources)
+    assert len(rows) == 1
+    schema = rows[0]["details"]["request_body"]["content"]["application/json"]["schema"]
+    assert schema["properties"]["name"]["type"] == "string"
+    assert "$ref" in schema["properties"]["child"]
+    assert rows[0]["status"] == "unresolved"
+    assert {s.path for s in rows[0]["sources"]} == set(snapshots)
+
+
+def test_openapi_server_overrides_do_not_leak_and_allow_empty_prefix():
+    from api_test_agent.tasks.discovery import ref
+
+    spec = {
+        "openapi": "3.0.3",
+        "servers": [{"url": "/root"}],
+        "paths": {
+            "/a": {"servers": [{"url": "/path"}], "get": {"servers": [{"url": "/op"}]}, "post": {}},
+            "/b": {"get": {}},
+            "/c": {"servers": [{"url": "https://example.invalid"}], "get": {}},
+            "/d": {"get": {"servers": []}},
+        },
+    }
+    content = json.dumps(spec)
+    rows, _ = OpenAPIAdapter().extract(
+        {"api.json": content}, {"api.json": ref("api.json", content, "a" * 40)}
+    )
+    assert {(r["method"], r["path"]) for r in rows} == {
+        ("GET", "/op/a"),
+        ("POST", "/path/a"),
+        ("GET", "/root/b"),
+        ("GET", "/c"),
+        ("GET", "/d"),
+    }
 
 
 def test_openapi_adapter_swagger_v2_extraction():

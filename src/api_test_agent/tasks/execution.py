@@ -333,6 +333,7 @@ def execute_task(
     max_cases: int | None = None,
     stop_on_failure: bool = False,
     http_client: httpx.Client | None = None,
+    case_id: str | None = None,
 ) -> ExecutionAccounting:
     task = store.load(task_id)
 
@@ -358,6 +359,17 @@ def execute_task(
 
     # Validate approval
     check_approval(store, task_id, approval_id, exec_config, require_ready=False)
+
+    # Environment Identity Guard
+    lowered_env = exec_config.environment.lower()
+    if "prod" in lowered_env or lowered_env in {"production", "online"}:
+        msg = f"production environment {exec_config.environment!r} is strictly forbidden"
+        raise ValueError(f"Execution guard rejected: {msg}")
+    if task.environment and exec_config.environment != task.environment:
+        raise ValueError(
+            f"Execution guard rejected: configuration environment {exec_config.environment!r} "
+            f"does not match task environment {task.environment!r}"
+        )
 
     # Set up tokens from environment
     tokens: dict[str, str] = {}
@@ -458,13 +470,62 @@ def execute_task(
     client = http_client or httpx.Client(timeout=exec_config.timeout_seconds, trust_env=False)
     should_close_client = http_client is None
 
+    target_cases = list(snapshot.cases)
+    if case_id is not None:
+        target_cases = [c for c in snapshot.cases if c.case_id == case_id]
+        if not target_cases:
+            raise ValueError(f"Case {case_id!r} not found in approved cases for task {task_id!r}")
+
+    # Running service version probe
+    is_version_verified = False
+    actual_commit = "unverified"
+    if exec_config.version_endpoint:
+        probe_url = f"{exec_config.base_url.rstrip('/')}/{exec_config.version_endpoint.lstrip('/')}"
+        try:
+            probe_resp = client.get(probe_url, timeout=min(5.0, exec_config.timeout_seconds))
+            if probe_resp.status_code == 200:
+                try:
+                    probe_data = probe_resp.json()
+                except Exception as json_err:
+                    if exec_config.require_version_verification:
+                        raise ValueError(
+                            f"Version probe response at {probe_url} is not valid JSON: {json_err}"
+                        ) from json_err
+                    probe_data = None
+
+                if isinstance(probe_data, dict):
+                    probed_val = (
+                        probe_data.get("commit")
+                        or probe_data.get("git_sha")
+                        or probe_data.get("version")
+                        or probe_data.get("sha")
+                    )
+                    if probed_val:
+                        actual_commit = str(probed_val)
+                        if actual_commit == exec_config.target_commit:
+                            is_version_verified = True
+                        elif exec_config.require_version_verification:
+                            raise ValueError(
+                                "Version verification failed: running service probed commit "
+                                f"{actual_commit!r} does not match expected target_commit "
+                                f"{exec_config.target_commit!r}"
+                            )
+            elif exec_config.require_version_verification:
+                raise ValueError(
+                    f"Version probe at {probe_url} returned HTTP {probe_resp.status_code}"
+                )
+        except Exception as probe_err:
+            if exec_config.require_version_verification:
+                raise
+            actual_commit = f"probe_failed: {probe_err}"
+
     current_case: CaseRevision | None = None
     case_evidence_ids: list[str] = []
     interrupted_exc: BaseException | None = None
     current_case_request_count = counter.count
 
     try:
-        for case in snapshot.cases:
+        for case in target_cases:
             if case.fingerprint() in recorded_case_hashes:
                 # Already executed in this or prior session, avoid repeating side effects
                 continue
@@ -496,6 +557,36 @@ def execute_task(
                 counts["not_run"] += 1
                 recorded_case_hashes.add(case.fingerprint())
                 log_event("case_not_run", case_id=case.case_id, reason=rec.reason)
+                continue
+
+            # Check execution_kind guard
+            if case.execution_kind not in {"http", "structured-http-v1"}:
+                rec = ExecutionRecord(
+                    task_id=task_id,
+                    revision_hash=case.fingerprint(),
+                    attempt=1,
+                    outcome="blocked",
+                    evidence_ids=(),
+                    reason=(
+                        f"Execution guard rejected: unsupported execution_kind "
+                        f"'{case.execution_kind}'; runner only supports 'structured-http-v1'"
+                    ),
+                )
+                store.add_execution_record(task_id, execution_id, rec)
+                counts["blocked"] += 1
+                recorded_case_hashes.add(case.fingerprint())
+                issue = Issue(
+                    issue_id=f"ISSUE-{uuid4().hex[:8].upper()}",
+                    task_id=task_id,
+                    category="environment_issue",
+                    title=f"Unsupported execution_kind for {case.case_id}",
+                    detail=rec.reason,
+                    case_id=case.case_id,
+                )
+                issues_list.append(issue)
+                store.save_issue(task_id, execution_id, issue)
+                log_event("case_blocked", case_id=case.case_id, reason=rec.reason)
+                executed_count += 1
                 continue
 
             # Check accounts precondition
@@ -887,7 +978,7 @@ def execute_task(
             )
 
         # Mark all remaining unexecuted cases as not_run
-        for rem_case in snapshot.cases:
+        for rem_case in target_cases:
             if rem_case.fingerprint() not in recorded_case_hashes:
                 rec = ExecutionRecord(
                     task_id=task_id,
@@ -903,7 +994,7 @@ def execute_task(
                 log_event("case_not_run", case_id=rem_case.case_id)
 
     finally:
-        planned_total = len(snapshot.cases)
+        planned_total = len(target_cases)
         evidence_backed_count = 0
         missing_evidence_ids: list[str] = []
         missing_evidence_count = 0
@@ -958,6 +1049,9 @@ def execute_task(
             "finished_at": datetime.now(UTC).isoformat(),
             "cases_count": planned_total,
             "requests_attempted": counter.count,
+            "declared_commit": exec_config.target_commit,
+            "actual_commit": actual_commit,
+            "version_verified": is_version_verified,
         }
         (exec_folder / "execution.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
 

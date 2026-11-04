@@ -41,6 +41,15 @@ DENIED = {
 }
 DEFAULT_PERMITTED_EXTENSIONS = {".py", ".json", ".yaml", ".yml", ".md", ".txt"}
 
+# Sentinels for materials not bound to the selected commit. A locally supplied
+# document cannot be tied to the source revision, so it must never be reported
+# with the target commit as its version.
+UNVERIFIED_DOCUMENT_VERSION = "unverified-document"
+MIXED_VERSION_WARNING = (
+    "Document/source version correspondence unverified: local document is not "
+    "bound to the selected commit"
+)
+
 
 def get_permitted_extensions() -> set[str]:
     return DEFAULT_PERMITTED_EXTENSIONS | get_all_supported_extensions()
@@ -84,6 +93,7 @@ class Inventory(Contract):
 
     target_commit: str
     version_verified: bool
+    all_materials_version_verified: bool = False
     materials: tuple[SourceRef, ...]
     operations: tuple[Operation, ...]
     limitations: tuple[str, ...]
@@ -121,6 +131,8 @@ def _discover(
     snapshots: dict[str, str] = {}
     warnings: list[str] = []
     verified = False
+    commit_paths: set[str] = set()
+    document_paths: set[str] = set()
     if task.source_paths:
         if not task.repository:
             raise ValueError("source selection requires repository")
@@ -152,6 +164,7 @@ def _discover(
                 warnings.append(f"{path}: file exceeds snapshot limit")
                 continue
             snapshots[path] = git(repo, "cat-file", "blob", blob).decode("utf-8")
+            commit_paths.add(path)
             checkpoint(path, snapshots[path])
         warnings += [
             f"{s}: no committed files matched" for s, count in matches.items() if not count
@@ -170,14 +183,26 @@ def _discover(
             if path in snapshots and snapshots[path] != content:
                 raise ValueError("document and committed source share a conflicting path")
             snapshots[path] = content
+            # A locally supplied document is not bound to the selected commit.
+            # Annotate it so it can never masquerade as a commit-verified source.
+            document_paths.add(path)
             checkpoint(path, content)
     sources = [
-        ref(path, content, task.target_commit) for path, content in sorted(snapshots.items())
+        ref(
+            path,
+            content,
+            task.target_commit
+            if path in commit_paths and path not in document_paths
+            else UNVERIFIED_DOCUMENT_VERSION,
+        )
+        for path, content in sorted(snapshots.items())
     ]
     sources_map = {source.path: source for source in sources}
     adapter = get_adapter(task.adapter) if getattr(task, "adapter", None) else None
+    adapter_extensions: set[str] = set()
     if adapter is not None:
         code_rows, code_notes = adapter.extract(snapshots, sources_map)
+        adapter_extensions = {ext.lower() for ext in adapter.supported_extensions}
     else:
         code_rows, code_notes = extract(snapshots, sources_map)
     warnings.extend(code_notes)
@@ -188,8 +213,11 @@ def _discover(
         content = snapshots[source.path]
         if source.path.endswith(".py"):
             continue
+        elif Path(source.path).suffix.lower() in adapter_extensions:
+            # The selected adapter already parsed this document; do not parse it again.
+            continue
         elif Path(source.path).suffix in {".yaml", ".yml", ".json"}:
-            rows, notes = openapi(content, source)
+            rows, notes = openapi(content, source, snapshots, sources_map)
         else:
             rows, notes = [], [f"{source.path}: prose retained; no automatic interface extraction"]
         warnings.extend(notes)
@@ -197,10 +225,9 @@ def _discover(
             key = f"{row['method']} {row['path']}"
             grouped.setdefault(key, []).append(row)
     operations = []
-    has_document_routes = any(
-        r.get("details", {}).get("kind") == "requirement" for rows in grouped.values() for r in rows
-    )
-    has_code_routes = bool(code_rows)
+    all_rows = [r for rows in grouped.values() for r in rows]
+    has_document_routes = any(r.get("details", {}).get("kind") == "requirement" for r in all_rows)
+    has_code_routes = any(r.get("details", {}).get("kind") == "implementation" for r in all_rows)
     for key, rows in sorted(grouped.items()):
         row = dict(rows[0])
         row["declarations"] = tuple(
@@ -214,12 +241,14 @@ def _discover(
         row["original_operation_ids"] = sorted(
             {i for r in rows for i in r["original_operation_ids"] if i}
         )
-        if len(rows) > 1:
+        if len(rows) > 1 and len(signatures) > 1:
             row["status"] = "conflict"
             row["reason"] = (
-                "Multiple declarations require reconciliation; "
+                "Multiple divergent declarations require reconciliation; "
                 f"{len(signatures)} distinct declaration signatures"
             )
+        elif len(rows) > 1 and row["status"] != "out_of_scope":
+            row["reason"] += f"; {len(rows)} consistent declarations of this operation"
         differences = reconcile(rows)
         kinds = {r.get("details", {}).get("kind") for r in rows}
         if has_document_routes and has_code_routes and len(kinds) == 1:
@@ -236,10 +265,16 @@ def _discover(
         operations.append(Operation(**row))
     if not verified:
         warnings.append("Document-only inventory: target version and runtime are unverified")
+    elif document_paths:
+        # Mixed inventory: source files come from the commit, but at least one
+        # locally supplied document is not bound to the selected revision.
+        warnings.append(MIXED_VERSION_WARNING)
+    all_materials_version_verified = bool(verified and not document_paths)
     warnings.append("Static inventory is not proof of complete runtime route coverage")
     inventory = Inventory(
         target_commit=task.target_commit,
-        version_verified=verified,
+        version_verified=all_materials_version_verified,
+        all_materials_version_verified=all_materials_version_verified,
         materials=tuple(sources),
         operations=tuple(operations),
         limitations=tuple(warnings),
@@ -326,7 +361,12 @@ def discover(store: TaskStore, task_id: str, materials_root: Path | None = None)
     (attempt / "started.json").write_text(json.dumps(metadata, indent=2), "utf-8")
 
     def checkpoint(path: str, content: str) -> None:
-        source = ref(path, content, task.target_commit)
+        is_document = any(
+            path == selection or path.startswith(selection.rstrip("/") + "/")
+            for selection in task.document_paths or ()
+        )
+        version = UNVERIFIED_DOCUMENT_VERSION if is_document else task.target_commit
+        source = ref(path, content, version)
         payload = {"source": source.model_dump(mode="json"), "content": content}
         snapshot_path = attempt / f"{source.source_id}.json"
         if snapshot_path.exists():
