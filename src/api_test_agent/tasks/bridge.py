@@ -13,6 +13,7 @@ from typing import Any
 
 import yaml
 
+from api_test_agent.regression.models import ROOT_PLACEHOLDER
 from api_test_agent.tasks.approval import read_approval
 from api_test_agent.tasks.store import TaskStore
 
@@ -28,7 +29,7 @@ def export_approved_to_regression_catalog(
     task = store.load(task_id)
 
     if approval_id is None:
-        pointer_file = store._folder(task_id) / "active-approval.json"
+        pointer_file = store.folder(task_id) / "active-approval.json"
         if not pointer_file.is_file():
             raise ValueError(f"Task '{task_id}' has no active approved execution selection")
         approval_id = json.loads(pointer_file.read_text("utf-8"))["approval_id"]
@@ -47,19 +48,20 @@ def export_approved_to_regression_catalog(
             if op_id in op_map:
                 case_apis.append(op_map[op_id].path)
 
-        entry_tokens = ["testpilot", "task"]
-        if Path(store.root).resolve() != Path("runtime/tasks").resolve():
-            entry_tokens.extend(["--root", str(Path(store.root).resolve())])
-        entry_tokens.extend(
-            [
-                "execute",
-                task_id,
-                "--approval",
-                approval_id,
-                "--case-id",
-                case.case_id,
-            ]
-        )
+        # 任务根目录用占位符而不是本机绝对路径：执行时按项目配置 task_root 解析。
+        # 子进程 cwd 是被测仓库，相对路径会解析到错误目录，绝对路径又不可移植。
+        entry_tokens = [
+            "testpilot",
+            "task",
+            "--root",
+            ROOT_PLACEHOLDER,
+            "execute",
+            task_id,
+            "--approval",
+            approval_id,
+            "--case-id",
+            case.case_id,
+        ]
 
         entry_dict = {
             "id": f"TC-{task_id.upper()}-{case.case_id.upper()}",
@@ -73,12 +75,17 @@ def export_approved_to_regression_catalog(
                 f"approved by {snapshot.actor}"
             ),
             "last_verified": today_str,
+            "runner": "task",
             "task_binding": {
                 "task_id": task_id,
                 "approval_id": approval_id,
                 "case_id": case.case_id,
                 "revision_hash": case.fingerprint(),
                 "execution_kind": case.execution_kind,
+                "runner": "task",
+                # 只记录变量名：task 子进程按这份白名单从父进程环境取凭据，
+                # 凭据值不进入用例目录、配置或日志。
+                "credential_env": sorted(snapshot.execution_config.accounts.values()),
             },
         }
         exported_entries.append(entry_dict)

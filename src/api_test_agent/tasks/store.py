@@ -26,7 +26,9 @@ TRANSITIONS = {
     "designed": {"awaiting_review", "blocked", "aborted"},
     "awaiting_review": {"designed", "ready", "blocked", "aborted"},
     "ready": {"awaiting_review", "running", "blocked", "aborted"},
-    "running": {"completed", "incomplete", "blocked", "aborted"},
+    # 一次执行可以只覆盖批准集合中的一部分（单用例或 max_cases 限制）：
+    # 这种运行正常结束后任务回到 ready，剩余用例仍可继续执行。
+    "running": {"ready", "completed", "incomplete", "blocked", "aborted"},
     "incomplete": {"running", "completed", "ready", "blocked", "aborted"},
     "blocked": {"created", "ready", "running", "aborted"},
     "completed": {"ready", "running", "blocked", "aborted"},
@@ -57,7 +59,8 @@ class TaskStore:
     def __init__(self, root: Path):
         self.root = root.resolve()
 
-    def _folder(self, task_id: str) -> Path:
+    def folder(self, task_id: str) -> Path:
+        """任务资产目录；对外唯一入口，调用方不需要也不应该访问私有实现。"""
         Task(task_id=task_id)  # Same strict validation for every read and write path.
         folder = self.root / task_id
         if not folder.resolve().is_relative_to(self.root):
@@ -67,13 +70,13 @@ class TaskStore:
     def create(self, task: Task) -> Path:
         if task.status != "created" or task.history:
             raise ValueError("new tasks must start at created with empty history")
-        folder = self._folder(task.task_id)
+        folder = self.folder(task.task_id)
         folder.mkdir(parents=True, exist_ok=False)
         _write_new(folder / "task.json", task)
         return folder
 
     def load(self, task_id: str) -> Task:
-        task = Task.model_validate_json((self._folder(task_id) / "task.json").read_text("utf-8"))
+        task = Task.model_validate_json((self.folder(task_id) / "task.json").read_text("utf-8"))
         if task.task_id != task_id:
             raise ValueError("task identity differs from directory")
         return task
@@ -99,6 +102,7 @@ class TaskStore:
             "repository",
             "source_paths",
             "document_paths",
+            "openapi_url",
             "environment",
             "adapter",
             "version_manifest",
@@ -109,11 +113,11 @@ class TaskStore:
         if (
             task.status != "created"
             or self.cases(task_id)
-            or (self._folder(task_id) / "inventory.json").exists()
+            or (self.folder(task_id) / "inventory.json").exists()
         ):
             raise ValueError("target is locked after assets or discovery; create a new task")
         configured = Task.model_validate(task.model_dump() | updates)
-        _replace_task(self._folder(task_id) / "task.json", configured)
+        _replace_task(self.folder(task_id) / "task.json", configured)
         return configured
 
     def transition(self, task_id: str, status: str, reason: str) -> Task:
@@ -125,7 +129,7 @@ class TaskStore:
         if status in {"ready", "running"}:
             from api_test_agent.tasks.approval import check_approval, read_approval
 
-            pointer_file = self._folder(task_id) / "active-approval.json"
+            pointer_file = self.folder(task_id) / "active-approval.json"
             if not pointer_file.is_file():
                 raise ValueError(f"{status} requires an active approval snapshot")
             pointer = json.loads(pointer_file.read_text("utf-8"))
@@ -138,13 +142,13 @@ class TaskStore:
                 require_ready=False,
             )
         if status in {"completed", "incomplete"}:
-            pointer_file = self._folder(task_id) / "active-execution.json"
+            pointer_file = self.folder(task_id) / "active-execution.json"
             if not pointer_file.is_file():
                 raise ValueError(f"{status} requires an active execution run")
         if status == "discovered":
             from api_test_agent.tasks.discovery import Inventory
 
-            path = self._folder(task_id) / "inventory.json"
+            path = self.folder(task_id) / "inventory.json"
             if not path.is_file():
                 raise ValueError("discovered requires a saved inventory")
             inventory = Inventory.model_validate_json(path.read_text("utf-8"))
@@ -158,14 +162,14 @@ class TaskStore:
         updated = Task.model_validate(
             task.model_dump() | {"status": status, "history": [*task.history, event]}
         )
-        _replace_task(self._folder(task_id) / "task.json", updated)
+        _replace_task(self.folder(task_id) / "task.json", updated)
         return updated
 
     def cases(self, task_id: str) -> list[CaseRevision]:
         self.load(task_id)
         return [
             CaseRevision.model_validate_json(p.read_text("utf-8"))
-            for p in sorted((self._folder(task_id) / "cases").glob("*/*.json"))
+            for p in sorted((self.folder(task_id) / "cases").glob("*/*.json"))
         ]
 
     def add_case(self, task_id: str, case: CaseRevision) -> Path:
@@ -174,7 +178,7 @@ class TaskStore:
             raise ValueError("task no longer accepts design revisions")
         if task.target_commit != case.target_commit:
             raise ValueError("select a matching task commit before importing cases")
-        folder = self._folder(task_id) / "cases" / case.case_id
+        folder = self.folder(task_id) / "cases" / case.case_id
         revisions = sorted(folder.glob("*.json")) if folder.exists() else []
         if case.revision != len(revisions) + 1:
             raise ValueError("revision must follow the latest stored revision")
@@ -195,7 +199,7 @@ class TaskStore:
 
     def review_history(self, task_id: str) -> list[ReviewDecision]:
         self.load(task_id)
-        folder = self._folder(task_id) / "reviews"
+        folder = self.folder(task_id) / "reviews"
         return [
             ReviewDecision.model_validate_json(p.read_text("utf-8"))
             for p in sorted(folder.glob("*.json"))
@@ -243,7 +247,7 @@ class TaskStore:
         }
         if decision.decision not in allowed.get(previous, set()):
             raise ValueError(f"unsupported review transition: {previous} -> {decision.decision}")
-        path = self._folder(decision.task_id) / "reviews" / f"{len(history) + 1:08d}.json"
+        path = self.folder(decision.task_id) / "reviews" / f"{len(history) + 1:08d}.json"
         _write_new(path, decision)
         if decision.decision != "approved" and self.load(decision.task_id).status == "ready":
             self.transition(decision.task_id, "awaiting_review", "Human review reopened")
@@ -263,7 +267,7 @@ class TaskStore:
     def add_execution_record(
         self, task_id: str, execution_id: str, record: ExecutionRecord
     ) -> Path:
-        folder = self._folder(task_id) / "executions" / execution_id / "records"
+        folder = self.folder(task_id) / "executions" / execution_id / "records"
         folder.mkdir(parents=True, exist_ok=True)
         # Use a combination of case hash or index to store immutable record
         path = folder / f"{record.revision_hash[:16]}.json"
@@ -274,13 +278,13 @@ class TaskStore:
         self, task_id: str, execution_id: str | None = None
     ) -> list[ExecutionRecord]:
         if execution_id is None:
-            active_file = self._folder(task_id) / "active-execution.json"
+            active_file = self.folder(task_id) / "active-execution.json"
             if not active_file.is_file():
                 return []
             execution_id = json.loads(active_file.read_text("utf-8")).get("execution_id")
             if not execution_id:
                 return []
-        folder = self._folder(task_id) / "executions" / execution_id / "records"
+        folder = self.folder(task_id) / "executions" / execution_id / "records"
         if not folder.is_dir():
             return []
         return [
@@ -289,7 +293,7 @@ class TaskStore:
         ]
 
     def save_evidence(self, task_id: str, execution_id: str, evidence: EvidenceRecord) -> Path:
-        folder = self._folder(task_id) / "executions" / execution_id / "evidence"
+        folder = self.folder(task_id) / "executions" / execution_id / "evidence"
         folder.mkdir(parents=True, exist_ok=True)
         path = folder / f"{evidence.evidence_id}.json"
         _write_new(path, evidence)
@@ -300,7 +304,7 @@ class TaskStore:
     ) -> EvidenceRecord | None:
         if execution_id is not None:
             path = (
-                self._folder(task_id)
+                self.folder(task_id)
                 / "executions"
                 / execution_id
                 / "evidence"
@@ -310,12 +314,12 @@ class TaskStore:
                 return EvidenceRecord.model_validate_json(path.read_text("utf-8"))
             return None
         # Search all executions
-        for path in self._folder(task_id).glob(f"executions/*/evidence/{evidence_id}.json"):
+        for path in self.folder(task_id).glob(f"executions/*/evidence/{evidence_id}.json"):
             return EvidenceRecord.model_validate_json(path.read_text("utf-8"))
         return None
 
     def save_issue(self, task_id: str, execution_id: str, issue: Issue) -> Path:
-        folder = self._folder(task_id) / "executions" / execution_id / "issues"
+        folder = self.folder(task_id) / "executions" / execution_id / "issues"
         folder.mkdir(parents=True, exist_ok=True)
         path = folder / f"{issue.issue_id}.json"
         _write_new(path, issue)
@@ -323,13 +327,13 @@ class TaskStore:
 
     def issues(self, task_id: str, execution_id: str | None = None) -> list[Issue]:
         if execution_id is None:
-            active_file = self._folder(task_id) / "active-execution.json"
+            active_file = self.folder(task_id) / "active-execution.json"
             if not active_file.is_file():
                 return []
             execution_id = json.loads(active_file.read_text("utf-8")).get("execution_id")
             if not execution_id:
                 return []
-        folder = self._folder(task_id) / "executions" / execution_id / "issues"
+        folder = self.folder(task_id) / "executions" / execution_id / "issues"
         if not folder.is_dir():
             return []
         return [

@@ -64,7 +64,7 @@ def test_execution_refused_if_unapproved_or_tampered(approved_setup, monkeypatch
     client = httpx.Client(transport=httpx.MockTransport(refuse_http))
 
     # 1. Modify case revision after approval
-    path = store._folder("demo") / "cases/list-items/00000001.json"
+    path = store.folder("demo") / "cases/list-items/00000001.json"
     data = json.loads(path.read_text("utf-8"))
     data["assertions"][0]["expected"] = 999
     path.write_text(json.dumps(data), encoding="utf-8")
@@ -103,11 +103,11 @@ def test_successful_execution_records_evidence_and_completes(approved_setup, mon
     assert store.load("demo").status == "completed"
 
     # Verify evidence records exist and secret tokens are redacted
-    active_exec = json.loads((store._folder("demo") / "active-execution.json").read_text("utf-8"))[
+    active_exec = json.loads((store.folder("demo") / "active-execution.json").read_text("utf-8"))[
         "execution_id"
     ]
     evidence_files = list(
-        (store._folder("demo") / f"executions/{active_exec}/evidence").glob("*.json")
+        (store.folder("demo") / f"executions/{active_exec}/evidence").glob("*.json")
     )
     assert len(evidence_files) == 2
     for ef in evidence_files:
@@ -138,7 +138,7 @@ def test_assertion_failure_marks_case_failed_and_creates_issue(approved_setup):
     assert accounting.conserved is True
     assert store.load("demo").status == "completed"
 
-    active_exec = json.loads((store._folder("demo") / "active-execution.json").read_text("utf-8"))[
+    active_exec = json.loads((store.folder("demo") / "active-execution.json").read_text("utf-8"))[
         "execution_id"
     ]
     issues = store.issues("demo", active_exec)
@@ -176,7 +176,7 @@ def test_missing_host_credential_blocks_case_without_sending_request(approved_se
     monkeypatch.delenv("SYNTHETIC_API_TOKEN", raising=False)
 
     # Change case to require account="synthetic"
-    path = store._folder("demo") / "cases/list-items/00000001.json"
+    path = store.folder("demo") / "cases/list-items/00000001.json"
     data = json.loads(path.read_text("utf-8"))
     data["steps"][0]["account"] = "synthetic"
     path.write_text(json.dumps(data), encoding="utf-8")
@@ -307,7 +307,7 @@ def test_missing_parameter_reference_does_not_crash_accounting(approved_setup):
     store, config, approval_id, _ = approved_setup
 
     # Tamper case to add step2 that references an earlier step's missing field at runtime
-    path = store._folder("demo") / "cases/list-items/00000001.json"
+    path = store.folder("demo") / "cases/list-items/00000001.json"
     data = json.loads(path.read_text("utf-8"))
     # Add step2 that depends on request, referencing a nonexistent property in response
     step2 = deepcopy(data["steps"][0])
@@ -381,10 +381,10 @@ def test_complete_token_redaction_in_response_and_issues(approved_setup, monkeyp
     )
 
     assert accounting.failed == 2
-    active_exec = json.loads((store._folder("demo") / "active-execution.json").read_text("utf-8"))[
+    active_exec = json.loads((store.folder("demo") / "active-execution.json").read_text("utf-8"))[
         "execution_id"
     ]
-    exec_dir = store._folder("demo") / "executions" / active_exec
+    exec_dir = store.folder("demo") / "executions" / active_exec
 
     # Scan all files in execution directory: none may contain the secret token!
     for f in exec_dir.glob("**/*"):
@@ -413,10 +413,10 @@ def test_keyboard_interrupt_completes_accounting_and_transitions_incomplete(appr
     # Task status must be incomplete, not stuck in running!
     assert store.load("demo").status == "incomplete"
 
-    active_exec = json.loads((store._folder("demo") / "active-execution.json").read_text("utf-8"))[
+    active_exec = json.loads((store.folder("demo") / "active-execution.json").read_text("utf-8"))[
         "execution_id"
     ]
-    exec_dir = store._folder("demo") / "executions" / active_exec
+    exec_dir = store.folder("demo") / "executions" / active_exec
     summary = json.loads((exec_dir / "execution.json").read_text("utf-8"))
     accounting = summary["accounting"]
 
@@ -438,6 +438,136 @@ def test_executing_task_in_running_state_is_refused(approved_setup):
     client = httpx.Client(transport=httpx.MockTransport(mock_handler))
     with pytest.raises(ValueError, match="already in 'running' state"):
         execute_task(store, "demo", approval_id=approval_id, config=config, http_client=client)
+
+
+def test_case_scoped_executions_run_one_after_another(approved_setup):
+    """桥接按 --case-id 逐条执行：第一条跑完不能把任务锁死。"""
+
+    store, config, approval_id, _ = approved_setup
+    sent: list[str] = []
+
+    def mock_handler(request: httpx.Request) -> httpx.Response:
+        sent.append(request.url.path)
+        return httpx.Response(200, json={"items": [{"id": 1}]})
+
+    with httpx.Client(transport=httpx.MockTransport(mock_handler)) as client:
+        first = execute_task(
+            store,
+            "demo",
+            approval_id=approval_id,
+            config=config,
+            case_id="list-items",
+            http_client=client,
+        )
+        assert first.planned == 1
+        assert first.passed == 1
+        assert store.load("demo").status == "ready"
+
+        second = execute_task(
+            store,
+            "demo",
+            approval_id=approval_id,
+            config=config,
+            case_id="list-items-2",
+            http_client=client,
+        )
+        assert second.planned == 1
+        assert second.passed == 1
+        assert store.load("demo").status == "ready"
+
+        # 全量执行才把任务置为 completed
+        full = execute_task(
+            store, "demo", approval_id=approval_id, config=config, http_client=client
+        )
+
+    assert len(sent) == 4
+    assert full.planned == 2
+    assert full.passed == 2
+    assert store.load("demo").status == "completed"
+
+
+def test_unknown_case_id_does_not_leave_task_running(approved_setup):
+    store, config, approval_id, _ = approved_setup
+
+    def mock_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"items": []})
+
+    with httpx.Client(transport=httpx.MockTransport(mock_handler)) as client:
+        with pytest.raises(ValueError, match="not found"):
+            execute_task(
+                store,
+                "demo",
+                approval_id=approval_id,
+                config=config,
+                case_id="no-such-case",
+                http_client=client,
+            )
+        # 编号写错不应污染状态，也不该留下执行目录
+        assert store.load("demo").status == "ready"
+        assert not list((store.folder("demo") / "executions").glob("*"))
+
+        # 之后正常执行不被状态守卫拦截
+        accounting = execute_task(
+            store, "demo", approval_id=approval_id, config=config, http_client=client
+        )
+    assert accounting.passed == 2
+
+
+def test_completed_task_can_be_replayed(approved_setup):
+    store, config, approval_id, _ = approved_setup
+
+    def mock_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"items": [{"id": 1}]})
+
+    with httpx.Client(transport=httpx.MockTransport(mock_handler)) as client:
+        first = execute_task(
+            store, "demo", approval_id=approval_id, config=config, http_client=client
+        )
+        assert first.passed == 2
+        assert store.load("demo").status == "completed"
+
+        replay = execute_task(
+            store, "demo", approval_id=approval_id, config=config, http_client=client
+        )
+    assert replay.planned == 2
+    assert replay.passed == 2
+
+
+@pytest.mark.parametrize(
+    ("accounting", "expected"),
+    [
+        (
+            dict(planned=2, passed=2, conserved=True),
+            "passed",
+        ),
+        (
+            # --max-cases 0：一条都没跑，不能算通过
+            dict(planned=2, not_run=2, conserved=True),
+            "incomplete",
+        ),
+        (
+            dict(planned=2, passed=1, failed=1, conserved=True),
+            "failed",
+        ),
+        (
+            dict(planned=2, passed=1, error=1, conserved=True),
+            "error",
+        ),
+        (
+            dict(planned=2, blocked=2, conserved=True),
+            "error",
+        ),
+        (
+            dict(planned=2, passed=2, conserved=False),
+            "error",
+        ),
+    ],
+)
+def test_classify_accounting_covers_zero_execution(accounting, expected):
+    from api_test_agent.tasks.execution import classify_accounting
+    from api_test_agent.tasks.models import ExecutionAccounting
+
+    assert classify_accounting(ExecutionAccounting(**accounting)) == expected
 
 
 def test_interrupt_first_request_is_not_retried_on_resume(approved_setup):
@@ -514,7 +644,7 @@ def test_echoed_token_references_and_assertions_use_raw_memory(approved_setup, m
     store, config, _, _ = approved_setup
     secret = "xyz"
     monkeypatch.setenv("SYNTHETIC_API_TOKEN", secret)
-    path = store._folder("demo") / "cases/list-items/00000001.json"
+    path = store.folder("demo") / "cases/list-items/00000001.json"
     data = json.loads(path.read_text("utf-8"))
     followup = deepcopy(data["steps"][0])
     followup["step_id"] = "followup"
@@ -571,7 +701,7 @@ def test_echoed_token_references_and_assertions_use_raw_memory(approved_setup, m
     from api_test_agent.tasks.report import generate_report
 
     generate_report(store, "demo")
-    for path in store._folder("demo").rglob("*"):
+    for path in store.folder("demo").rglob("*"):
         if path.is_file():
             assert secret not in path.read_text("utf-8"), path
 

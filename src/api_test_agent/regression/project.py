@@ -47,6 +47,12 @@ class Project:
         return resolve_path(self.root, self.config.artifacts_dir)
 
     @property
+    def task_root(self) -> Path:
+        """统一任务资产根目录：桥接用例的 --root 占位符在这里解析成实际路径。"""
+
+        return resolve_path(self.root, self.config.task_root)
+
+    @property
     def prompts_dir(self) -> Path:
         if self.config.prompts_dir:
             return resolve_path(self.root, self.config.prompts_dir)

@@ -142,7 +142,7 @@ def test_from_empty_assets_to_validated_drafts_and_review(prepared, monkeypatch)
     manifest = json.loads((review.parent / "manifest.json").read_text("utf-8"))
     assert manifest["executable"] is False
     assert manifest["cases"] == {"list-items": store.cases("demo")[0].fingerprint()}
-    assert not list(store._folder("demo").glob("**/execution*.json"))
+    assert not list(store.folder("demo").glob("**/execution*.json"))
 
 
 @pytest.mark.parametrize(
@@ -182,7 +182,7 @@ def test_invalid_model_output_saved_but_no_cases_imported(prepared, mutation):
         design(store, "demo", supplied_response=json.dumps(output))
     assert store.cases("demo") == []
     assert store.load("demo").status == "discovered"
-    failures = list(store._folder("demo").glob("designs/*/failed.json"))
+    failures = list(store.folder("demo").glob("designs/*/failed.json"))
     assert len(failures) == 1
     assert (failures[0].parent / "response.json").is_file()
 
@@ -198,7 +198,7 @@ def test_generator_failure_and_request_only_keep_task_truthful(prepared):
 
     with pytest.raises(RuntimeError):
         design(store, "demo", failed_generator)
-    assert list(store._folder("demo").glob("designs/*/failed.json"))
+    assert list(store.folder("demo").glob("designs/*/failed.json"))
     assert store.load("demo").status == "discovered"
     assert store.cases("demo") == []
 
@@ -436,7 +436,7 @@ def test_interrupted_import_blocks_review_then_recovers_without_regeneration(pre
     assert len(store.cases("demo")) == 1
     with pytest.raises(ValueError, match="interrupted design"):
         export_review(store, "demo")
-    attempt = next(store._folder("demo").glob("designs/*/import-started.json")).parent
+    attempt = next(store.folder("demo").glob("designs/*/import-started.json")).parent
     first = store.cases("demo")[0].fingerprint()
     monkeypatch.setattr(store, "add_case", original)
     recover_design(store, "demo", attempt.name)
@@ -455,7 +455,7 @@ def test_generation_interrupt_leaves_explicit_failure(prepared):
 
     with pytest.raises(KeyboardInterrupt):
         design(store, "demo", interrupted)
-    marker = next(store._folder("demo").glob("designs/*/failed.json"))
+    marker = next(store.folder("demo").glob("designs/*/failed.json"))
     assert json.loads(marker.read_text("utf-8"))["error_type"] == "KeyboardInterrupt"
     assert (marker.parent / "generation-started.json").is_file()
     assert store.cases("demo") == []
@@ -493,6 +493,6 @@ def test_provider_reported_cost_stops_before_drafts_are_imported(prepared, tmp_p
     with pytest.raises(ValueError, match="cost"):
         design(store, "demo", generator)
     assert store.cases("demo") == []
-    marker = next(store._folder("demo").glob("designs/*/model-call.json"))
+    marker = next(store.folder("demo").glob("designs/*/model-call.json"))
     assert json.loads(marker.read_text("utf-8"))["budget"]["cost_usd"] == 0.01
     assert "synthetic-fake-client-key" not in marker.read_text("utf-8")

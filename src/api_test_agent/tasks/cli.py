@@ -12,6 +12,15 @@ from api_test_agent.model import ModelError
 from api_test_agent.tasks.models import CaseRevision, ReviewDecision, Task
 from api_test_agent.tasks.store import TaskStore
 
+# 一次执行的退出码只由结构化 accounting 决定：没有真正跑完就不是成功。
+EXECUTE_EXIT_CODES = {
+    "passed": 0,
+    "failed": 1,
+    "error": 2,
+    "incomplete": 2,
+    "empty": 2,
+}
+
 
 def register_commands(commands: argparse._SubParsersAction) -> None:
     parser = commands.add_parser("task", help="统一任务与用例资产（F1-F6）")
@@ -30,7 +39,7 @@ def register_commands(commands: argparse._SubParsersAction) -> None:
     add.add_argument("file", type=Path)
     configure = actions.add_parser("configure", help="为草稿选择目标；不读取目标")
     configure.add_argument("task_id")
-    for flag in ("project", "commit", "repository", "environment"):
+    for flag in ("project", "commit", "repository", "environment", "openapi-url"):
         configure.add_argument(f"--{flag}")
     for flag in ("scope", "source-paths", "document-paths"):
         configure.add_argument(f"--{flag}", nargs="+")
@@ -48,9 +57,10 @@ def register_commands(commands: argparse._SubParsersAction) -> None:
     state.add_argument("task_id")
     state.add_argument("status", choices=["blocked", "aborted", "created"])
     state.add_argument("--reason", required=True)
-    discover = actions.add_parser("discover", help="离线读取所选快照与资料，发现接口")
+    discover = actions.add_parser("discover", help="读取所选快照或显式 OpenAPI URL，发现接口")
     discover.add_argument("task_id")
     discover.add_argument("--materials-root", type=Path)
+    discover.add_argument("--openapi-url", help="获取一个 HTTP(S) OpenAPI 文档并冻结为快照")
     material = actions.add_parser("materials", help="导出受字符预算限制的实际模型材料")
     material.add_argument("task_id")
     material.add_argument("--max-chars", type=int, default=40000)
@@ -82,6 +92,11 @@ def register_commands(commands: argparse._SubParsersAction) -> None:
     execute_cmd.add_argument("--max-cases", type=int, default=None, help="最多执行用例数")
     execute_cmd.add_argument("--stop-on-failure", action="store_true", help="遇首个失败停止")
     execute_cmd.add_argument("--case-id", help="限定仅执行指定的用例编号")
+    execute_cmd.add_argument(
+        "--accounting-json",
+        type=Path,
+        help="把结构化 accounting 写入该路径；回归桥接据此判定结果，不解析文本",
+    )
     report_cmd = actions.add_parser("report", help="查看或导出当前或最终报告")
     report_cmd.add_argument("task_id")
     report_cmd.add_argument("--execution-id", help="指定执行编号；默认读取最新执行")
@@ -120,7 +135,7 @@ def execute_handler(args: argparse.Namespace) -> int:
                 print(f"approval valid; selected={len(snapshot.cases)}; no requests sent")
         elif args.task_action == "execute":
             from api_test_agent.tasks.approval import ExecutionConfig
-            from api_test_agent.tasks.execution import execute_task
+            from api_test_agent.tasks.execution import classify_accounting, execute_task
 
             config = ExecutionConfig.load(args.execution_config) if args.execution_config else None
             accounting = execute_task(
@@ -132,16 +147,20 @@ def execute_handler(args: argparse.Namespace) -> int:
                 stop_on_failure=args.stop_on_failure,
                 case_id=getattr(args, "case_id", None),
             )
+            # Structured result first: the wrapper reads this file instead of the prose output.
+            accounting_json = getattr(args, "accounting_json", None)
+            if accounting_json:
+                accounting_json.parent.mkdir(parents=True, exist_ok=True)
+                accounting_json.write_text(accounting.model_dump_json(indent=2), encoding="utf-8")
             print(accounting.model_dump_json(indent=2))
+            outcome = classify_accounting(accounting)
             print(
-                f"{accounting.passed} passed, {accounting.failed} failed, "
-                f"{accounting.error} error, {accounting.blocked} blocked"
+                f"task outcome: {outcome} (planned={accounting.planned} "
+                f"passed={accounting.passed} failed={accounting.failed} "
+                f"error={accounting.error} blocked={accounting.blocked} "
+                f"not_run={accounting.not_run} conserved={accounting.conserved})"
             )
-            if accounting.failed > 0:
-                return 1
-            if accounting.error > 0 or accounting.blocked > 0:
-                return 2
-            return 0
+            return EXECUTE_EXIT_CODES[outcome]
         elif args.task_action == "report":
             from api_test_agent.tasks.report import generate_report
 
@@ -195,11 +214,13 @@ def execute_handler(args: argparse.Namespace) -> int:
         elif args.task_action == "discover":
             from api_test_agent.tasks.discovery import discover
 
+            if args.openapi_url and store.load(args.task_id).openapi_url != args.openapi_url:
+                store.configure(args.task_id, openapi_url=args.openapi_url)
             print(discover(store, args.task_id, args.materials_root))
         elif args.task_action == "materials":
             from api_test_agent.tasks.discovery import Inventory, model_materials
 
-            path = store._folder(args.task_id) / "inventory.json"
+            path = store.folder(args.task_id) / "inventory.json"
             inventory = Inventory.model_validate_json(path.read_text("utf-8"))
             print(model_materials(inventory, args.max_chars))
         elif args.task_action == "create":
@@ -226,6 +247,7 @@ def execute_handler(args: argparse.Namespace) -> int:
                 "scope",
                 "source_paths",
                 "document_paths",
+                "openapi_url",
             )
             updates = {
                 mapping.get(k, k): getattr(args, k) for k in fields if getattr(args, k) is not None

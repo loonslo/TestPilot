@@ -227,3 +227,41 @@ Inventory 现显式保存 all_materials_version_verified；外部文档使用 un
 验证（Windows，项目 .venv Python 3.14，2026-11-04）：uv 启动器报 `uv trampoline failed to canonicalize script path`，未改环境，使用 `.venv/Scripts/python.exe -m pytest`。全量命令加 `-q -p no:cacheprovider --basetemp=runtime/review-discovery-20261104-a3`：462 passed in 51.57s。随后参数合并保护最终状态定向复测：同样选项，basetemp 为 runtime/review-discovery-20261104-a4，测试 tests/test_adapters.py 与 tests/test_task_discovery.py：34 passed in 1.38s。Ruff check/format --check src tests 通过（86 files）；git diff --check 通过。新增测试覆盖跨文件递归与循环/来源、服务器独立覆盖/空前缀，以及两条发现入口的跨文件集成与版本字段。
 
 未调用模型或真实被测接口，未读取被测仓库、提交或推送；真实项目全集和真实模型质量仍未验收。未使用跨项目同步工具。
+
+
+## 2026-11-04：Apple 接口文档 URL 导入入口
+
+已实现最小 URL 导入链路：`task discover <任务> --openapi-url <HTTP(S)地址>`，也可通过 `task configure <任务> --openapi-url <地址>` 预登记。无需 Git 或 Java/Node 源码；任务仍需登记项目、完整提交与 scope。TaskStore 对 URL 使用既有目标锁定机制，URL 纳入 task_binding；未使用 URL 的旧任务绑定保持兼容。
+
+宿主在 `tasks/openapi_import.py` 获取一个明确地址，冻结为 `url-import/<URL哈希>.json` 虚拟文件，交给原有 OpenAPIAdapter/默认发现路径，未修改适配器。SourceRef 保留 URL 摘要和内容哈希，版本为 unverified-document，两项版本验证标志均为 false；这不证明文档属于用户登记的提交。下载只允许 HTTP(S)，不携带 URL 凭据、不读取环境代理、不跟随重定向，不自动抓取远程 $ref；15 秒网络读写超时、1 MB 内容上限。无认证头配置/交互登录能力，需要认证时先由用户导出本地文档。完整 inventory 已保存但状态推进中断时从快照恢复，不再次抓取可能变化的服务。
+
+UI 的“直接导入服务/完整清单”和“文档路径或 URL”文案已纠正：网页表单仍是本地文档路径，URL 导入明确引导使用 CLI，不宣称实现网页 URL 拉取。使用方法同步 README。
+
+实际验证：2026-11-04，Windows / 项目 .venv Python 3.14.4。第一轮相关测试 52 passed；最终 `.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider --basetemp=runtime/url-import-20261104-02`：476 passed in 54.74s。新增 tests/test_openapi_import.py 共 14 项，含真实本地合成 HTTP 服务的 Swagger v2/OpenAPI v3 CLI 导入、来源与未核验版本、非规格/HTTP 401/500 拒绝、302 不跳转、大小与超时、凭据/协议校验、外部引用不爬取、状态中断恢复与旧任务绑定兼容。Ruff check src tests 与 format --check src tests 通过（88 files），git diff --check 通过。沿用项目 .venv 验证，未修复 uv 启动器环境。未连接 Apple 或任何真实被测服务，未调用模型，未提交或推送；UI 文案未做浏览器目视复核。
+
+### 其余评审项的核查与待办（本次未实现）
+
+- ② 已确认：regression/runner.py 仍通过 entry 字符串/task_binding 推断 task，直接调用 task_command，可绕过传入 builder；应后续以显式 runner 元数据分派。
+- ③ 能力边界：execution_kind 只对 HTTP 类型放行，JUnit/Jest 无执行实现；未知类型保持拒绝，不宣称多执行器已落地。
+- ④ 能力边界：未实现 java-annotations/ts-decorators。URL 文档可访问时使用通用规格；无规格时暂没有这些源码兜底。
+- 桥接可移植性：bridge.py 在非默认根目录时写入本机绝对 --root，且调用 store._folder 私有方法；本次记录，未改造。
+- 退出码风险核查：tasks/cli.py 当前 failed>0 返回1，error/blocked>0 返回2，其余返回0，基础失败/错误与 classify 映射并非直接冲突。但仍缺 task 专用结果分类，不能据此证明 skipped/not_run/零执行可正确核算；后续应以结构化 accounting 验证，而非仅复用 pytest 输出语义。
+- version_manifest 仍是多仓版本字段能力，不代表24仓库采集/编排已验收；本次只验证单个文档 URL。真实 Apple 系统接口覆盖与真实模型质量仍在 F7。
+
+## 2026-11-04：用户反馈续审待修项
+
+当前工作区 URL 导入已有实现，本次14项复测通过；② 显式 runner 分派、③ 非HTTP执行器、④ Java/TS兜底仍未完成。新增合成复现：单条桥接执行完成使后续条目被 completed 状态拦截；CLI 零执行返回成功并被回归误判 passed；凭据环境过滤；含空格 argv 被重拆；无效 case-id 留下 running。默认根目录随被测仓库 cwd 错位已静态确认。详见 docs/acceptance.md 本日“用户反馈续审”。
+优先修复桥接状态/重复运行边界、结构化结果分类和凭据转发，再统一显式 runner 分派及路径解析。F8 当前只证明导出和模拟调度，不代表真实多用例回归闭环验收。本轮仅审查，未修复上述问题。
+
+## 2026-11-04：F8 桥接缺陷修复（P1 状态/分类/凭据，P2 路径与私有方法）
+
+修复上一节“用户反馈续审待修项”中的 7 项缺陷、② 显式 runner 分派、`--root` 绝对路径与 `store._folder` 私有方法；③ 非 HTTP 执行器、④ Java/TS 源码兜底仍是能力边界，不在本次范围。逐项实现、测试与未验证边界见 `docs/acceptance.md` 同日“F8 桥接缺陷修复”节。
+
+- 任务状态边界：`--case-id` 运行结束回到 `ready`（新增 `running -> ready`），只有全量运行才 `completed`；`completed` 可重放；单用例运行不继承上一轮 resume 记录。
+- 结构化分类：`classify_accounting` + `task execute --accounting-json`；回归 runner 只读该文件判定，`--max-cases 0` 判 `skipped`/`incomplete`；`testpilot run` 在未执行完时返回 1。
+- 凭据：`task_binding.credential_env` 只记变量名，`run_plan` 按名单把值转发进 task 子进程；pytest 入口仍过滤 KEY/TOKEN。
+- 显式 runner：`TestCase.runner` / `PlanEntry.runner`，删除 entry 字符串嗅探；`task_command` 不再二次拆词，也不再注入 `suite.extra_args`。
+- 路径：`--root {task_root}` + 配置 `task_root`（默认 `runtime/tasks`）；`TaskStore.folder` 取代 `_folder`（78 处）。
+- 顺带修掉一个被模拟测试掩盖的入口缺陷：`python -m api_test_agent.cli` 无 `__main__` 守卫、只导入不执行且返回 0，现改为 `python -m api_test_agent` 并补守卫。
+
+实测：全量 496 passed（`runtime/fix-all-2`，83.76s，较 476 项净增 20 项）；`tests/test_bridge_live.py` 4 项真实子进程+合成 HTTP 服务通过；Ruff check/format 与 `git diff --check` 通过。未连接真实被测服务、未调用模型、未提交或推送。

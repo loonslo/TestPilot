@@ -136,11 +136,11 @@ def test_generate_report_missing_evidence_detected_and_fails_conservation(approv
     execute_task(store, "demo", approval_id=approval_id, config=config, http_client=client)
 
     # Delete all evidence files on disk
-    active_exec = store._folder("demo") / "active-execution.json"
+    active_exec = store.folder("demo") / "active-execution.json"
     import json
 
     exec_id = json.loads(active_exec.read_text("utf-8"))["execution_id"]
-    evidence_dir = store._folder("demo") / "executions" / exec_id / "evidence"
+    evidence_dir = store.folder("demo") / "executions" / exec_id / "evidence"
     evidence_files = list(evidence_dir.glob("*.json"))
     assert len(evidence_files) == 2
     for ef in evidence_files:
@@ -315,8 +315,8 @@ def test_corrupt_evidence_is_reported_as_missing(approved_setup, corruption):
         transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"items": []}))
     ) as client:
         execute_task(store, "demo", http_client=client)
-    pointer = json.loads((store._folder("demo") / "active-execution.json").read_text("utf-8"))
-    folder = store._folder("demo") / "executions" / pointer["execution_id"] / "evidence"
+    pointer = json.loads((store.folder("demo") / "active-execution.json").read_text("utf-8"))
+    folder = store.folder("demo") / "executions" / pointer["execution_id"] / "evidence"
     for path in folder.glob("*.json"):
         if corruption == "invalid_json":
             path.write_text("{invalid json", encoding="utf-8")

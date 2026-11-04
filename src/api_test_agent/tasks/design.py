@@ -64,7 +64,7 @@ class DesignOutput(Contract):
 def load_inventory(store: TaskStore, task_id: str) -> Inventory:
     task = store.load(task_id)
     inventory = Inventory.model_validate_json(
-        (store._folder(task_id) / "inventory.json").read_text("utf-8")
+        (store.folder(task_id) / "inventory.json").read_text("utf-8")
     )
     if inventory.task_hash != task_binding(task):
         raise ValueError("inventory no longer matches task settings")
@@ -153,7 +153,7 @@ def delivery_manifest(payload: dict, inventory: Inventory) -> list[dict]:
 
 
 def ensure_design_complete(store: TaskStore, task_id: str) -> None:
-    for marker in (store._folder(task_id) / "designs").glob("*/import-started.json"):
+    for marker in (store.folder(task_id) / "designs").glob("*/import-started.json"):
         if not (marker.parent / "import-completed.json").is_file():
             raise ValueError("interrupted design import must be reconciled with design-recover")
 
@@ -280,7 +280,7 @@ def design(
         raise ValueError("design requires completed discovery")
     ensure_design_complete(store, task_id)
     inventory = load_inventory(store, task_id)
-    folder = store._folder(task_id) / "designs" / uuid4().hex
+    folder = store.folder(task_id) / "designs" / uuid4().hex
     folder.mkdir(parents=True)
     try:
         request = design_request(inventory, max_chars, operation_ids)
@@ -376,7 +376,7 @@ def finish_import(store: TaskStore, task_id: str, folder: Path, output: DesignOu
 def recover_design(store: TaskStore, task_id: str, attempt_id: str) -> Path:
     if not re.fullmatch(r"[a-f0-9]{32}", attempt_id):
         raise ValueError("invalid design attempt ID")
-    folder = store._folder(task_id) / "designs" / attempt_id
+    folder = store.folder(task_id) / "designs" / attempt_id
     task = store.load(task_id)
     if task.status not in {"discovered", "designed", "awaiting_review"}:
         raise ValueError("task is not accepting design recovery")
@@ -421,7 +421,7 @@ def scenario_matrix(
         for scenario in SCENARIOS
     }
     folders = sorted(
-        (store._folder(task_id) / "designs").glob("*/validated.json"),
+        (store.folder(task_id) / "designs").glob("*/validated.json"),
         key=lambda p: p.stat().st_mtime_ns,
     )
     for path in folders:
@@ -471,7 +471,7 @@ def export_review(
         raise ValueError("no drafts to review")
     cases = list(latest.values())
     validate_cases(cases, inventory)
-    folder = store._folder(task_id) / "review-materials" / uuid4().hex
+    folder = store.folder(task_id) / "review-materials" / uuid4().hex
     folder.mkdir(parents=True)
     from api_test_agent.tasks.approval import fingerprint, review_binding
 

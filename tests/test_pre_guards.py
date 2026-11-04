@@ -62,13 +62,13 @@ def test_unsupported_execution_kind_guard(approved_setup) -> None:
     cases = list(store.cases("demo"))
     assert len(cases) >= 2
     case_junit = cases[0].model_copy(update={"execution_kind": "junit"})
-    folder = store._folder("demo") / "cases" / case_junit.case_id
+    folder = store.folder("demo") / "cases" / case_junit.case_id
     (folder / "0001.json").write_text(case_junit.model_dump_json(), encoding="utf-8")
 
     snapshot = read_approval(store, "demo", approval_id)
     new_cases = (case_junit, snapshot.cases[1])
     new_snapshot = snapshot.model_copy(update={"cases": new_cases})
-    folder = store._folder("demo") / "approvals" / approval_id
+    folder = store.folder("demo") / "approvals" / approval_id
     (folder / "snapshot.json").write_text(new_snapshot.model_dump_json(), encoding="utf-8")
 
     mock_transport = httpx.MockTransport(lambda req: httpx.Response(200, json={"items": []}))
@@ -190,7 +190,7 @@ def test_running_service_version_verification(approved_setup) -> None:
             "require_version_verification": True,
         }
     )
-    folder = store._folder("demo") / "approvals" / approval_id
+    folder = store.folder("demo") / "approvals" / approval_id
     snapshot = read_approval(store, "demo", approval_id)
     new_snapshot = snapshot.model_copy(update={"execution_config": cfg_with_version})
     (folder / "snapshot.json").write_text(new_snapshot.model_dump_json(), encoding="utf-8")
@@ -200,7 +200,7 @@ def test_running_service_version_verification(approved_setup) -> None:
         execute_task(
             store, "demo", approval_id=approval_id, config=cfg_with_version, http_client=client
         )
-    exec_folder = store._folder("demo") / "executions"
+    exec_folder = store.folder("demo") / "executions"
     latest_exec = sorted(exec_folder.glob("*/execution.json"))[-1]
     summary = json.loads(latest_exec.read_text("utf-8"))
     assert summary["version_verified"] is True
@@ -208,7 +208,7 @@ def test_running_service_version_verification(approved_setup) -> None:
     assert summary["declared_commit"] == matching_commit
 
     # 2. Mismatched commit with require_version_verification raises ValueError
-    task_file = store._folder("demo") / "task.json"
+    task_file = store.folder("demo") / "task.json"
     t_data = json.loads(task_file.read_text("utf-8"))
     t_data["status"] = "ready"
     task_file.write_text(json.dumps(t_data), encoding="utf-8")

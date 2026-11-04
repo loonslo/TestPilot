@@ -170,7 +170,7 @@ def test_real_small_closed_loop_end_to_end(tmp_path: Path, monkeypatch) -> None:
         discover(store, task_id, materials_root=tmp_path)
         task = store.load(task_id)
         assert task.status == "discovered"
-        inv = json.loads((store._folder(task_id) / "inventory.json").read_text("utf-8"))
+        inv = json.loads((store.folder(task_id) / "inventory.json").read_text("utf-8"))
         assert len(inv["operations"]) == 2
 
         op_create = next(

@@ -400,6 +400,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             extra_args=suite.extra_args,
             extra_env=project.config.environment,
             dry_run=args.dry_run,
+            task_root=project.task_root,
             on_case=lambda item: print(
                 f"    {item.case_id:<16} {item.result:<8} {item.duration_seconds:6.1f}s"
             ),
@@ -448,7 +449,21 @@ def cmd_run(args: argparse.Namespace) -> int:
     )
     if args.dry_run:
         return EXIT_OK
-    return EXIT_OK if int(stats["failed"]) + int(stats["error"]) == 0 else EXIT_FAIL
+    if int(stats["failed"]) + int(stats["error"]) > 0:
+        return EXIT_FAIL
+    # 没有真正跑完（未执行/被跳过）不能算成功：退出码 0 只表示计划内用例全部实际通过。
+    if int(stats["executed"]) < int(stats["planned"]):
+        print(
+            f"错误: 计划 {stats['planned']} 条，实际执行 {stats['executed']} 条；"
+            "未执行的用例不计为通过。",
+            file=sys.stderr,
+        )
+        append_log(
+            directory,
+            f"run 未完成：planned={stats['planned']} executed={stats['executed']}",
+        )
+        return EXIT_FAIL
+    return EXIT_OK
 
 
 # --------------------------------------------------------------------------- show / runs

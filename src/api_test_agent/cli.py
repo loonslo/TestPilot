@@ -295,3 +295,7 @@ def main(argv: list[str] | None = None) -> int:
     except SandboxError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+
+
+if __name__ == "__main__":  # pragma: no cover - 让 `python -m api_test_agent.cli` 也能执行
+    raise SystemExit(main())

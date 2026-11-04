@@ -150,9 +150,17 @@ class Task(Contract):
     repository: str | None = Field(default=None, min_length=1)
     source_paths: tuple[str, ...] = ()
     document_paths: tuple[str, ...] = ()
+    openapi_url: str | None = None
     environment: str | None = Field(default=None, min_length=1)
     adapter: str | None = Field(default=None, min_length=1)
     version_manifest: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("openapi_url")
+    @classmethod
+    def valid_openapi_url(cls, value: str | None) -> str | None:
+        from api_test_agent.tasks.openapi_import import validate_openapi_url
+
+        return validate_openapi_url(value) if value is not None else None
 
     @field_validator("source_paths", "document_paths")
     @classmethod
@@ -170,8 +178,14 @@ class Task(Contract):
             or not self.scope
         ):
             raise ValueError("select project, full commit and scope for this task first")
-        if not self.document_paths and not (self.repository and self.source_paths):
-            raise ValueError("select document paths or repository with explicit source paths")
+        if (
+            not self.document_paths
+            and not self.openapi_url
+            and not (self.repository and self.source_paths)
+        ):
+            raise ValueError(
+                "select document paths, OpenAPI URL or repository with explicit source paths"
+            )
 
     status: Literal[
         "created",

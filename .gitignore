@@ -12,6 +12,7 @@ wheels/
 # Tool caches
 .pytest_cache/
 .ruff_cache/
+.workbuddy/
 
 # Local-only configuration and generated data (never commit)
 config.local.toml

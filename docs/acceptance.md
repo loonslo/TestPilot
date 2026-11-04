@@ -730,3 +730,72 @@ Inventory 现显式保存 all_materials_version_verified；外部文档使用 un
 验证（Windows，项目 .venv Python 3.14，2026-11-04）：uv 启动器报 `uv trampoline failed to canonicalize script path`，未改环境，使用 `.venv/Scripts/python.exe -m pytest`。全量命令加 `-q -p no:cacheprovider --basetemp=runtime/review-discovery-20261104-a3`：462 passed in 51.57s。随后参数合并保护最终状态定向复测：同样选项，basetemp 为 runtime/review-discovery-20261104-a4，测试 tests/test_adapters.py 与 tests/test_task_discovery.py：34 passed in 1.38s。Ruff check/format --check src tests 通过（86 files）；git diff --check 通过。新增测试覆盖跨文件递归与循环/来源、服务器独立覆盖/空前缀，以及两条发现入口的跨文件集成与版本字段。
 
 未调用模型或真实被测接口，未读取被测仓库、提交或推送；真实项目全集和真实模型质量仍未验收。未使用跨项目同步工具。
+
+
+## 2026-11-04：Apple 接口文档 URL 导入入口
+
+已实现最小 URL 导入链路：`task discover <任务> --openapi-url <HTTP(S)地址>`，也可通过 `task configure <任务> --openapi-url <地址>` 预登记。无需 Git 或 Java/Node 源码；任务仍需登记项目、完整提交与 scope。TaskStore 对 URL 使用既有目标锁定机制，URL 纳入 task_binding；未使用 URL 的旧任务绑定保持兼容。
+
+宿主在 `tasks/openapi_import.py` 获取一个明确地址，冻结为 `url-import/<URL哈希>.json` 虚拟文件，交给原有 OpenAPIAdapter/默认发现路径，未修改适配器。SourceRef 保留 URL 摘要和内容哈希，版本为 unverified-document，两项版本验证标志均为 false；这不证明文档属于用户登记的提交。下载只允许 HTTP(S)，不携带 URL 凭据、不读取环境代理、不跟随重定向，不自动抓取远程 $ref；15 秒网络读写超时、1 MB 内容上限。无认证头配置/交互登录能力，需要认证时先由用户导出本地文档。完整 inventory 已保存但状态推进中断时从快照恢复，不再次抓取可能变化的服务。
+
+UI 的“直接导入服务/完整清单”和“文档路径或 URL”文案已纠正：网页表单仍是本地文档路径，URL 导入明确引导使用 CLI，不宣称实现网页 URL 拉取。使用方法同步 README。
+
+实际验证：2026-11-04，Windows / 项目 .venv Python 3.14.4。第一轮相关测试 52 passed；最终 `.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider --basetemp=runtime/url-import-20261104-02`：476 passed in 54.74s。新增 tests/test_openapi_import.py 共 14 项，含真实本地合成 HTTP 服务的 Swagger v2/OpenAPI v3 CLI 导入、来源与未核验版本、非规格/HTTP 401/500 拒绝、302 不跳转、大小与超时、凭据/协议校验、外部引用不爬取、状态中断恢复与旧任务绑定兼容。Ruff check src tests 与 format --check src tests 通过（88 files），git diff --check 通过。沿用项目 .venv 验证，未修复 uv 启动器环境。未连接 Apple 或任何真实被测服务，未调用模型，未提交或推送；UI 文案未做浏览器目视复核。
+
+### 其余评审项的核查与待办（本次未实现）
+
+- ② 已确认：regression/runner.py 仍通过 entry 字符串/task_binding 推断 task，直接调用 task_command，可绕过传入 builder；应后续以显式 runner 元数据分派。
+- ③ 能力边界：execution_kind 只对 HTTP 类型放行，JUnit/Jest 无执行实现；未知类型保持拒绝，不宣称多执行器已落地。
+- ④ 能力边界：未实现 java-annotations/ts-decorators。URL 文档可访问时使用通用规格；无规格时暂没有这些源码兜底。
+- 桥接可移植性：bridge.py 在非默认根目录时写入本机绝对 --root，且调用 store._folder 私有方法；本次记录，未改造。
+- 退出码风险核查：tasks/cli.py 当前 failed>0 返回1，error/blocked>0 返回2，其余返回0，基础失败/错误与 classify 映射并非直接冲突。但仍缺 task 专用结果分类，不能据此证明 skipped/not_run/零执行可正确核算；后续应以结构化 accounting 验证，而非仅复用 pytest 输出语义。
+- version_manifest 仍是多仓版本字段能力，不代表24仓库采集/编排已验收；本次只验证单个文档 URL。真实 Apple 系统接口覆盖与真实模型质量仍在 F7。
+
+## 2026-11-04：用户反馈续审（只审查，未修复实现）
+
+核查对象为当前工作区（含既有未提交 URL 导入实现）。① 已有 CLI --openapi-url、虚拟快照及 UI 文案修订；本次 URL 导入 14 项测试复测通过，不代表 Apple 服务实测。② runner 字符串嗅探绕过 builder 仍成立；③ 非 HTTP 执行分派、④ Java/TS 源码兜底仍未实现。绝对 --root 和私有 _folder 调用也仍存在。
+
+新增确认：
+- P1 桥接单用例执行与任务状态冲突：execute_task(case_id="list-items") 成功后将整个任务置 completed，随后同一批准的 list-items-2 被状态守卫拒绝。已执行完成的任务也不能直接作为下一轮回归重放。既有 test_bridge 的执行测试用 mock_invoke 返回成功文本，不证明真实多条桥接链路可用；此前“离散执行复用已验收”应收窄为导出及命令构建/模拟分类。
+- P1 零执行被报通过：实际 CLI execute --max-cases 0 得到 planned=2、not_run=2、返回码0；classify 判为 passed。需要 task 专用结构化结果分类，同时 CLI 非完整执行不能返回成功。
+- P1 凭据传递断链：runner._env 删除名称含 TOKEN/KEY 的进程环境变量，execute_task 却从子进程环境按 accounts 映射读取；合成 SYNTHETIC_API_TOKEN 被确认删除。未通过 extra_env 另行注入时，此类认证用例会 blocked。修复应按批准配置白名单转发变量，不应把凭据写入共享配置。
+- P2 带空格路径损坏：task_command 对已拆好的 argv token 再 shlex.split，C:/Users/Test User/tasks 被拆为两个参数。合成探针确认。
+- P2 错误 case-id 污染状态：用例筛选在建立 execution 目录、更新活跃指针及进入 running 后发生，missing case 抛错后任务保持 running，后续正常执行也被守卫拒绝。合成探针确认。
+- P2 默认任务根目录的 cwd 错位（静态确认）：bridge 对默认 runtime/tasks 不写 --root，但 runner.invoke 的 cwd 为 project.repo，task CLI 默认根目录相对该 cwd 解析；目标仓库与导出工作目录不同时将找错任务。另有 task_command 复用被测 suite.python/suite.extra_args 的兼容风险，尚未做真实独立环境子进程验证。
+
+验证环境：2026-11-04，Windows，项目 .venv Python；使用合成 fixture 与 MockTransport，无模型调用、无真实业务服务请求、未读取被测仓库。第一轮临时探针5项 + tests/test_openapi_import.py 14项 + tests/test_bridge.py 3项：22 passed in 6.46s。追加真实 CLI 零执行探针后6项探针重跑：6 passed in 1.12s。命令均为 .venv/Scripts/python.exe -m pytest <指定文件> -q -p no:cacheprovider --basetemp=<runtime/review-feedback-UUID下全新目录>。探针断言的是缺陷当前存在，测试通过不表示已修复。未复跑全量测试、Ruff、真实子进程桥接和 Apple 服务；本轮未修改实现或已有测试，仅维护审查记录。未使用跨项目同步工具。
+
+
+## 2026-11-04：F8 桥接缺陷修复（P1 状态边界、结构化分类、凭据转发，P2 路径与私有方法）
+
+上一节为只审查记录，本节是同一工作区上的修复与复测。修复对象是审查表里的 7 项缺陷、② 显式 runner 分派、`--root` 绝对路径与 `store._folder` 私有方法；③（JUnit/Jest 等非 HTTP 执行器）与 ④（java-annotations/ts-decorators 源码兜底）仍是能力边界，本次不实现，也不声称已具备。
+
+**环境：** Windows 10 Pro；项目 `.venv` Python 3.14.4；`uv` 启动器仍报 trampoline 失败，沿用 `.venv/Scripts/python.exe`。真实子进程桥接测试使用一个只绑定 `127.0.0.1` 的合成 HTTP 服务（`http.server`）与真实 `python -m api_test_agent` 子进程；未连接 Apple 或任何真实被测服务，未调用模型。
+
+**实现改动：**
+
+1. **单用例执行不再锁死任务（P1-a）**：`tasks/execution.py` 区分“覆盖整个批准集合”和“只覆盖其中一部分”。`--case-id` 运行结束后任务回到 `ready`（新增 `running -> ready` 迁移），执行摘要记录 `scope=case` 与 `case_id`；只有全量运行才置 `completed`。`completed` 也允许再次执行，同一批准集合可作为下一轮回归重放。恢复（resume）只在整批运行且任务为 `incomplete` 时进行，单用例运行不再继承上一轮的记录与请求计数。
+2. **零执行不再报通过（P1-b）**：新增 `tasks/execution.classify_accounting`，只按结构化 accounting 判定 `passed/failed/error/incomplete/empty`；`task execute` 用它的映射返回退出码（`empty`/`incomplete`/`error` 均为 2，`failed` 为 1），并新增 `--accounting-json <路径>` 把结构化结果写给调用方。回归侧 `regression/runner.py` 对 task 入口只读这个文件判定结果（`--max-cases 0` → `not_run` → `skipped`，`record.state=incomplete`）；文件缺失时只按退出码判定并在 `errors` 里记录“只能按退出码判定”，绝不解析文本。`testpilot run` 在 `executed < planned` 时返回 1，不再把未执行当成功。摘要行改为 `task outcome: ...`，不再长得像 pytest 输出，避免被文本嗅探误读。
+3. **凭据按白名单转发到 task 子进程（P1-c）**：桥接把批准配置里 `accounts` 的变量名写进 `task_binding.credential_env`（只有名字，没有值）；`run_plan` 对 task 入口按名单从父进程环境取值放进子进程 `extra`，`_env` 对 pytest 入口保持原有的 KEY/TOKEN 过滤。凭据值不进入用例目录、配置、run.json 或日志。
+4. **显式 runner 分派（②）**：`TestCase`/`PlanEntry` 新增 `runner` 字段，桥接写入 `runner: task`；`run_plan` 按“显式 runner 参数 → 用例声明的 runner → 有 task_binding 视为 task → pytest”解析，删除了原先按 entry 里是否出现 `task`/`execute` 字样判断的分支。`task_command` 也不再二次 `shlex.split`，`suite.extra_args`（pytest 参数）不再注入 task 入口。
+5. **路径健壮性（P2-a/P2-c）**：含空格的绝对路径作为一个 argv token 原样传给子进程。导出的入口写 `--root {task_root}` 占位符，执行时按回归项目配置 `task_root`（默认 `runtime/tasks`，相对配置文件所在目录）解析成实际路径；不再写本机绝对路径，也不依赖子进程 cwd。
+6. **错误 case-id 不再污染状态（P2-b）**：用例筛选和版本探针都移到创建执行目录与 `running` 迁移之前，编号写错时任务仍是 `ready` 且不留下执行目录；探针失败也发生在状态迁移之前，不会留下卡住的 `running`。
+7. **去掉私有方法调用**：`TaskStore._folder` 改为公开的 `TaskStore.folder`，`src` 与 `tests` 中 78 处调用全部改用它，桥接与执行模块不再调用私有实现。
+8. **一个被模拟测试掩盖的入口缺陷**：`regression/runner.task_command` 原本调 `python -m api_test_agent.cli`，而 `cli.py` 没有 `__main__` 守卫，该命令只导入模块、什么都不做并返回 0；旧测试用 `mock_invoke` 捏造“1 passed”文本，因此一直“通过”。现在改为 `python -m api_test_agent`，并给 `cli.py` 补了守卫。这是“模拟子进程不能证明真实链路”的直接证据。
+
+**新增/改写测试：**
+- `tests/test_bridge_live.py`（4 项，真实子进程 + 合成 HTTP 服务）：两条用例在同一计划里连续真实执行；同一计划重放第二轮仍通过；`--max-cases 0` 得到 `not_run=1`、结果非通过、`record.state=incomplete` 且一条请求都没发出；同一条命令的真实退出码为 2（此前为 0）。凭据方面断言服务端收到 `Bearer <合成令牌>`、令牌不出现在用例目录与 run 记录里。
+- `tests/test_bridge.py`（10 项）：导出断言改用占位符根目录、显式 `runner` 与 `credential_env`；`task_command` 保留含空格 token；`{task_root}` 解析（含带空格目录、缺配置时报错）；结构化 accounting 判定；零执行不通过；缺结构化结果退回退出码；凭据白名单只对 task 入口生效；entry 文本形似 task 不会被改道；显式 `runner="pytest"` 覆盖用例声明。
+- `tests/test_task_execution.py`（30→39 项）：两条 `--case-id` 用例先后执行 → 都通过且任务回到 `ready`，全量执行后才 `completed`；无效 case-id 报错后状态仍 `ready`、无执行目录、后续执行不被拦截；`completed` 任务可重放；`classify_accounting` 的 6 种组合（含 `planned=2, not_run=2`）。
+
+**实测结果：**
+- 全量：`.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider --basetemp=runtime/fix-all-2`：**496 passed in 83.76s**（较上一节记录的 476 项净增 20 项）。
+- 定向：`tests/test_bridge.py` 10 passed；`tests/test_bridge_live.py` 4 passed（约 10.8s，含真实子进程启动）；`tests/test_task_execution.py` 39 passed。
+- 风格：`ruff check src tests` 通过；`ruff format --check src tests`（89 files）；`git diff --check` 通过。
+
+**边界与未验证项：**
+- 真实桥接的“真实”只到本机合成 HTTP 服务与真实子进程：没有连接衡仓沙箱或 Apple 服务，也没有在真实业务数据上验证断言质量。
+- ③ 非 HTTP 执行器（JUnit/Jest）仍未实现，未知 `execution_kind` 继续判 `blocked`；④ java-annotations/ts-decorators 源码兜底仍未实现，无规格时仍没有这两类源码入口。
+- 全量运行的“completed”只表示批准集合全部执行过，不代表业务通过；`task report` 的守恒与覆盖统计口径未变。
+- 未复测断电/强杀恢复；resume 仍要求整批运行且 `active-execution.json` 存在。跨平台未验证（沙箱目前仅 Windows）。
+- 未提交、未推送；未使用跨项目同步工具。

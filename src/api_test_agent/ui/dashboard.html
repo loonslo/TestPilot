@@ -169,7 +169,7 @@
                 <span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 text-[10px] font-bold font-code">高 ROI · 推荐</span>
               </div>
               <p class="text-[11px] text-[var(--text-muted)]">
-                直接导入 Spring Boot (Springfox/Knife4j) 或 Node.js (Egg) 导出的 <code class="font-code">/v2/api-docs</code> 或 <code class="font-code">openapi.json</code>，一键提取完整操作清单与模式定义。
+                解析 Spring Boot (Springfox/Knife4j) 或 Node.js (Egg) 导出的 OpenAPI/Swagger 文件。服务 URL 导入请使用 CLI：<code class="font-code">task discover &lt;任务&gt; --openapi-url http://服务/v2/api-docs</code>。清单仅代表所提供文档，不保证运行系统全集。
               </p>
             </div>
 
@@ -189,7 +189,7 @@
           <div id="form-doc" class="space-y-4 pt-2">
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div class="md:col-span-2 space-y-1.5">
-                <label class="text-xs font-semibold text-[var(--text)]">文档路径或 URL</label>
+                <label class="text-xs font-semibold text-[var(--text)]">本地文档路径（URL 导入使用 CLI）</label>
                 <input type="text" id="inputDocPath" value="targets/apple/recruit-openapi.json" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)]">
                 <p class="text-[11px] text-[var(--text-muted)]">支持 Swagger 2.0 / OpenAPI 3.x，自动解析本地引用及模式。</p>
               </div>

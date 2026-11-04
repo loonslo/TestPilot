@@ -70,7 +70,7 @@ def test_explicit_host_approval_freezes_full_snapshot_and_zero_requests(reviewed
 def test_changed_complete_revision_refused_after_approval(reviewed, change):
     store, config, _, submission = reviewed
     folder = approve(store, "demo", submission, config)
-    path = store._folder("demo") / "cases/list-items/00000001.json"
+    path = store.folder("demo") / "cases/list-items/00000001.json"
     data = json.loads(path.read_text("utf-8"))
     if change == "parameter":
         data["steps"][0]["parameters"][0]["value"] = 2
@@ -247,7 +247,7 @@ def test_cli_explicit_approval_and_guard(reviewed, tmp_path):
         )
         == 0
     )
-    active = json.loads((store._folder("demo") / "active-approval.json").read_text("utf-8"))
+    active = json.loads((store.folder("demo") / "active-approval.json").read_text("utf-8"))
     assert (
         main(
             [

@@ -1,4 +1,4 @@
-"""Offline, allowlisted discovery. Never import or execute target Python modules."""
+"""Snapshot discovery with explicit URL import. Never execute target Python modules."""
 
 from __future__ import annotations
 
@@ -17,12 +17,14 @@ import yaml
 from pydantic import ConfigDict, model_validator
 
 from api_test_agent.adapters import (
+    StrictLoader,
     get_adapter,
     get_all_supported_extensions,
     openapi,
 )
 from api_test_agent.tasks.fastapi_static import extract
 from api_test_agent.tasks.models import Contract, Operation, SourceRef, Task
+from api_test_agent.tasks.openapi_import import fetch_openapi_document
 from api_test_agent.tasks.store import TaskStore, _write_new
 
 METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
@@ -133,6 +135,7 @@ def _discover(
     verified = False
     commit_paths: set[str] = set()
     document_paths: set[str] = set()
+    imported_documents: dict[str, str] = {}
     if task.source_paths:
         if not task.repository:
             raise ValueError("source selection requires repository")
@@ -187,6 +190,18 @@ def _discover(
             # Annotate it so it can never masquerade as a commit-verified source.
             document_paths.add(path)
             checkpoint(path, content)
+    if task.openapi_url:
+        path = f"url-import/{hashlib.sha256(task.openapi_url.encode()).hexdigest()}.json"
+        if path in snapshots:
+            raise ValueError("OpenAPI URL virtual path conflicts with selected material")
+        content = fetch_openapi_document(task.openapi_url)
+        parsed = yaml.load(content, Loader=StrictLoader)
+        if not isinstance(parsed, dict) or not ("openapi" in parsed or "swagger" in parsed):
+            raise ValueError("URL response is not an OpenAPI/Swagger document")
+        snapshots[path] = content
+        document_paths.add(path)
+        imported_documents[path] = task.openapi_url
+        checkpoint(path, content)
     sources = [
         ref(
             path,
@@ -196,6 +211,14 @@ def _discover(
             else UNVERIFIED_DOCUMENT_VERSION,
         )
         for path, content in sorted(snapshots.items())
+    ]
+    sources = [
+        source.model_copy(
+            update={"summary": f"OpenAPI URL import: {imported_documents[source.path]}"}
+        )
+        if source.path in imported_documents
+        else source
+        for source in sources
     ]
     sources_map = {source.path: source for source in sources}
     adapter = get_adapter(task.adapter) if getattr(task, "adapter", None) else None
@@ -282,9 +305,9 @@ def _discover(
         task_hash=task_binding(task),
         input_root_hash=root_binding(materials_root),
     )
-    path = store._folder(task_id) / "inventory.json"
+    path = store.folder(task_id) / "inventory.json"
     _write_new(path, inventory)
-    store.transition(task_id, "discovered", "Offline inventory saved; limitations retained")
+    store.transition(task_id, "discovered", "Inventory snapshot saved; limitations retained")
     return path
 
 
@@ -328,6 +351,8 @@ def reconcile(rows: list[dict]) -> list[str]:
 
 def task_binding(task: Task) -> str:
     data = task.model_dump(mode="json", exclude={"status", "history"})
+    if data.get("openapi_url") is None:
+        data.pop("openapi_url", None)  # Preserve bindings for tasks predating URL imports.
     return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
 
 
@@ -340,7 +365,7 @@ def discover(store: TaskStore, task_id: str, materials_root: Path | None = None)
     task.require_target()
     if task.status != "created":
         raise ValueError("discovery requires a created task")
-    inventory_path = store._folder(task_id) / "inventory.json"
+    inventory_path = store.folder(task_id) / "inventory.json"
     if inventory_path.exists():
         inventory = Inventory.model_validate_json(inventory_path.read_text("utf-8"))
         if inventory.task_hash != task_binding(task) or inventory.input_root_hash != root_binding(
@@ -351,7 +376,7 @@ def discover(store: TaskStore, task_id: str, materials_root: Path | None = None)
             task_id, "discovered", "Recovered complete inventory after interrupted save"
         )
         return inventory_path
-    attempt = store._folder(task_id) / "discovery" / uuid4().hex
+    attempt = store.folder(task_id) / "discovery" / uuid4().hex
     attempt.mkdir(parents=True)
     metadata = {
         "task_hash": task_binding(task),
@@ -365,7 +390,11 @@ def discover(store: TaskStore, task_id: str, materials_root: Path | None = None)
             path == selection or path.startswith(selection.rstrip("/") + "/")
             for selection in task.document_paths or ()
         )
-        version = UNVERIFIED_DOCUMENT_VERSION if is_document else task.target_commit
+        version = (
+            UNVERIFIED_DOCUMENT_VERSION
+            if is_document or path.startswith("url-import/")
+            else task.target_commit
+        )
         source = ref(path, content, version)
         payload = {"source": source.model_dump(mode="json"), "content": content}
         snapshot_path = attempt / f"{source.source_id}.json"

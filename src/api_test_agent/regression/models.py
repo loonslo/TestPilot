@@ -35,6 +35,17 @@ EvidenceKind = Literal["direct", "inferred", "uncertain"]
 CasePriority = Literal["smoke", "model", "manual"]
 """用例进入计划的来源：smoke=固定冒烟集，model=模型建议且人已确认，manual=人工追加。"""
 
+ROOT_PLACEHOLDER = "{task_root}"
+"""用例入口里代表统一任务根目录的占位符。
+
+桥接导出的入口写成 `--root {task_root}`，执行时由项目配置 `task_root`
+（相对配置文件所在目录解析）替换。这样用例目录不绑定某一台机器的绝对路径，
+也不会因为子进程 cwd 与被测仓库不同而找错任务目录。
+"""
+
+RunnerName = Literal["pytest", "task"]
+"""显式执行器名称：pytest=已登记的 pytest 入口，task=统一任务的用例入口。"""
+
 
 def utc_now() -> datetime:
     return datetime.now(UTC)
@@ -103,6 +114,11 @@ class ProjectConfig(BaseModel):
     smoke_file: str = "assets/smoke.yaml"
     prompts_dir: str | None = None
     artifacts_dir: str = "artifacts"
+    task_root: str = Field(
+        default="runtime/tasks",
+        min_length=1,
+        description="统一任务资产根目录；桥接用例的 --root 占位符按此解析（相对配置文件所在目录）",
+    )
     suite: SuiteConfig = SuiteConfig()
     model: ModelConfig | None = None
     budget: BudgetConfig = BudgetConfig()
@@ -213,6 +229,10 @@ class TestCase(BaseModel):
     api: list[str] = Field(default_factory=list, description="覆盖的接口路径")
     notes: str = ""
     last_verified: str = ""
+    runner: RunnerName | None = Field(
+        default=None,
+        description="显式执行器；None 表示未声明（有 task_binding 时按 task 处理，否则 pytest）",
+    )
     task_binding: dict[str, Any] | None = Field(
         default=None, description="统一任务绑定（task_id, approval_id, case_id 等元数据）"
     )
@@ -222,6 +242,8 @@ class TestCase(BaseModel):
         for item in self.entry:
             if not item.strip() or any(ch in item for ch in ";&|<>$`\n"):
                 raise ValueError(f"用例 {self.id} 的 entry 不是合法的 pytest 目标: {item!r}")
+        if self.runner == "task" and not self.task_binding:
+            raise ValueError(f"用例 {self.id} 声明为 task 入口，但缺少 task_binding")
         return self
 
 
@@ -387,6 +409,7 @@ class PlanEntry(BaseModel):
     entry: list[str]
     priority: CasePriority
     reason: str = ""
+    runner: RunnerName | None = None
     task_binding: dict[str, Any] | None = None
 
     @classmethod
@@ -398,6 +421,7 @@ class PlanEntry(BaseModel):
             entry=list(case.entry),
             priority=priority,
             reason=reason,
+            runner=case.runner,
             task_binding=case.task_binding,
         )
 
@@ -450,6 +474,9 @@ class CaseRunResult(BaseModel):
     duration_seconds: float = 0.0
     assertions: list[str] = Field(default_factory=list, description="失败断言的简短摘要")
     output_excerpt: str = ""
+    accounting: dict[str, Any] | None = Field(
+        default=None, description="task 入口自己写出的结构化 accounting；没有结构化结果时为 None"
+    )
     executed_at: datetime | None = None
 
 

@@ -18,7 +18,7 @@
 `testpilot task` 是测试领航员的主入口，贯穿以下完整生命周期：
 
 1. **Init（初始化）**：`task create` 创建空草稿任务；`task configure` 登记目标仓库、提交与资料范围；`task validate-target` 校验配置。
-2. **Discover（接口发现）**：`task discover` 离线静态解析目标 Git 快照（FastAPI 路由图与 OpenAPI 规范），导出 `inventory.json`。
+2. **Discover（接口发现）**：`task discover` 解析目标 Git 快照、本地文档，或通过显式 `--openapi-url` 获取服务文档后静态解析，导出 `inventory.json`。
 3. **Design（用例设计）**：`task materials` 导出字符预算材料；`task design` 构造数据化测试请求，导入或生成含参数理由的用例。
 4. **Review（材料导出）**：`task review` 导出 Markdown 格式审核文档与参数理由表，草稿置为 `awaiting_review`。
 5. **Approve（人工冻结）**：`task approve` 记录人工审核决定并冻结本轮执行快照（哈希锁定），严禁模型自我批准；`task verify-approval` 复核完整性。
@@ -75,7 +75,25 @@ uv run testpilot task report demo-task
 uv run testpilot task export-regression demo-task --catalog examples/regression/finunity/assets/cases.yaml
 ```
 
+桥接导出的每条用例带显式 `runner: task`，入口写成
+`testpilot task --root {task_root} execute <任务> --approval <批准> --case-id <用例>`。
+`{task_root}` 由回归项目配置的 `task_root`（默认 `runtime/tasks`，相对配置文件所在目录）在
+执行时替换，用例目录因此不含本机绝对路径，也不受子进程 cwd 影响。凭据不写进用例目录：
+`task_binding.credential_env` 只记录变量名，执行时按名单从父进程环境转发给 task 子进程，
+pytest 入口不会获得这些变量。每条 `--case-id` 执行都会单独落一个执行编号，跑完回到
+`ready`，同一批准集合可以继续执行下一条或作为下一轮回归重放。
+
+服务只在运行时提供 Swagger/OpenAPI 文档时，可先创建任务再导入 URL，无需 Java/Node 源码解析器：
+
+```powershell
+uv run testpilot task create apple-recruit --project AppleRecruit --commit "<完整40位提交ID>" --scope "*"
+uv run testpilot task discover apple-recruit --openapi-url "http://127.0.0.1:8080/v2/api-docs"
+```
+
+URL 也可通过 `task configure <任务> --openapi-url <地址>` 预先登记。抓取内容冻结为虚拟文档快照，保留来源 URL 与内容哈希，版本标为 `unverified-document`；用户填写提交不等于文档已与该版本核验。只获取指定地址，不跟随重定向、不自动抓取远程引用；每次网络读写超时 15 秒、文档上限 1 MB。不支持 URL 内凭据、认证头配置或交互登录；需认证的文档可由用户导出为本地文件。UI 当前不提供 URL 导入表单，使用以上 CLI。
+
 ### 2. 发布回归模块
+
 ```powershell
 cd examples/regression/finunity
 uv run testpilot check

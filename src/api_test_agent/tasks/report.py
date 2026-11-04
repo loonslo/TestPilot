@@ -47,7 +47,7 @@ def generate_report(
 
     # 2. Load active approval if exists
     active_approval_id = None
-    pointer_approval = store._folder(task_id) / "active-approval.json"
+    pointer_approval = store.folder(task_id) / "active-approval.json"
     if pointer_approval.is_file():
         try:
             active_approval_id = json.loads(pointer_approval.read_text("utf-8")).get("approval_id")
@@ -63,7 +63,7 @@ def generate_report(
 
     # 3. Locate execution
     if execution_id is None:
-        pointer_exec = store._folder(task_id) / "active-execution.json"
+        pointer_exec = store.folder(task_id) / "active-execution.json"
         if pointer_exec.is_file():
             try:
                 execution_id = json.loads(pointer_exec.read_text("utf-8")).get("execution_id")
@@ -253,7 +253,7 @@ def generate_report(
 
     report_id = uuid4().hex
     exec_summary_file = (
-        (store._folder(task_id) / "executions" / execution_id / "execution.json")
+        (store.folder(task_id) / "executions" / execution_id / "execution.json")
         if execution_id
         else None
     )
@@ -464,7 +464,7 @@ def generate_report(
     md_content = "\n".join(md_lines) + "\n"
 
     # Save destinations
-    dest_dir = output_dir or (store._folder(task_id) / "reports" / report_id)
+    dest_dir = output_dir or (store.folder(task_id) / "reports" / report_id)
     dest_dir.mkdir(parents=True, exist_ok=True)
     json_path = dest_dir / "report.json"
     md_path = dest_dir / "report.md"
@@ -473,11 +473,11 @@ def generate_report(
     md_path.write_text(md_content, encoding="utf-8")
 
     # Link/update active-report.json in task folder
-    (store._folder(task_id) / "active-report.json").write_text(
+    (store.folder(task_id) / "active-report.json").write_text(
         json.dumps({"report_id": report_id, "report_path": str(json_path)}),
         encoding="utf-8",
     )
     # Also write top-level report.md in task folder for easy human reading
-    (store._folder(task_id) / "report.md").write_text(md_content, encoding="utf-8")
+    (store.folder(task_id) / "report.md").write_text(md_content, encoding="utf-8")
 
     return report_model, md_path, json_path

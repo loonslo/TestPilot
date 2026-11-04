@@ -227,7 +227,7 @@ def review_binding(store: TaskStore, task_id: str, config: ExecutionConfig | Non
 def read_approval(store: TaskStore, task_id: str, approval_id: str) -> ApprovalSnapshot:
     if not re.fullmatch(r"[0-9a-f]{32}", approval_id):
         raise ValueError("invalid approval ID")
-    folder = store._folder(task_id) / "approvals" / approval_id
+    folder = store.folder(task_id) / "approvals" / approval_id
     snapshot = ApprovalSnapshot.model_validate_json((folder / "approval.json").read_text("utf-8"))
     if snapshot.task_id != task_id or snapshot.approval_id != approval_id:
         raise ValueError("approval identity does not match task/path")
@@ -268,7 +268,7 @@ def check_approval(
         event = next((r for r in reversed(history) if r.revision_hash == case.fingerprint()), None)
         if event is None or event.decision != "approved" or event.approval_id != approval_id:
             raise ValueError("selected revision no longer has this execution approval")
-    active = json.loads((store._folder(task_id) / "active-approval.json").read_text("utf-8"))
+    active = json.loads((store.folder(task_id) / "active-approval.json").read_text("utf-8"))
     if active.get("approval_id") != approval_id:
         raise ValueError("approval is not the current explicitly selected execution set")
     return snapshot
@@ -281,7 +281,7 @@ def approve(
     task = store.load(task_id)
     if task.status not in {"awaiting_review", "ready"}:
         raise ValueError("task must have exported review materials before approval")
-    folder = store._folder(task_id) / "review-materials" / submission.review_id
+    folder = store.folder(task_id) / "review-materials" / submission.review_id
     manifest = json.loads((folder / "manifest.json").read_text("utf-8"))
     if fingerprint(manifest) != submission.review_hash:
         raise ValueError("submission does not bind the exact review manifest")
@@ -334,7 +334,7 @@ def approve(
         confirmations.add(key)
     # Validate everything before making any authoritative review changes.
     approval_id = uuid4().hex
-    output = store._folder(task_id) / "approvals" / approval_id
+    output = store.folder(task_id) / "approvals" / approval_id
     output.mkdir(parents=True)
     _write_new(output / "submission.json", submission)
     snapshot = None
@@ -375,7 +375,7 @@ def approve(
             )
         )
     if snapshot:
-        (store._folder(task_id) / "active-approval.json").write_text(
+        (store.folder(task_id) / "active-approval.json").write_text(
             json.dumps({"approval_id": approval_id}), "utf-8"
         )
         check_approval(store, task_id, approval_id, config, require_ready=False)

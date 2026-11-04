@@ -85,6 +85,29 @@ class RequestCounter:
         self.count += 1
 
 
+def classify_accounting(accounting: ExecutionAccounting) -> str:
+    """把结构化 accounting 映射成一次执行的结论，不从文本里猜结果。
+
+    - empty       没有任何计划用例（例如 --max-cases 0），不是通过
+    - failed      有断言失败
+    - error       有执行异常、被阻塞的用例，或计数不守恒
+    - incomplete  有未执行/跳过的用例：本轮没有覆盖全部计划
+    - passed      计划内用例全部通过
+    """
+
+    if accounting.planned <= 0:
+        return "empty"
+    if accounting.failed > 0:
+        return "failed"
+    if accounting.error > 0 or accounting.blocked > 0 or not accounting.conserved:
+        return "error"
+    if accounting.not_run > 0 or accounting.skipped > 0:
+        return "incomplete"
+    if accounting.passed == accounting.planned:
+        return "passed"
+    return "incomplete"
+
+
 def resolve_parameter_value(mode: str, value: Any, results: dict[str, dict[str, Any]]) -> Any:
     if mode == "omitted":
         return None
@@ -344,12 +367,12 @@ def execute_task(
             "Inspect the interrupted run before transitioning to 'incomplete'."
         )
 
-    if task.status not in {"ready", "incomplete"}:
+    if task.status not in {"ready", "incomplete", "completed"}:
         raise ValueError(f"task in status {task.status!r} cannot be executed")
 
     # Locate approval
     if approval_id is None:
-        pointer_file = store._folder(task_id) / "active-approval.json"
+        pointer_file = store.folder(task_id) / "active-approval.json"
         if not pointer_file.is_file():
             raise ValueError("task has no active approved execution selection")
         approval_id = json.loads(pointer_file.read_text("utf-8"))["approval_id"]
@@ -378,105 +401,22 @@ def execute_task(
         if val:
             tokens[alias] = val
 
-    secret_tokens = {v for v in tokens.values() if isinstance(v, str) and v}
-
-    # Setup directories
-    execution_id = uuid4().hex
-    exec_folder = store._folder(task_id) / "executions" / execution_id
-    exec_folder.mkdir(parents=True, exist_ok=False)
-
-    events_file = exec_folder / "events.jsonl"
-    records_folder = exec_folder / "records"
-    records_folder.mkdir(exist_ok=True)
-    evidence_folder = exec_folder / "evidence"
-    evidence_folder.mkdir(exist_ok=True)
-
-    is_resuming = False
-    counts = {
-        "passed": 0,
-        "failed": 0,
-        "error": 0,
-        "blocked": 0,
-        "skipped": 0,
-        "not_run": 0,
-    }
-    issues_list: list[Issue] = []
-    executed_count = 0
-    halt_execution = False
-    halt_reason: str | None = None
-    counter = RequestCounter(exec_config.max_requests)
-    recorded_case_hashes: set[str] = set()
-
-    if task.status == "incomplete":
-        active_exec_file = store._folder(task_id) / "active-execution.json"
-        if not active_exec_file.is_file():
-            raise ValueError("Cannot safely resume: prior execution pointer is missing")
-        if active_exec_file.is_file():
-            prev_info = json.loads(active_exec_file.read_text("utf-8"))
-            if prev_info.get("approval_id") == approval_id and prev_info.get("execution_id"):
-                prev_exec_id = prev_info["execution_id"]
-                previous_folder = store._folder(task_id) / "executions" / prev_exec_id
-                summary = json.loads((previous_folder / "execution.json").read_text("utf-8"))
-                used = summary.get("requests_attempted")
-                if not isinstance(used, int) or isinstance(used, bool) or used < 0:
-                    raise ValueError("Cannot safely resume: prior request count is unknown")
-                counter.count = used
-                prev_records = store.execution_records(task_id, prev_exec_id)
-                for issue in store.issues(task_id, prev_exec_id):
-                    store.save_issue(task_id, execution_id, issue)
-                for r in prev_records:
-                    if r.outcome in {"passed", "failed", "error", "blocked", "skipped"}:
-                        is_resuming = True
-                        store.add_execution_record(task_id, execution_id, r)
-                        for ev_id in r.evidence_ids:
-                            ev = store.load_evidence(task_id, ev_id, prev_exec_id)
-                            if ev:
-                                store.save_evidence(task_id, execution_id, ev)
-                        counts[r.outcome] += 1
-                        executed_count += 1
-                        recorded_case_hashes.add(r.revision_hash)
-
-    # Point to active execution
-    (store._folder(task_id) / "active-execution.json").write_text(
-        json.dumps({"execution_id": execution_id, "approval_id": approval_id}),
-        encoding="utf-8",
-    )
-
-    store.transition(
-        task_id,
-        "running",
-        f"{'Resuming' if is_resuming else 'Starting'} execution run {execution_id}",
-    )
-
-    def log_event(kind: str, **payload: Any) -> None:
-        sanitized_payload = {k: redact_sensitive(v, secret_tokens) for k, v in payload.items()}
-        entry = {
-            "timestamp": datetime.now(UTC).isoformat(),
-            "kind": kind,
-            **sanitized_payload,
-        }
-        with events_file.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-
-    log_event(
-        "execution_started",
-        execution_id=execution_id,
-        approval_id=approval_id,
-        resumed=is_resuming,
-    )
-
-    operations_map = {op.operation_id: op for op in snapshot.inventory.operations}
-
-    client = http_client or httpx.Client(timeout=exec_config.timeout_seconds, trust_env=False)
-    should_close_client = http_client is None
-
+    # Resolve the requested scope before touching any state: an unknown case ID must not
+    # leave the task in 'running'.
     target_cases = list(snapshot.cases)
     if case_id is not None:
         target_cases = [c for c in snapshot.cases if c.case_id == case_id]
         if not target_cases:
             raise ValueError(f"Case {case_id!r} not found in approved cases for task {task_id!r}")
+    case_scoped = case_id is not None
 
-    # Running service version probe
+    secret_tokens = {v for v in tokens.values() if isinstance(v, str) and v}
+
+    client = http_client or httpx.Client(timeout=exec_config.timeout_seconds, trust_env=False)
+    should_close_client = http_client is None
+
+    # Running service version probe. It runs before the state transition so a failed probe
+    # raises while the task is still in a clean state.
     is_version_verified = False
     actual_commit = "unverified"
     if exec_config.version_endpoint:
@@ -515,9 +455,103 @@ def execute_task(
                     f"Version probe at {probe_url} returned HTTP {probe_resp.status_code}"
                 )
         except Exception as probe_err:
+            if should_close_client:
+                client.close()
             if exec_config.require_version_verification:
                 raise
             actual_commit = f"probe_failed: {probe_err}"
+
+    # Read (and validate) the prior run before creating anything: a broken pointer must not
+    # leave a half-built execution directory behind.
+    resume_from: tuple[str, int] | None = None
+    if task.status == "incomplete" and not case_scoped:
+        active_exec_file = store.folder(task_id) / "active-execution.json"
+        if not active_exec_file.is_file():
+            raise ValueError("Cannot safely resume: prior execution pointer is missing")
+        prev_info = json.loads(active_exec_file.read_text("utf-8"))
+        if prev_info.get("approval_id") == approval_id and prev_info.get("execution_id"):
+            prev_exec_id = prev_info["execution_id"]
+            previous_folder = store.folder(task_id) / "executions" / prev_exec_id
+            summary = json.loads((previous_folder / "execution.json").read_text("utf-8"))
+            used = summary.get("requests_attempted")
+            if not isinstance(used, int) or isinstance(used, bool) or used < 0:
+                raise ValueError("Cannot safely resume: prior request count is unknown")
+            resume_from = (prev_exec_id, used)
+
+    # Setup directories
+    execution_id = uuid4().hex
+    exec_folder = store.folder(task_id) / "executions" / execution_id
+    exec_folder.mkdir(parents=True, exist_ok=False)
+
+    events_file = exec_folder / "events.jsonl"
+    records_folder = exec_folder / "records"
+    records_folder.mkdir(exist_ok=True)
+    evidence_folder = exec_folder / "evidence"
+    evidence_folder.mkdir(exist_ok=True)
+
+    is_resuming = False
+    counts = {
+        "passed": 0,
+        "failed": 0,
+        "error": 0,
+        "blocked": 0,
+        "skipped": 0,
+        "not_run": 0,
+    }
+    issues_list: list[Issue] = []
+    executed_count = 0
+    halt_execution = False
+    halt_reason: str | None = None
+    counter = RequestCounter(exec_config.max_requests)
+    recorded_case_hashes: set[str] = set()
+
+    if resume_from is not None:
+        prev_exec_id, used_requests = resume_from
+        counter.count = used_requests
+        for issue in store.issues(task_id, prev_exec_id):
+            store.save_issue(task_id, execution_id, issue)
+        for r in store.execution_records(task_id, prev_exec_id):
+            if r.outcome in {"passed", "failed", "error", "blocked", "skipped"}:
+                is_resuming = True
+                store.add_execution_record(task_id, execution_id, r)
+                for ev_id in r.evidence_ids:
+                    ev = store.load_evidence(task_id, ev_id, prev_exec_id)
+                    if ev:
+                        store.save_evidence(task_id, execution_id, ev)
+                counts[r.outcome] += 1
+                executed_count += 1
+                recorded_case_hashes.add(r.revision_hash)
+
+    # Point to active execution
+    (store.folder(task_id) / "active-execution.json").write_text(
+        json.dumps({"execution_id": execution_id, "approval_id": approval_id}),
+        encoding="utf-8",
+    )
+
+    store.transition(
+        task_id,
+        "running",
+        f"{'Resuming' if is_resuming else 'Starting'} execution run {execution_id}",
+    )
+
+    def log_event(kind: str, **payload: Any) -> None:
+        sanitized_payload = {k: redact_sensitive(v, secret_tokens) for k, v in payload.items()}
+        entry = {
+            "timestamp": datetime.now(UTC).isoformat(),
+            "kind": kind,
+            **sanitized_payload,
+        }
+        with events_file.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+    log_event(
+        "execution_started",
+        execution_id=execution_id,
+        approval_id=approval_id,
+        resumed=is_resuming,
+    )
+
+    operations_map = {op.operation_id: op for op in snapshot.inventory.operations}
 
     current_case: CaseRevision | None = None
     case_evidence_ids: list[str] = []
@@ -1048,6 +1082,9 @@ def execute_task(
             "accounting": accounting.model_dump(),
             "finished_at": datetime.now(UTC).isoformat(),
             "cases_count": planned_total,
+            "approved_cases_count": len(snapshot.cases),
+            "scope": "case" if case_scoped else "approved_selection",
+            "case_id": case_id,
             "requests_attempted": counter.count,
             "declared_commit": exec_config.target_commit,
             "actual_commit": actual_commit,
@@ -1055,7 +1092,8 @@ def execute_task(
         }
         (exec_folder / "execution.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
-        # Transition task state
+        # Transition task state. A run that only covered part of the approved selection is not
+        # a completed task: it goes back to 'ready' so the remaining cases stay executable.
         if accounting.not_run > 0 or interrupted_exc is not None or not accounting.conserved:
             store.transition(
                 task_id,
@@ -1063,6 +1101,15 @@ def execute_task(
                 (
                     f"Execution stopped with {accounting.not_run} "
                     f"unexecuted cases out of {planned_total}"
+                ),
+            )
+        elif case_scoped:
+            store.transition(
+                task_id,
+                "ready",
+                (
+                    f"Case-scoped execution finished for {case_id!r} "
+                    f"({len(snapshot.cases) - 1} other approved cases remain executable)"
                 ),
             )
         else:

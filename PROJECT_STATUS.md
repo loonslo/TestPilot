@@ -2,9 +2,9 @@
 project_id: TestPilot
 updated: 2026-11-04
 status: active
-overview: "TestPilot（测试领航员），唯一入口 uv run testpilot；以统一任务流（task）为主入口。重构 10 步统一流程契约，确立三大核心分界与两大设计原则；厘定多仓库、多执行器与 UI 操作三级能力边界；修补环境版本探针、未知执行类型、最坏情况费用预留与 UI 会话授权四道安全守卫；完成真实回环 HTTP 合成服务端到端小闭环验证；打通 F8 资产桥接与离散执行复用机制（export-regression 导出带 --case-id 至 cases.yaml 由 runner 调度）。"
-progress: "2026-11-04 落实审查报告 5 项缺口修复与机制验收：接通 F8 回归桥接执行（runner 注册 task_command 调度器，支持 --case-id 离散执行与 YAML 损坏拒绝覆盖保护）；落地调用前最坏情况费用预留（worst_case_cost 拦截，商业模型未定价拦截）；加强 UI 服务端强校验（Host/Origin 端口白名单、Sec-Fetch-Site 跨站阻断与 X-TestPilot-Token 凭据授权）；增加运行环境版本探针核验（version_endpoint 探针核对 target_commit，未核验报告告警）；收窄小闭环表述为合成服务集成测试并明确未经验收边界。全量 450 项测试（净增 9 项）与 Ruff 检查/格式化全通。2026-11-04 续做接口采集评审修补：第 6 项合并伪冲突修复后全量 452 项；再完成第 4/5/7 项（OpenAPI 跨文件/服务器/参数覆盖、文档与源码版本关联、快照集内 Pydantic 请求模型展开）后全量 458 项测试与 Ruff 全通；认证语义与集外模型保持如实未解析。 续审更正：原跨文件引用仅告警、版本全验证仅局部变量；本次补齐已选快照跨文件解析与来源、服务器独立覆盖和清单字段，全量462项通过，最终参数保护后定向34项通过；真实接口全集仍未验收。"
-next: "在具备真实网络与模型 Key 的测试机端到端执行通用模型与真实项目生成（推进 F7 真实项目效果验收）；基于 F8 桥接导出的 cases.yaml 联动 regression plan/run 执行复用验证。"
+overview: "TestPilot（测试领航员）；统一任务流、接口发现、人工审核、HTTP执行与F8回归桥接。桥接的状态边界、结构化结果分类、凭据转发、显式runner分派与路径问题已修复并通过真实子进程验证；非HTTP执行器与Java/TS源码兜底仍是能力边界。"
+progress: "历史记录：URL导入后全量476项通过，真实Apple/模型质量未验收。2026-11-04审查确认桥接7项缺陷、runner字符串嗅探、绝对--root与私有_folder调用。本次修复：case级执行回到ready、completed可重放、classify_accounting+--accounting-json结构化分类、零执行不再返回成功、凭据按credential_env白名单转发、显式runner元数据分派、--root占位符+配置task_root、case-id校验前移、TaskStore.folder公开化，并修掉被模拟测试掩盖的`-m api_test_agent.cli`空跑缺陷。全量496项通过（较476净增20项），新增4项真实子进程+合成HTTP服务桥接测试与16项定向测试；Ruff与git diff --check通过。未连接真实被测服务、未调用模型；F7真实项目逐项验收、③④执行器与源码兜底仍未验收。"
+next: "以真实项目（衡仓沙箱）跑一轮多用例桥接回归，验证断言质量与凭据链路；随后按需实现JUnit/Jest等非HTTP执行器与java-annotations/ts-decorators源码兜底；F7真实项目逐项接口对账与真实模型质量仍待做。"
 evidence:
   - docs/task-assets.md
   - README.md
@@ -110,3 +110,9 @@ evidence:
 全量 458 项测试通过（较第 6 项后的 452 项净增 6 项，见 `tests/test_adapters.py` 两项新增与保留的 `test_task_discovery.py` 版本关联测试），Ruff 检查与格式化全通（86 files already formatted）。本项推进 F2 接口发现与版本关联质量，真实项目逐项接口对账、认证语义解析与集外模型展开仍属 F7 及后续边界；未调用模型，未访问被测接口。本轮交付前已在本项目自检 PROJECT_STATUS：frontmatter 7 个必填字段无重复、日期与 active 状态合规，13 条 evidence 均为项目内现存非运行目录合法文件；未通过项为零，未调用日常同步工具。
 
 2026-11-04 续审：第 4/5/6/7 项当前证据与历史记录纠错见 TASKS.md 和 docs/acceptance.md 同日续审节；未修改第 1/2/3/8 项能力范围。原 458 项通过不证明当时已支持跨文件引用。本次未复测真实模型与被测服务。
+
+2026-11-04：Apple 文档 URL 入口验收见 TASKS.md 与 docs/acceptance.md；本次仅真实本地合成 HTTP 服务与自动化测试，未验收 Apple 接口全集。其余执行器和桥接问题保持待办。
+
+2026-11-04 本次仅审查，发现缺陷与验证边界见 TASKS.md、docs/acceptance.md；历史全量结果未重测，未使用日常同步工具。
+
+2026-11-04 F8 桥接缺陷修复：上一节“仅审查”的 7 项缺陷与 ② 显式 runner 分派、绝对 `--root`、私有 `store._folder` 已修复并复测，逐项机制、测试与边界见 docs/acceptance.md 同日“F8 桥接缺陷修复”节。要点：`--case-id` 运行结束回到 `ready`、只有全量运行才 `completed`（`completed` 也可重放）；新增 `classify_accounting` 与 `task execute --accounting-json`，回归侧只按结构化结果判定，`--max-cases 0` 不再算通过，`testpilot run` 未执行完返回 1；凭据按 `task_binding.credential_env` 名单转发给 task 子进程且值不落盘；runner 分派改为显式元数据；入口改为 `--root {task_root}` 加配置 `task_root`；无效 case-id 与版本探针都在状态迁移前校验；`TaskStore.folder` 取代 `_folder`（78 处）。另修掉一个被模拟子进程掩盖的缺陷：`python -m api_test_agent.cli` 无 `__main__` 守卫、只导入不执行却返回 0。全量 496 项通过（较 476 净增 20 项），新增 4 项真实子进程 + 合成 HTTP 服务桥接测试；Ruff 与 `git diff --check` 通过。③ JUnit/Jest 等非 HTTP 执行器与 ④ Java/TS 源码兜底仍未实现，F7 真实项目逐项验收与真实模型质量仍未验收；未连接真实被测服务、未调用模型、未提交或推送。本轮摘要在本项目自检：frontmatter 字段无重复、`updated`/`status` 合规，13 条 evidence 均为项目内现存非运行目录相对路径；未通过项为零，未使用跨项目同步工具。
