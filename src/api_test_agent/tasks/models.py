@@ -10,6 +10,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from api_test_agent.tasks.openapi_import import OpenAPIImportOptions
+
 
 class Contract(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
@@ -22,6 +24,7 @@ class SourceRef(Contract):
     locator: str = Field(min_length=1)
     content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     summary: str = Field(min_length=1)
+    source_url: str | None = Field(default=None, exclude_if=lambda value: value is None)
 
     @field_validator("path")
     @classmethod
@@ -151,6 +154,9 @@ class Task(Contract):
     source_paths: tuple[str, ...] = ()
     document_paths: tuple[str, ...] = ()
     openapi_url: str | None = None
+    openapi_options: OpenAPIImportOptions | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     environment: str | None = Field(default=None, min_length=1)
     adapter: str | None = Field(default=None, min_length=1)
     version_manifest: dict[str, str] = Field(default_factory=dict)

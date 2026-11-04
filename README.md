@@ -50,30 +50,22 @@
 
 环境使用 [uv](https://docs.astral.sh/uv/) 管理，需要 Python 3.14。
 
-### 1. 统一任务流示例（从空任务到执行与导出）
+### 1. 下载后先跑通内置示例
+
+下面的示例不需要目标仓库、账号或模型 Key，只导入仓库自带的合成接口文档：
+
 ```powershell
-# 1. 准备环境与查看支持的命令
-uv sync --locked
-uv run testpilot task --help
-
-# 2. 创建任务并登记目标
-uv run testpilot task create demo-task
-uv run testpilot task configure demo-task --project FinUnityServer --commit 55cf875b9d0350e80cfed14b971b7bec8e22b50b --document-paths docs/api.json
-uv run testpilot task validate-target demo-task
-
-# 3. 发现接口并导出审核材料
-uv run testpilot task discover demo-task --materials-root ./examples/regression/finunity
-uv run testpilot task review demo-task
-
-# 4. 执行已批准用例（以已批准用例为例）
-uv run testpilot task execute demo-task --execution-config examples/tasks/execution-config.example.json
-
-# 5. 导出守恒报告
-uv run testpilot task report demo-task
-
-# 6. 将已批准用例导出至回归目录 (F8)
-uv run testpilot task export-regression demo-task --catalog examples/regression/finunity/assets/cases.yaml
+uv sync --locked --python 3.14
+uv run testpilot task create quickstart --project SyntheticDemo --commit 0000000000000000000000000000000000000000 --scope "*"
+uv run testpilot task configure quickstart --document-paths openapi-demo.json
+uv run testpilot task discover quickstart --materials-root examples/tasks
+uv run testpilot task materials quickstart
 ```
+
+输出清单位于 `runtime/tasks/quickstart/inventory.json`，应包含 `GET /items`。
+全零提交仅用于这个合成示例。重复演练请换任务名；发现完成后的任务不能换输入。
+之后的用例设计、人工审核和执行见 [任务流程](docs/task-assets.md)；
+导入文档不会调用模型或执行业务用例。
 
 桥接导出的每条用例带显式 `runner: task`，入口写成
 `testpilot task --root {task_root} execute <任务> --approval <批准> --case-id <用例>`。
@@ -83,14 +75,31 @@ uv run testpilot task export-regression demo-task --catalog examples/regression/
 pytest 入口不会获得这些变量。每条 `--case-id` 执行都会单独落一个执行编号，跑完回到
 `ready`，同一批准集合可以继续执行下一条或作为下一轮回归重放。
 
-服务只在运行时提供 Swagger/OpenAPI 文档时，可先创建任务再导入 URL，无需 Java/Node 源码解析器：
+服务只在运行时提供 Swagger/OpenAPI 文档时，一条命令创建任务并导入：
 
 ```powershell
-uv run testpilot task create apple-recruit --project AppleRecruit --commit "<完整40位提交ID>" --scope "*"
-uv run testpilot task discover apple-recruit --openapi-url "http://127.0.0.1:8080/v2/api-docs"
+uv run testpilot task import-openapi apple-recruit --project AppleRecruit --commit "<完整40位提交ID>" --url "http://127.0.0.1:8080/v2/api-docs"
 ```
 
-URL 也可通过 `task configure <任务> --openapi-url <地址>` 预先登记。抓取内容冻结为虚拟文档快照，保留来源 URL 与内容哈希，版本标为 `unverified-document`；用户填写提交不等于文档已与该版本核验。只获取指定地址，不跟随重定向、不自动抓取远程引用；每次网络读写超时 15 秒、文档上限 1 MB。不支持 URL 内凭据、认证头配置或交互登录；需认证的文档可由用户导出为本地文件。UI 当前不提供 URL 导入表单，使用以上 CLI。
+也接受 Springfox/Knife4j 的 `/swagger-resources` 列表及带 `urls` 的 Swagger 配置。
+默认同源重定向与远程 `$ref` 自动下载，单文档20 MB、总量100 MB、最多64份文档。
+更大的文档、认证头和跨源聚合通过配置调整，无需改源码：
+
+```powershell
+Copy-Item examples/tasks/openapi-import.example.toml openapi.local.toml
+# 编辑 openapi.local.toml：按需启用 header_env、allowed_origins 或增大限制。
+# 认证值由本机环境变量提供；TOML 只写变量名。
+uv run testpilot task import-openapi apple-recruit-auth --project AppleRecruit --commit "<完整40位提交ID>" --url "http://127.0.0.1:8080/v2/api-docs" --openapi-config openapi.local.toml
+```
+
+已创建的任务仍可用 `task discover <任务> --openapi-url <地址> --openapi-config <配置>`。
+下载失败保留草稿，修正环境/配置后使用 discover 重试。
+配置、认证方式、故障处理及边界见 [服务文档接入](docs/openapi-import.md)。
+
+内容原文、最终来源 URL 与内容哈希保留在快照中，版本标为 `unverified-document`；
+填写提交不代表已核验服务版本。跨源不转发认证头；不自动交互登录，也不接受 URL 内凭据。
+引用失败保留 unresolved，聚合目录中任一服务失败则中止，避免误报完整清单。
+UI 当前仍使用 CLI 导入这些服务文档。
 
 ### 2. 发布回归模块
 

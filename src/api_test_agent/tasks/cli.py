@@ -3,6 +3,7 @@
 import argparse
 import json
 import sys
+import tomllib
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -32,6 +33,13 @@ def register_commands(commands: argparse._SubParsersAction) -> None:
     create.add_argument("--commit", help="用户指定的完整提交 ID；F2 再核验")
     create.add_argument("--scope", nargs="+", default=[])
     create.add_argument("--environment")
+    import_cmd = actions.add_parser("import-openapi", help="一步创建任务并导入服务文档或聚合目录")
+    import_cmd.add_argument("task_id")
+    import_cmd.add_argument("--url", required=True)
+    import_cmd.add_argument("--project", required=True)
+    import_cmd.add_argument("--commit", required=True, help="声明的完整提交；文档版本仍标未核验")
+    import_cmd.add_argument("--scope", nargs="+", default=["*"])
+    import_cmd.add_argument("--openapi-config", type=Path)
     show = actions.add_parser("show")
     show.add_argument("task_id")
     add = actions.add_parser("import-case", help="导入统一格式的新用例修订，不批准或执行")
@@ -39,6 +47,9 @@ def register_commands(commands: argparse._SubParsersAction) -> None:
     add.add_argument("file", type=Path)
     configure = actions.add_parser("configure", help="为草稿选择目标；不读取目标")
     configure.add_argument("task_id")
+    configure.add_argument(
+        "--openapi-config", type=Path, help="文档导入 TOML 配置（只写凭据变量名）"
+    )
     for flag in ("project", "commit", "repository", "environment", "openapi-url"):
         configure.add_argument(f"--{flag}")
     for flag in ("scope", "source-paths", "document-paths"):
@@ -61,6 +72,7 @@ def register_commands(commands: argparse._SubParsersAction) -> None:
     discover.add_argument("task_id")
     discover.add_argument("--materials-root", type=Path)
     discover.add_argument("--openapi-url", help="获取一个 HTTP(S) OpenAPI 文档并冻结为快照")
+    discover.add_argument("--openapi-config", type=Path, help="文档导入 TOML 配置")
     material = actions.add_parser("materials", help="导出受字符预算限制的实际模型材料")
     material.add_argument("task_id")
     material.add_argument("--max-chars", type=int, default=40000)
@@ -118,7 +130,26 @@ def register_commands(commands: argparse._SubParsersAction) -> None:
 def execute_handler(args: argparse.Namespace) -> int:
     store = TaskStore(args.root)
     try:
-        if args.task_action in {"approve", "verify-approval"}:
+        if args.task_action == "import-openapi":
+            from api_test_agent.tasks.discovery import discover
+
+            options = (
+                tomllib.loads(args.openapi_config.read_text("utf-8"))
+                if args.openapi_config
+                else None
+            )
+            task = Task(
+                task_id=args.task_id,
+                target_project=args.project,
+                target_commit=args.commit,
+                scope=tuple(args.scope),
+                openapi_url=args.url,
+                openapi_options=options,
+                adapter="openapi",
+            )
+            store.create(task)
+            print(discover(store, args.task_id))
+        elif args.task_action in {"approve", "verify-approval"}:
             from api_test_agent.tasks.approval import (
                 ExecutionConfig,
                 ReviewSubmission,
@@ -214,6 +245,14 @@ def execute_handler(args: argparse.Namespace) -> int:
         elif args.task_action == "discover":
             from api_test_agent.tasks.discovery import discover
 
+            if args.openapi_config:
+                from api_test_agent.tasks.openapi_import import OpenAPIImportOptions
+
+                options = OpenAPIImportOptions.model_validate(
+                    tomllib.loads(args.openapi_config.read_text("utf-8"))
+                )
+                if store.load(args.task_id).openapi_options != options:
+                    store.configure(args.task_id, openapi_options=options)
             if args.openapi_url and store.load(args.task_id).openapi_url != args.openapi_url:
                 store.configure(args.task_id, openapi_url=args.openapi_url)
             print(discover(store, args.task_id, args.materials_root))
@@ -252,6 +291,8 @@ def execute_handler(args: argparse.Namespace) -> int:
             updates = {
                 mapping.get(k, k): getattr(args, k) for k in fields if getattr(args, k) is not None
             }
+            if args.openapi_config:
+                updates["openapi_options"] = tomllib.loads(args.openapi_config.read_text("utf-8"))
             print(store.configure(args.task_id, **updates).model_dump_json(indent=2))
         elif args.task_action == "validate-target":
             store.load(args.task_id).require_target()

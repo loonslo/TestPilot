@@ -103,6 +103,7 @@ class TaskStore:
             "source_paths",
             "document_paths",
             "openapi_url",
+            "openapi_options",
             "environment",
             "adapter",
             "version_manifest",

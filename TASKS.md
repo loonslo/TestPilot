@@ -265,3 +265,15 @@ UI 的“直接导入服务/完整清单”和“文档路径或 URL”文案已
 - 顺带修掉一个被模拟测试掩盖的入口缺陷：`python -m api_test_agent.cli` 无 `__main__` 守卫、只导入不执行且返回 0，现改为 `python -m api_test_agent` 并补守卫。
 
 实测：全量 496 passed（`runtime/fix-all-2`，83.76s，较 476 项净增 20 项）；`tests/test_bridge_live.py` 4 项真实子进程+合成 HTTP 服务通过；Ruff check/format 与 `git diff --check` 通过。未连接真实被测服务、未调用模型、未提交或推送。
+
+## 2026-11-04：文档导入开箱接入改进
+
+用户要求下载后能使用常见服务文档，无需为大小、认证或聚合改源码。本次完成：
+- 默认单文档20 MB、总量100 MB、64文档；TOML可配置大小、数量、网络等待、总时间预算与重定向跳数，超限明确提示配置键，不截断规格。
+- header_env 仅保存环境变量名，支持 Authorization/Cookie/API-key；缺失变量在网络请求前失败。认证头仅发往入口来源，跨源重定向不转发认证，也不复用服务器Cookie。
+- 默认同源重定向与远程引用获取；跨源需 allowed_origins；冻结原文、最终URL与哈希，解析器只读快照。缺失/未允许/循环引用保持 unresolved。
+- 支持 Springfox/Knife4j swagger-resources 列表与 Swagger urls 配置；任一必需服务下载失败中止，不宣称完整。
+- 新增 task import-openapi 一步建任务并发现，保留 discover/configure 接口；新增示例TOML和内置合成文档，README起步命令不再依赖私有被测仓库。
+- SourceRef.source_url 与 Task.openapi_options 在为空时不进入序列化，保留旧任务绑定兼容；导入配置纳入任务锁定和绑定。
+
+验证详见 docs/acceptance.md 本日“文档导入开箱接入改进”：508项全量测试、Ruff、打包及内置示例通过。未连接真实Apple或模型；UI导入表单、交互登录、多来源不同凭据自动分配不在本次实现范围。

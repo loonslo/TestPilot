@@ -6,7 +6,7 @@ import json
 import posixpath
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urlsplit
+from urllib.parse import unquote, urldefrag, urljoin, urlsplit
 
 import yaml
 
@@ -135,13 +135,22 @@ def openapi(
         reference = value.get("$ref")
         if isinstance(reference, str):
             url = urlsplit(reference)
-            if url.scheme or url.netloc or url.query or "\\" in url.path:
-                return value
-            target_path = (
-                posixpath.normpath(posixpath.join(posixpath.dirname(current), unquote(url.path)))
-                if url.path
-                else current
-            )
+            current_source = (sources or {}).get(current, source)
+            if current_source.source_url and not reference.startswith("#"):
+                from api_test_agent.tasks.openapi_import import snapshot_path
+
+                absolute, _ = urldefrag(urljoin(current_source.source_url, reference))
+                target_path = snapshot_path(absolute)
+            else:
+                if url.scheme or url.netloc or url.query or "\\" in url.path:
+                    return value
+                target_path = (
+                    posixpath.normpath(
+                        posixpath.join(posixpath.dirname(current), unquote(url.path))
+                    )
+                    if url.path
+                    else current
+                )
             marker = (target_path, url.fragment)
             if marker in seen or target_path.startswith(("../", "/")):
                 return value

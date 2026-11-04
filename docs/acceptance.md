@@ -799,3 +799,17 @@ UI 的“直接导入服务/完整清单”和“文档路径或 URL”文案已
 - 全量运行的“completed”只表示批准集合全部执行过，不代表业务通过；`task report` 的守恒与覆盖统计口径未变。
 - 未复测断电/强杀恢复；resume 仍要求整批运行且 `active-execution.json` 存在。跨平台未验证（沙箱目前仅 Windows）。
 - 未提交、未推送；未使用跨项目同步工具。
+
+## 2026-11-04：文档导入开箱接入改进
+
+实现：tasks/openapi_import.py 增加有界下载与依赖收集、可配置20 MB单文档/100 MB总量/64文档默认预算、同源重定向、环境变量认证头、跨源允许清单、资源目录解析；tasks/discovery.py 对收集的原文逐个建立未验证版本快照；adapters/openapi.py 仅在带 source_url 的已冻结快照间解析URL引用，不自行联网。Task保存可复用配置，旧绑定不受空新增字段影响。CLI新增 import-openapi 和 --openapi-config，附无密钥TOML模板、合成文档及 docs/openapi-import.md。原1 MB/不支持认证/不跟随重定向的历史边界由本节更新，不改写历史测试结果。
+
+验证环境：2026-11-04，Windows / 项目 Python 3.14 / uv 0.12.10，仅合成HTTP服务、合成认证值，无真实模型调用或Apple服务请求。
+- 早期相关回归（导入、适配器、发现）48 passed；新增测试最终纳入全量。
+- uv sync --locked 成功；实际 uv run testpilot task create/configure/discover/materials 对内置 openapi-demo.json 跑通，清单含 GET /items。使用隔离根目录 runtime/onboarding-check-20261104，避免覆盖既有任务。无需被测仓库或模型Key。
+- uv run pytest 的本机旧启动器报 uv trampoline failed to canonicalize script path，未修复机器环境；改用同环境模块入口。
+- uv run python -m pytest -q -p no:cacheprovider --basetemp=runtime/openapi-ready-full-02：508 passed in 76.58s（较历史496项净增12项）。覆盖超过1 MB、可调超限、认证+重定向+嵌套引用、跨源禁止/允许且剥离认证和Cookie、缺失凭据零请求、两种聚合目录、目录成员失败、循环与不可用引用、配置绑定、一步导入、时间/跳数限制。已有审批、执行、真实子进程桥接测试也随全量通过。
+- uv run ruff check src tests、uv run ruff format --check src tests：通过（89 files）；git diff --check 通过。
+- uv build 成功生成 testpilot 0.1.0 sdist 与 wheel。
+
+边界：未验证真实Apple规模、真实认证系统、真实Knife4j部署或新电脑全新安装；实际验证是当前环境安装同步、打包及合成服务。默认容量是可调整策略，不保证所有文档都在20 MB以内。不会浏览器交互登录，也不会向跨源服务转发入口凭据；多来源不同认证应分任务或使用统一网关。UI暂无这些配置表单。执行审批/环境约束保持，导入成功不代表完整业务测试已验收。未提交、推送、访问跨项目同步工具。

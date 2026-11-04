@@ -17,6 +17,8 @@ uv run testpilot task --help
 
 GitHub CLI 仅用于私有仓库认证/克隆；已配置 Git 凭据管理器时也可使用 `git clone https://github.com/loonslo/TestPilot.git`。要固定复现某次版本，先 `git switch --detach <完整提交号>`，再执行 `uv sync --locked --python 3.14`。
 
+安装后先运行 [README 内置合成示例](../README.md#1-下载后先跑通内置示例)，不需要模型 Key 或目标仓库。服务文档可通过 [一步导入命令](openapi-import.md) 接入，支持大小配置、认证头、重定向和聚合目录。
+
 ## 目标项目与本机配置
 
 任务的项目路径、固定提交、允许读取的源码/文档范围、执行环境及账号映射需要在使用机器重新配置，流程见 [统一任务说明](task-assets.md)。仓库不带目标项目源码、运行证据或本机配置，不会自动迁移原机器的任务。需要迁移历史证据时应另行确定脱敏范围，不上传整个 runtime。
@@ -52,8 +54,8 @@ $env:API_TEST_AGENT_MODEL_API_KEY = "sk-or-v1-xxxx"
 uv run testpilot task create real-test `
   --project "TargetProject" `
   --commit "0000000000000000000000000000000000000000" `
-  --scope "GET /api/*" "POST /api/*" `
-  --document-paths "path/to/openapi.json"
+  --scope "GET /api/*" "POST /api/*"
+uv run testpilot task configure real-test --document-paths "path/to/openapi.json"
 
 # 2. 离线发现接口
 uv run testpilot task discover real-test --materials-root "path/to/materials"

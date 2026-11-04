@@ -1,0 +1,19 @@
+# 不含凭据。通常无需修改大小限制；超限时按实际文档大小调整。
+max_document_bytes = 20000000
+max_total_bytes = 100000000
+max_documents = 64
+timeout_seconds = 15
+total_timeout_seconds = 120
+max_redirects = 5
+fetch_refs = true
+
+# 默认只访问入口同源地址。跨服务聚合时填写实际的 scheme://host:port。
+# 允许下载不代表允许向该来源转发登录凭据；认证头只发送给入口来源。
+allowed_origins = []
+
+# 按需取消注释。值是环境变量名，不能填 Token/Cookie 本身。
+# Authorization 的环境变量值应包含完整前缀（例如 Bearer ...）。
+[header_env]
+# Authorization = "TESTPILOT_DOC_AUTH"
+# Cookie = "TESTPILOT_DOC_COOKIE"
+# X-API-Key = "TESTPILOT_DOC_API_KEY"

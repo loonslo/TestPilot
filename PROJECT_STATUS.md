@@ -3,9 +3,10 @@ project_id: TestPilot
 updated: 2026-11-04
 status: active
 overview: "TestPilot（测试领航员）；统一任务流、接口发现、人工审核、HTTP执行与F8回归桥接。桥接的状态边界、结构化结果分类、凭据转发、显式runner分派与路径问题已修复并通过真实子进程验证；非HTTP执行器与Java/TS源码兜底仍是能力边界。"
-progress: "历史记录：URL导入后全量476项通过，真实Apple/模型质量未验收。2026-11-04审查确认桥接7项缺陷、runner字符串嗅探、绝对--root与私有_folder调用。本次修复：case级执行回到ready、completed可重放、classify_accounting+--accounting-json结构化分类、零执行不再返回成功、凭据按credential_env白名单转发、显式runner元数据分派、--root占位符+配置task_root、case-id校验前移、TaskStore.folder公开化，并修掉被模拟测试掩盖的`-m api_test_agent.cli`空跑缺陷。全量496项通过（较476净增20项），新增4项真实子进程+合成HTTP服务桥接测试与16项定向测试；Ruff与git diff --check通过。未连接真实被测服务、未调用模型；F7真实项目逐项验收、③④执行器与源码兜底仍未验收。"
-next: "以真实项目（衡仓沙箱）跑一轮多用例桥接回归，验证断言质量与凭据链路；随后按需实现JUnit/Jest等非HTTP执行器与java-annotations/ts-decorators源码兜底；F7真实项目逐项接口对账与真实模型质量仍待做。"
+progress: "历史记录：URL导入后全量476项通过，真实Apple/模型质量未验收。2026-11-04审查确认桥接7项缺陷、runner字符串嗅探、绝对--root与私有_folder调用。本次修复：case级执行回到ready、completed可重放、classify_accounting+--accounting-json结构化分类、零执行不再返回成功、凭据按credential_env白名单转发、显式runner元数据分派、--root占位符+配置task_root、case-id校验前移、TaskStore.folder公开化，并修掉被模拟测试掩盖的`-m api_test_agent.cli`空跑缺陷。全量496项通过（较476净增20项），新增4项真实子进程+合成HTTP服务桥接测试与16项定向测试；Ruff与git diff --check通过。未连接真实被测服务、未调用模型；F7真实项目逐项验收、③④执行器与源码兜底仍未验收。 2026-11-04文档接入改进：可配置大文档、环境变量认证、受控重定向/远程引用、聚合目录与一步导入；内置无账号示例跑通，全量508项、Ruff及打包通过。真实Apple服务与新电脑全新安装未验收。"
+next: "使用实际测试环境文档与本机认证变量验证Apple大规格/聚合目录及接口对账；F7真实模型质量、非HTTP执行器与Java/TS源码兜底仍待做。"
 evidence:
+  - docs/openapi-import.md
   - docs/task-assets.md
   - README.md
   - TASKS.md

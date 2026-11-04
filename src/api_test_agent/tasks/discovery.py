@@ -17,14 +17,13 @@ import yaml
 from pydantic import ConfigDict, model_validator
 
 from api_test_agent.adapters import (
-    StrictLoader,
     get_adapter,
     get_all_supported_extensions,
     openapi,
 )
 from api_test_agent.tasks.fastapi_static import extract
 from api_test_agent.tasks.models import Contract, Operation, SourceRef, Task
-from api_test_agent.tasks.openapi_import import fetch_openapi_document
+from api_test_agent.tasks.openapi_import import fetch_openapi_bundle
 from api_test_agent.tasks.store import TaskStore, _write_new
 
 METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
@@ -191,17 +190,15 @@ def _discover(
             document_paths.add(path)
             checkpoint(path, content)
     if task.openapi_url:
-        path = f"url-import/{hashlib.sha256(task.openapi_url.encode()).hexdigest()}.json"
-        if path in snapshots:
-            raise ValueError("OpenAPI URL virtual path conflicts with selected material")
-        content = fetch_openapi_document(task.openapi_url)
-        parsed = yaml.load(content, Loader=StrictLoader)
-        if not isinstance(parsed, dict) or not ("openapi" in parsed or "swagger" in parsed):
-            raise ValueError("URL response is not an OpenAPI/Swagger document")
-        snapshots[path] = content
-        document_paths.add(path)
-        imported_documents[path] = task.openapi_url
-        checkpoint(path, content)
+        bundle = fetch_openapi_bundle(task.openapi_url, task.openapi_options)
+        warnings.extend(bundle.warnings)
+        for path, content in bundle.snapshots.items():
+            if path in snapshots:
+                raise ValueError("OpenAPI URL virtual path conflicts with selected material")
+            snapshots[path] = content
+            document_paths.add(path)
+            imported_documents[path] = bundle.urls[path]
+            checkpoint(path, content)
     sources = [
         ref(
             path,
@@ -214,7 +211,10 @@ def _discover(
     ]
     sources = [
         source.model_copy(
-            update={"summary": f"OpenAPI URL import: {imported_documents[source.path]}"}
+            update={
+                "summary": f"OpenAPI URL import: {imported_documents[source.path]}",
+                "source_url": imported_documents[source.path],
+            }
         )
         if source.path in imported_documents
         else source
