@@ -3,7 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TestPilot · 测试领航员控制台</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>TestPilot · 测试领航员控制台 (baoyu-design v0.2.3)</title>
   <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
   <style>
     /* Design Tokens following baoyu-design / Industrial Craft (Zinc/Carbon + Emerald Accent) */
@@ -46,6 +49,20 @@
       --danger-subtle: rgba(239, 68, 68, 0.12);
     }
 
+    /* Enforce baoyu-design sharp precision: reduce all radii to 2px */
+    *, *::before, *::after {
+      border-radius: 0;
+    }
+    .rounded, .rounded-sm, .rounded-md, .rounded-lg, .rounded-xl, button, input, select, textarea {
+      border-radius: 2px !important;
+    }
+    .rounded-none {
+      border-radius: 0px !important;
+    }
+    .rounded-full {
+      border-radius: 9999px !important;
+    }
+
     body {
       background-color: var(--bg);
       color: var(--text);
@@ -84,7 +101,7 @@
       <div>
         <div class="flex items-center gap-2">
           <h1 class="font-bold text-sm text-[var(--text)] tracking-tight">TestPilot Console</h1>
-          <span class="text-[10px] px-1.5 py-0.5 rounded-sm bg-[var(--surface-subtle)] text-[var(--text-muted)] border border-[var(--border)] font-code">v0.2.2 · baoyu-design</span>
+          <span class="text-[10px] px-1.5 py-0.5 rounded-sm bg-[var(--surface-subtle)] text-emerald-400 border border-[var(--border)] font-code font-bold">v0.2.3 · baoyu-design (已生效)</span>
         </div>
         <p class="text-[11px] text-[var(--text-muted)]">REST API 探索与回归 · 过程资产透视工作台</p>
       </div>

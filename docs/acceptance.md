@@ -874,14 +874,18 @@ UI 的“直接导入服务/完整清单”和“文档路径或 URL”文案已
    - **多文件夹勾选与批量回填**：浏览器支持切换“多选模式”，每行提供独立 Checkbox、顶部常驻已选 Chips 标签栏（带一键移除）、全选目录文件夹与一键清空；在源码目录选择时默认开启多选，勾选多个文件夹后自动以逗号拼装回填至 `inputSourcePaths`（如 `src/, app/, services/`）；
    - 本地规格文件（`inputDocPath`）、代码仓库根目录（`inputRepoPath`）、源码相对目录（`inputSourcePaths`）均提供一键 `[📂 浏览文件/目录]` 交互；
    - 顶栏被测目标选择器新增 `[📂 浏览选择目标]` 按钮与动态目标分组，可直接在本地磁盘中点选任意目录或 OpenAPI 文件作为测试目标。
+4. **全站圆角极致收敛（2px）与 HTTP 防强缓存加固**：
+   - 服务端 `server.py` 对 HTML 页面与 API JSON 响应注入 `Cache-Control: no-cache, no-store, must-revalidate, max-age=0`、`Pragma: no-cache`、`Expires: 0`；
+   - 前端 `dashboard.html` 注入防缓存元标签并更新版本徽标为 `v0.2.3 · baoyu-design (已生效)`；
+   - 注入全局 2px 极窄精密微圆角规则，全量选项卡、卡片、表单组件强制收敛为 2px。
 
 **验证结果：**
 - 环境：Windows 10 Pro，Python 3.14.4，uv 0.12.10，pytest 9.1.1。
 - 新增单测：
   - `tests/test_ui_server.py::test_ui_fs_list_api`（测试文件系统 API 根目录列举、目录过滤与特定路径识别）；
-  - `tests/test_ui_server.py::test_ui_dashboard_styling_and_explorer_elements`（测试 dashboard.html 静态模板中 baoyu-design Token、纯碳夜背景、无蓝色残留、模态框存在与圆角收敛）。
+  - `tests/test_ui_server.py::test_ui_dashboard_styling_and_explorer_elements`（测试 dashboard.html 静态模板中 baoyu-design Token、纯碳夜背景、无蓝色残留、模态框存在、Cache-Control 与圆角收敛）。
 - UI 单测套件：`tests/test_ui_server.py` 13 项全通。
-- 全量测试回归：`.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider --basetemp=runtime/tmp-ui-20261105-01`：**512 passed in 79.24s**（全绿，较此前 510 项净增 2 项）。
+- 全量测试回归：`.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider --basetemp=runtime/tmp-ui-20261105-03`：**512 passed in 79.04s**（全绿，较此前 510 项净增 2 项）。
 - 代码规范：`ruff check src tests` 与 `ruff format --check src tests` 全部通过（89 files already formatted）；`git diff --check` 通过。
 
 **边界说明：**

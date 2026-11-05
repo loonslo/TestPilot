@@ -76,6 +76,7 @@ def test_ui_serves_static_dashboard(test_server: tuple[str, TaskStore]) -> None:
     req = urllib.request.Request(f"{base_url}/")
     with urllib.request.urlopen(req) as resp:
         assert resp.status == 200
+        assert "no-store" in resp.headers.get("Cache-Control", "")
         content = resp.read().decode("utf-8")
         assert "<title>TestPilot" in content
         assert "Sources 追溯面板" in content

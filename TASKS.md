@@ -311,8 +311,12 @@ UI 的“直接导入服务/完整清单”和“文档路径或 URL”文案已
 3. **全站圆角弧度收敛减半**：
    - 移除大圆角 `rounded-2xl`（16px）与卡片气泡 `rounded-xl`（12px），整体收敛至小巧克制的 `rounded-md`（6px）、`rounded`（4px）与 `rounded-sm`（2px）；
    - 按钮、输入框、徽章标签与状态条严格采用精密工程级微圆角，与 `baoyu-design` 工业美学深度契合。
+4. **全站圆角极致收敛（2px）与 HTTP 防强缓存加固**：
+   - 针对浏览器磁盘与内存强缓存导致未显式刷新时仍渲染旧版 UI 的问题，在 `server.py` 的 HTML/JSON 响应头中注入 `Cache-Control: no-cache, no-store, must-revalidate, max-age=0`、`Pragma: no-cache`、`Expires: 0`；
+   - 在 `dashboard.html` `<head>` 中注入对应 `<meta>` 防缓存标签，将顶栏版本徽标更新为高对比绿色的 `v0.2.3 · baoyu-design (已生效)`；
+   - 在样式表中注入全局强制 2px 极窄精密微圆角规则（除状态指示圆点保留圆形外，全量按钮、输入框、选项卡、卡片、徽标统一强制收敛至 2px，彻底根治大胶囊圆角）。
 
 实测结果：
-- 服务端与前端样式单测：`tests/test_ui_server.py` 增至 13 项通过（新增 `test_ui_fs_list_api` 与 `test_ui_dashboard_styling_and_explorer_elements`，断言 Token、无蓝色残留、模态框元素与圆角收敛）；
-- 全量测试：`.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider --basetemp=runtime/tmp-ui-20261105-01`：**512 passed in 79.24s**（全绿，较此前 510 项净增 2 项）；
+- 服务端与前端样式单测：`tests/test_ui_server.py` 增至 13 项通过（新增 `test_ui_fs_list_api` 与 `test_ui_dashboard_styling_and_explorer_elements`，断言 Token、无蓝色残留、模态框元素、Cache-Control 与圆角收敛）；
+- 全量测试：`.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider --basetemp=runtime/tmp-ui-20261105-03`：**512 passed in 79.04s**（全绿，较此前 510 项净增 2 项）；
 - 代码质量：`ruff check src tests` 与 `ruff format --check src tests` 全量通过（89 files already formatted）。
