@@ -71,7 +71,7 @@ goto :finish
 :run_demo
 echo.
 echo [1/4] Creating demo task quickstart_demo...
-"%PYTHON_EXE%" -m api_test_agent.cli task create quickstart_demo --project SyntheticDemo --commit 0000000000000000000000000000000000000000 --scope "*" >nul 2>&1
+"%PYTHON_EXE%" -m api_test_agent.cli task create quickstart_demo --project SyntheticDemo --scope "*" >nul 2>&1
 
 echo [2/4] Configuring document openapi-demo.json...
 "%PYTHON_EXE%" -m api_test_agent.cli task configure quickstart_demo --document-paths openapi-demo.json >nul 2>&1
@@ -107,13 +107,17 @@ if "%DOC_INPUT%"=="" goto :show_menu
 set /p TASK_NAME="Task Name [Default: my_service]: "
 if "%TASK_NAME%"=="" set "TASK_NAME=my_service"
 
+set /p TASK_COMMIT="Declared commit (40 hex, optional - Enter to record it as unverified): "
+set "COMMIT_ARGS="
+if not "%TASK_COMMIT%"=="" set "COMMIT_ARGS=--commit %TASK_COMMIT%"
+
 echo.
 if "%DOC_INPUT:~0,4%"=="http" (
     echo [1/2] Fetching and parsing OpenAPI from URL: %DOC_INPUT% ...
-    "%PYTHON_EXE%" -m api_test_agent.cli task import-openapi "%TASK_NAME%" --project "%TASK_NAME%" --commit "0000000000000000000000000000000000000000" --url "%DOC_INPUT%"
+    "%PYTHON_EXE%" -m api_test_agent.cli task import-openapi "%TASK_NAME%" --project "%TASK_NAME%" %COMMIT_ARGS% --url "%DOC_INPUT%"
 ) else (
     echo [1/3] Registering task %TASK_NAME% with local document %DOC_INPUT% ...
-    "%PYTHON_EXE%" -m api_test_agent.cli task create "%TASK_NAME%" --project "%TASK_NAME%" --commit "0000000000000000000000000000000000000000" --document-paths "%DOC_INPUT%" --adapter openapi --scope "*"
+    "%PYTHON_EXE%" -m api_test_agent.cli task create "%TASK_NAME%" --project "%TASK_NAME%" %COMMIT_ARGS% --document-paths "%DOC_INPUT%" --adapter openapi --scope "*"
     echo [2/3] Discovering API routes from document...
     "%PYTHON_EXE%" -m api_test_agent.cli task discover "%TASK_NAME%"
 )
@@ -149,7 +153,9 @@ if %ERRORLEVEL% equ 0 (
     for /f %%i in ('git -C "%REPO_DIR%" rev-parse HEAD 2^>nul') do set "REPO_COMMIT=%%i"
 )
 if "%REPO_COMMIT%"=="" (
-    set "REPO_COMMIT=0000000000000000000000000000000000000000"
+    echo [ERROR] Cannot read HEAD from this directory. It must be a Git repository with at least one commit.
+    pause
+    goto :show_menu
 )
 
 for %%I in ("%REPO_DIR%") do set "DEFAULT_TASK=%%~nxI"

@@ -173,7 +173,10 @@ class ApprovalSnapshot(Contract):
             raise ValueError("frozen cases do not match the human-approved selection")
         if any(self.all_case_hashes.get(key) != value for key, value in actual.items()):
             raise ValueError("selected case differs from the reviewed revision set")
-        if self.execution_config.target_commit != self.inventory.target_commit:
+        if (
+            self.inventory.target_commit is not None
+            and self.execution_config.target_commit != self.inventory.target_commit
+        ):
             raise ValueError("execution target differs from frozen inventory")
         return self
 
@@ -185,7 +188,7 @@ def current_cases(store: TaskStore, task_id: str) -> dict[str, CaseRevision]:
 def validate_config(store: TaskStore, task_id: str, config: ExecutionConfig) -> Inventory:
     inventory = load_inventory(store, task_id)
     task = store.load(task_id)
-    if config.target_commit != task.target_commit or (
+    if (task.target_commit is not None and config.target_commit != task.target_commit) or (
         task.environment is not None and task.environment != config.environment
     ):
         raise ValueError("execution target or environment differs from the task")

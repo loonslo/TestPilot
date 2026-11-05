@@ -1,7 +1,7 @@
 """Lightweight built-in Web console server for TestPilot.
 
 Zero-dependency HTTP server delivering:
-- Interactive dashboard UI (HTML/Tailwind/CSS tokens following baoyu-design)
+- Interactive dashboard UI (hand-written CSS, no CDN, strict CSP)
 - Real-time pipeline state (Task -> Inventory -> Cases -> Execution -> Report)
 - Complete process artifacts inspection (Sources drawer)
 - Safe offline model connectivity checks
@@ -21,6 +21,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import date, datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -39,6 +40,13 @@ logger = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent
 
 
+def _json_default(value: Any) -> str:
+    """Serialize the contract models' timestamps instead of dropping the response."""
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+
 def validate_task_id(task_id: str) -> None:
     if not task_id or not re.fullmatch(r"^[a-zA-Z0-9_.-]{1,64}$", task_id) or ".." in task_id:
         raise ValueError(f"Invalid or unsafe task_id: {task_id!r}")
@@ -51,12 +59,54 @@ class UIRequestHandler(BaseHTTPRequestHandler):
     static_dir: Path = STATIC_DIR
 
     def _apply_cors(self) -> None:
+        """Reflect only an exact same-origin request.
+
+        A loopback host alone is not enough: any other local page on a different
+        port is a different origin and must not get a readable CORS grant.
+        """
         origin = self.headers.get("Origin")
-        if origin:
-            parsed = urllib.parse.urlsplit(origin)
-            if parsed.hostname in {"127.0.0.1", "localhost", "::1"}:
-                self.send_header("Access-Control-Allow-Origin", origin)
-                self.send_header("Vary", "Origin")
+        if not origin:
+            return
+        parsed = urllib.parse.urlsplit(origin)
+        server_port = getattr(self.server, "server_port", None)
+        if parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
+            return
+        if not server_port or parsed.port != server_port:
+            return
+        self.send_header("Access-Control-Allow-Origin", origin)
+        self.send_header("Vary", "Origin")
+
+    def _token_ok(self) -> bool:
+        server_token = getattr(self.server, "auth_token", "")
+        if not server_token:
+            return True
+        client_token = (
+            self.headers.get("X-TestPilot-Token")
+            or self.headers.get("Authorization", "").replace("Bearer ", "").strip()
+        )
+        return secrets.compare_digest(client_token, server_token)
+
+    def _check_read_auth(self) -> bool:
+        """Session token for read endpoints that expose host filesystem or artifacts."""
+        if not self._token_ok():
+            self._send_error(
+                "Forbidden: invalid or missing X-TestPilot-Token session credential",
+                status=HTTPStatus.FORBIDDEN,
+            )
+            return False
+        if self.headers.get("Sec-Fetch-Site", "").lower() == "cross-site":
+            self._send_error("Forbidden: cross-site request blocked", status=HTTPStatus.FORBIDDEN)
+            return False
+        return True
+
+    def _is_allowed_path(self, target: Path) -> bool:
+        for root in getattr(self.server, "allowed_roots", ()):
+            try:
+                target.relative_to(root)
+                return True
+            except ValueError:
+                continue
+        return False
 
     def _check_mutation_auth(self) -> bool:
         """Enforce strict host, origin, and session token checks for POST mutations."""
@@ -92,18 +142,12 @@ class UIRequestHandler(BaseHTTPRequestHandler):
             return False
 
         # 4. Session Token validation
-        server_token = getattr(self.server, "auth_token", None)
-        if server_token:
-            client_token = (
-                self.headers.get("X-TestPilot-Token")
-                or self.headers.get("Authorization", "").replace("Bearer ", "").strip()
+        if not self._token_ok():
+            self._send_error(
+                "Forbidden: invalid or missing X-TestPilot-Token session credential",
+                status=HTTPStatus.FORBIDDEN,
             )
-            if client_token != server_token:
-                self._send_error(
-                    "Forbidden: invalid or missing X-TestPilot-Token session credential",
-                    status=HTTPStatus.FORBIDDEN,
-                )
-                return False
+            return False
 
         return True
 
@@ -112,7 +156,9 @@ class UIRequestHandler(BaseHTTPRequestHandler):
         sys.stderr.write(f"[TestPilot UI] {self.address_string()} - {format % args}\n")
 
     def _send_json(self, data: Any, status: int = HTTPStatus.OK) -> None:
-        payload = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
+        payload = json.dumps(data, ensure_ascii=False, indent=2, default=_json_default).encode(
+            "utf-8"
+        )
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(payload)))
@@ -128,6 +174,7 @@ class UIRequestHandler(BaseHTTPRequestHandler):
         text: str,
         content_type: str = "text/plain; charset=utf-8",
         status: int = HTTPStatus.OK,
+        extra_headers: dict[str, str] | None = None,
     ) -> None:
         payload = text.encode("utf-8")
         self.send_response(status)
@@ -136,6 +183,8 @@ class UIRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
         self.send_header("Pragma", "no-cache")
         self.send_header("Expires", "0")
+        for header, value in (extra_headers or {}).items():
+            self.send_header(header, value)
         self._apply_cors()
         self.end_headers()
         self.wfile.write(payload)
@@ -147,7 +196,7 @@ class UIRequestHandler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.NO_CONTENT)
         self._apply_cors()
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-TestPilot-Token")
         self.end_headers()
 
     def do_GET(self) -> None:  # noqa: C901, PLR0912
@@ -158,6 +207,26 @@ class UIRequestHandler(BaseHTTPRequestHandler):
 
         # 0. Auth Token Endpoint
         if path == "/api/auth/token":
+            # Only a page served from this console (or a direct local tool) may read
+            # the session token; a cross-site page must not be able to lift it.
+            if self.headers.get("Sec-Fetch-Site", "").lower() == "cross-site":
+                self._send_error(
+                    "Forbidden: cross-site request blocked", status=HTTPStatus.FORBIDDEN
+                )
+                return
+            origin = self.headers.get("Origin")
+            if origin:
+                parsed_origin = urllib.parse.urlsplit(origin)
+                server_port = getattr(self.server, "server_port", None)
+                if (
+                    parsed_origin.hostname not in {"127.0.0.1", "localhost", "::1"}
+                    or not server_port
+                    or parsed_origin.port != server_port
+                ):
+                    self._send_error(
+                        "Forbidden: cross-origin token request", status=HTTPStatus.FORBIDDEN
+                    )
+                    return
             self._send_json({"token": getattr(self.server, "auth_token", "")})
             return
 
@@ -174,11 +243,32 @@ class UIRequestHandler(BaseHTTPRequestHandler):
                 f'<script>window.TESTPILOT_TOKEN="{token}";</script>\n'
             )
             html_content = html_content.replace("<head>", f"<head>\n{injected_meta}", 1)
-            self._send_text(html_content, content_type="text/html; charset=utf-8")
+            self._send_text(
+                html_content,
+                content_type="text/html; charset=utf-8",
+                extra_headers={
+                    "Content-Security-Policy": (
+                        "default-src 'self'; "
+                        "script-src 'self' 'unsafe-inline'; "
+                        "style-src 'self' 'unsafe-inline'; "
+                        "img-src 'self' data:; "
+                        "connect-src 'self'; "
+                        "font-src 'self'; "
+                        "frame-ancestors 'none'; "
+                        "base-uri 'none'; "
+                        "form-action 'none'"
+                    ),
+                    "X-Content-Type-Options": "nosniff",
+                    "X-Frame-Options": "DENY",
+                    "Referrer-Policy": "no-referrer",
+                },
+            )
             return
 
-        # 1.5 File System Browser
+        # 1.5 File System Browser (token-gated, confined to allowed roots)
         if path == "/api/fs/list":
+            if not self._check_read_auth():
+                return
             query_params = urllib.parse.parse_qs(parsed.query)
             self._handle_fs_list(query_params)
             return
@@ -348,11 +438,22 @@ class UIRequestHandler(BaseHTTPRequestHandler):
         raw_path = query_params.get("path", [""])[0].strip()
         filter_mode = query_params.get("filter", ["all"])[0].strip().lower()
 
-        workspace_root = Path.cwd().resolve()
+        workspace_root = getattr(self.server, "workspace_root", Path.cwd().resolve())
         if raw_path:
-            target_path = Path(raw_path).resolve()
+            # Accept absolute or root-relative input, then confine the result.
+            candidate = Path(raw_path)
+            if not candidate.is_absolute():
+                candidate = workspace_root / candidate
+            target_path = candidate.resolve()
         else:
             target_path = workspace_root
+
+        if not self._is_allowed_path(target_path):
+            self._send_error(
+                "Forbidden: path is outside the console's allowed roots",
+                status=HTTPStatus.FORBIDDEN,
+            )
+            return
 
         if not target_path.exists() or not target_path.is_dir():
             target_path = workspace_root
@@ -381,6 +482,7 @@ class UIRequestHandler(BaseHTTPRequestHandler):
             },
         ]
         quick_dirs = [q for q in quick_dirs if Path(q["path"]).exists()]
+        quick_dirs = [q for q in quick_dirs if self._is_allowed_path(Path(q["path"]))]
 
         items: list[dict[str, Any]] = []
         try:
@@ -395,7 +497,10 @@ class UIRequestHandler(BaseHTTPRequestHandler):
                     except OSError, PermissionError:
                         continue
 
-                    entry_full_path = str(Path(entry.path).resolve()).replace("\\", "/")
+                    entry_resolved = Path(entry.path).resolve()
+                    if not self._is_allowed_path(entry_resolved):
+                        continue
+                    entry_full_path = str(entry_resolved).replace("\\", "/")
                     ext = Path(name).suffix.lower()
                     is_openapi = ext in {".json", ".yaml", ".yml"}
                     is_code = ext in {".py", ".java", ".ts", ".js", ".go", ".rs"}
@@ -605,6 +710,8 @@ class UIRequestHandler(BaseHTTPRequestHandler):
                     "repository",
                     "source_paths",
                     "document_paths",
+                    "openapi_url",
+                    "openapi_options",
                     "environment",
                     "adapter",
                     "version_manifest",
@@ -700,10 +807,13 @@ def make_server(
     host: str = "127.0.0.1",
     port: int = 8080,
     auth_token: str | None = None,
+    allowed_roots: tuple[Path, ...] = (),
 ) -> ThreadingHTTPServer:
     """Instantiate a configured ThreadingHTTPServer bound to the given root."""
     store = TaskStore(root)
     token = auth_token or secrets.token_hex(16)
+    workspace_root = Path.cwd().resolve()
+    roots = tuple(dict.fromkeys([workspace_root, *(p.resolve() for p in allowed_roots)]))
 
     class CustomHandler(UIRequestHandler):
         pass
@@ -713,6 +823,8 @@ def make_server(
 
     server = ThreadingHTTPServer((host, port), CustomHandler)
     server.auth_token = token
+    server.workspace_root = workspace_root
+    server.allowed_roots = roots
     return server
 
 
@@ -721,9 +833,10 @@ def run_server(
     host: str = "127.0.0.1",
     port: int = 8080,
     open_browser: bool = True,
+    allowed_roots: tuple[Path, ...] = (),
 ) -> None:
     """Run the Web console server loop."""
-    server = make_server(root, host, port)
+    server = make_server(root, host, port, allowed_roots=allowed_roots)
     url = f"http://{host}:{port}/"
     print(f"TestPilot Web 控制台已启动: {url}")
     print(f"数据根目录: {root.resolve()}")
@@ -752,6 +865,14 @@ def register_ui_command(commands: argparse._SubParsersAction) -> None:
     parser.add_argument("--host", default="127.0.0.1", help="绑定地址 (默认 127.0.0.1)")
     parser.add_argument("--root", type=Path, default=Path("runtime/tasks"), help="任务资产根目录")
     parser.add_argument("--no-open", action="store_true", help="启动时不自动打开浏览器")
+    parser.add_argument(
+        "--allow-root",
+        action="append",
+        type=Path,
+        default=[],
+        metavar="DIR",
+        help="额外允许文件浏览器访问的根目录（可重复）；工作目录始终允许",
+    )
     parser.set_defaults(ui_handler=execute_ui_command)
 
 
@@ -763,5 +884,6 @@ def execute_ui_command(args: argparse.Namespace) -> int:
         host=args.host,
         port=args.port,
         open_browser=not args.no_open,
+        allowed_roots=tuple(args.allow_root),
     )
     return 0

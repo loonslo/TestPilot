@@ -255,6 +255,75 @@ def test_document_parent_escape_rejected(tmp_path):
 
     with pytest.raises(ValueError):
         Task(task_id="demo", document_paths=["../outside.json"])
+    with pytest.raises(ValueError):
+        Task(task_id="demo", document_paths=["C:/docs/../outside.json"])
+
+
+def test_external_absolute_document_is_snapshotted_under_virtual_path(tmp_path):
+    external = tmp_path / "outside" / "apple-docs"
+    external.mkdir(parents=True)
+    document(external, "swagger.json")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    store = TaskStore(workspace / "tasks")
+    store.create(
+        Task(
+            task_id="external",
+            target_project="AppleRecruit",
+            scope=["*"],
+            document_paths=[str(external / "swagger.json")],
+            adapter="openapi",
+        )
+    )
+    inv = Inventory.model_validate_json(discover(store, "external", workspace).read_text("utf-8"))
+    assert set(inv.snapshots) == {"external/swagger.json"}
+    assert "openapi" in inv.snapshots["external/swagger.json"]
+    material = inv.materials[0]
+    assert material.version == "unverified-document"
+    assert str(external / "swagger.json").replace("\\", "/") in material.summary
+    assert inv.operations
+    assert any("external document read from" in note for note in inv.limitations)
+
+
+def test_document_under_runtime_directory_is_allowed(tmp_path):
+    runtime = tmp_path / "runtime" / "demo"
+    runtime.mkdir(parents=True)
+    document(runtime, "openapi.json")
+    store = TaskStore(tmp_path / "tasks")
+    # A document-only task needs no declared commit: its version stays unverified.
+    store.create(
+        Task(
+            task_id="runtime-doc",
+            target_project="synthetic",
+            scope=["*"],
+            document_paths=["runtime/demo/openapi.json"],
+            adapter="openapi",
+        )
+    )
+    inv = Inventory.model_validate_json(discover(store, "runtime-doc", tmp_path).read_text("utf-8"))
+    assert "runtime/demo/openapi.json" in inv.snapshots
+    assert inv.materials[0].version == "unverified-document"
+
+
+def test_local_document_limit_matches_url_import(tmp_path, monkeypatch):
+    import api_test_agent.tasks.discovery as discovery_module
+
+    # The URL route allows 20 MB per document; a local file must not be capped lower.
+    assert discovery_module.MAX_DOCUMENT_BYTES == 20_000_000
+    monkeypatch.setattr(discovery_module, "MAX_DOCUMENT_BYTES", 10)
+    (tmp_path / "big.json").write_text("x" * 100, encoding="utf-8")
+    store = TaskStore(tmp_path / "tasks")
+    store.create(
+        Task(
+            task_id="big-doc",
+            target_project="synthetic",
+            scope=["*"],
+            document_paths=["big.json"],
+            adapter="openapi",
+        )
+    )
+    with pytest.raises(ValueError, match="exceeds snapshot limit"):
+        discover(store, "big-doc", tmp_path)
 
 
 def extract_graph(files):

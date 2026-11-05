@@ -13,6 +13,17 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from api_test_agent.tasks.openapi_import import OpenAPIImportOptions
 
 
+def is_absolute_document_path(value: str) -> bool:
+    """True for POSIX, Windows drive-letter or UNC absolute paths."""
+    if value.startswith("/") or value.startswith("\\\\"):
+        return True
+    return len(value) > 2 and value[1] == ":" and value[2] in "\\/"
+
+
+def document_path_parts(value: str) -> tuple[str, ...]:
+    return PurePosixPath(value.replace("\\", "/")).parts
+
+
 class Contract(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
 
@@ -168,22 +179,38 @@ class Task(Contract):
 
         return validate_openapi_url(value) if value is not None else None
 
-    @field_validator("source_paths", "document_paths")
+    @field_validator("source_paths")
     @classmethod
-    def allowed_paths(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+    def allowed_source_paths(cls, values: tuple[str, ...]) -> tuple[str, ...]:
         for value in values:
             SourceRef.relative_path(value)
             if any(part.startswith(".") for part in PurePosixPath(value).parts):
                 raise ValueError("hidden paths cannot be selected as task materials")
         return values
 
+    @field_validator("document_paths")
+    @classmethod
+    def allowed_document_paths(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        # A document is chosen explicitly and read on its own; a path outside
+        # the workspace is allowed, a path that escapes it is not.
+        for value in values:
+            if is_absolute_document_path(value):
+                parts = document_path_parts(value)
+                name = parts[-1] if parts else ""
+                if ".." in parts or not name or name.startswith("."):
+                    raise ValueError("invalid absolute document path")
+                continue
+            SourceRef.relative_path(value)
+            if any(part.startswith(".") for part in PurePosixPath(value).parts):
+                raise ValueError("hidden paths cannot be selected as task materials")
+        return values
+
     def require_target(self) -> None:
-        if (
-            not self.target_project
-            or not (self.target_commit or self.version_manifest)
-            or not self.scope
-        ):
-            raise ValueError("select project, full commit and scope for this task first")
+        if not self.target_project or not self.scope:
+            raise ValueError("select project and scope for this task first")
+        binds_source = bool(self.repository or self.source_paths)
+        if binds_source and not (self.target_commit or self.version_manifest):
+            raise ValueError("source selection requires a declared commit")
         if (
             not self.document_paths
             and not self.openapi_url

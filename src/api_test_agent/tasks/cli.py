@@ -42,7 +42,10 @@ def register_commands(commands: argparse._SubParsersAction) -> None:
     import_cmd.add_argument("task_id")
     import_cmd.add_argument("--url", required=True)
     import_cmd.add_argument("--project", required=True)
-    import_cmd.add_argument("--commit", required=True, help="声明的完整提交；文档版本仍标未核验")
+    import_cmd.add_argument(
+        "--commit",
+        help="声明的完整提交；省略时任务不宣称源码版本，文档仍标未核验",
+    )
     import_cmd.add_argument("--scope", nargs="+", default=["*"])
     import_cmd.add_argument("--openapi-config", type=Path)
     show = actions.add_parser("show")

@@ -263,10 +263,15 @@ def test_cli_draft_then_configure_without_reading_target(tmp_path, capsys):
     assert main([*args, "state", "draft", "blocked", "--reason", "Awaiting materials"]) == 0
 
 
-@pytest.mark.parametrize("path", ["../escape", "C:/secret", "/absolute", ".env", "src/.auth"])
+@pytest.mark.parametrize("path", ["../escape", ".env", "src/.auth"])
 def test_target_read_scope_rejects_invalid_paths(path):
     with pytest.raises(ValidationError):
         Task(task_id="demo", document_paths=[path])
+
+
+def test_document_paths_accept_absolute_files_outside_workspace():
+    task = Task(task_id="demo", document_paths=["D:/AppleProject/api-docs/swagger.json"])
+    assert task.document_paths == ("D:/AppleProject/api-docs/swagger.json",)
 
 
 def test_operation_keeps_uncertainty_and_provenance():

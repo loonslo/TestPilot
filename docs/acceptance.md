@@ -891,3 +891,148 @@ UI 的“直接导入服务/完整清单”和“文档路径或 URL”文案已
 **边界说明：**
 - 文件系统浏览限制在当前系统可访问文件树，不越权访问无权限系统受限目录；
 - Web UI 仍受回环 Origin、Host 校验、Token 会话鉴权及执行守卫约束（POST execute 严格 403 阻断）。
+
+## 2026-11-05：Web 控制台 P0 修复与整页视觉重构（frontend-design）验收
+
+**背景与问题：**
+用户在确认前一轮分析结论后要求直接改代码，同时重做控制台外观。复核 `dashboard.html` 与 `ui/server.py` 时确认了三类 P0 问题，以及若干会让界面静默失效的实现错误：
+
+1. **存储型 XSS**：接口路径、用例标题、规则原文、证据内容等来自任务资产与 OpenAPI 文档的字符串，被直接拼进 `innerHTML`。任务资产可由模型生成、文档来自外部 URL，均属不可信输入。
+2. **`GET /api/fs/list` 无鉴权、无目录边界**：本机任意进程不带令牌即可列举磁盘任意路径（含被测项目的 `.env`、`data/` 目录名与文件清单），与「只用合成数据、不读取被测项目凭据」的项目约束冲突。
+3. **界面展示伪造数据**：首屏的接口清单、用例、执行记录、守恒报告、证据详情（含 `NullPointerException` 堆栈）均为写死的样例；审批按钮 `approveAll()` 只弹 toast，不对应任何真实端点；模型连通性探测失败时会伪造成功。用户会据此误判项目已有产出。
+
+**改动与实现：**
+
+1. **XSS 收口**
+   - 所有 HTML 插值统一经 `esc()`（`& < > " '` 五字符转义）；JSON 抽屉改用 `textContent`；Markdown 渲染先转义再套用最小语法，不直通 HTML。
+   - 新增 `jsq()`：把动态字符串作为 JSON 字面量再整体 HTML 转义，用于内联事件参数。Windows 路径含反斜杠，仅做 HTML 转义会静默损坏路径（`C:\Users\...` 中的 `\U` 被 JS 当作转义序列）。
+   - 文件浏览器的行、快捷目录、已选标签改为 `data-*` 属性 + 事件委托，不再拼 `onclick` 字符串。
+
+2. **`/api/fs/list` 加固**
+   - 走与写操作同一套会话令牌校验（`X-TestPilot-Token` 或 Bearer），缺失/不符 403，并拒绝 `Sec-Fetch-Site: cross-site`。
+   - 新增 `allowed_roots`：工作区根 + `make_server(..., allowed_roots=)` / `run_server(..., allowed_roots=)` / CLI `--allow-root` 追加的目录。`_is_allowed_path` 对目标、父目录、每个子项、每个快捷目录逐项 `relative_to` 校验（先 `resolve()` 断符号链接逃逸），越界返回 403。
+
+3. **删除伪造数据，接真实端点**
+   - 移除假接口清单、假用例、假执行记录、假报告、`approveAll()`、假证据与伪造的 ping 成功兜底。
+   - 五个面板改为读取 `/inventory`、`/cases`、`/reviews`、`/execution`、`/report`、`/source/*`、`/models/env`；无数据时展示空状态，并给出可直接复制的真实 CLI 命令（如 `uv run testpilot task discover <id>`）。
+   - 控制台按设计只读（POST 路径含 `execute` 一律 403），因此执行页只呈现记录与守恒对账，不提供「执行」按钮，并明确写出原因。
+
+4. **修掉的实现错误**
+
+   | 问题 | 现象 | 修复 |
+   | --- | --- | --- |
+   | `datetime` 不可序列化 | `/api/tasks/{id}` 直接断连，前端报 “Failed to fetch”；`/reviews`、`/evidence` 同样受影响 | `_json_default` 把 `datetime`/`date` 序列化为 ISO 字符串，作为 `json.dumps(default=)` 传入 |
+   | `configure` 白名单缺键 | 「在线 OpenAPI 地址」模式保存被拒 | `allowed_keys` 增加 `openapi_url`、`openapi_options` |
+   | 已发现任务无法再解析 | 点「执行接口解析」报 target is locked | 仅当错误信息匹配 `locked` 时忽略保存失败，继续用磁盘 `task.json` 解析 |
+   | 浏览目录覆盖项目名 | `DemoService` 被改成 `src` | 仅在项目名为空时回填 |
+   | 过滤后选中错行 | 行下标取过滤后数组、数据取原数组 | 改用 `data-path` 定位 |
+   | CRLF 破坏 benchmark 字节一致性 | 3 条哈希测试失败 | 新增 `.gitattributes`（`* text=auto eol=lf`、`.bat/.cmd` 保 CRLF、二进制不转换），三个 JSON 重写为 LF |
+
+5. **视觉重构（frontend-design）**
+   - 方向：「账本 / 规格单 / 实验室仪表」。石墨底 `--bg: #09090b`、`--surface: #121215`；翡翠绿 `--primary: #10b981` **只**表示 `passed`；结构性强调另用琥珀 `--accent: #d8a24a`，避免「绿色=好看」的泛用。
+   - 排版：衬线标题（Iowan Old Style / Palatino / Georgia）+ Cascadia Mono 数据字体；0 圆角；34px 极淡网格；左侧编号阶段栏（数据源 → 模型与预算 → 接口清单 → 测试集与依据 → 执行与守恒）带状态圆点。
+   - 移除 Tailwind CDN 与 Google Fonts，改为手写 CSS，兼容 `default-src 'self'` 的 CSP，页面不再请求任何外网资源。
+   - 核心组件：执行页的分段守恒条 + 7 格图例（通过/失败/错误/阻塞/跳过/未执行/计划），计划数必须等于各终态之和；缺证据条目单独计数并列出 ID；接口覆盖率按 `called / confirmed_in_scope` 呈现，未覆盖操作如实列出。
+   - 深浅主题（◐ 切换，写 `localStorage`）；Sources 追溯抽屉可查看 `task.json`、`cases.json`、`execution.json`、`report.md` 原件。
+
+**验证结果：**
+- 环境：Windows 11 Pro 10.0.26300，Python 3.14.4，uv 0.12.10。
+- 全量回归：`uv run pytest -q -p no:cacheprovider --basetemp=<全新临时目录>`：**516 passed in 74.31s**（较 512 项净增 4 项）。
+- 新增测试（`tests/test_ui_server.py`）：
+  - `test_ui_fs_list_requires_session_token`：空令牌 403，错误信息含 `X-TestPilot-Token`；
+  - `test_ui_fs_list_rejects_path_outside_allowed_roots`：绝对临时路径 403，提示 “outside the console's allowed roots”；
+  - `test_ui_fs_list_allows_extra_configured_root`：`allowed_roots=(extra_root,)` 时可列出 `package.json`；
+  - `test_ui_configure_accepts_openapi_url`：创建后写入 `openapi_url` 返回 200；
+  - `test_ui_task_create_with_openapi_and_discover` 增加断言：发现后 `GET /api/tasks/{id}` 为 200、`status=discovered`、`history[0]["at"]` 为字符串（覆盖 `datetime` 序列化回归）；
+  - `test_ui_serves_static_dashboard` 增加 CSP（`default-src 'self'`、`frame-ancestors 'none'`）与 `X-Content-Type-Options: nosniff` 断言；
+  - `test_ui_dashboard_styling_and_explorer_elements` 改为断言新设计 Token（`--accent: #d8a24a` 等）、无 `gstatic.com`、无 `tailwind`、无伪造数据字符串。
+  - UI 套件合计 17 项通过。
+- 代码规范：`uv run ruff check .` → All checks passed；`uv run ruff format --check .` → 113 files already formatted。
+- 浏览器实测：`uv run testpilot ui --no-open --port 8099`，新建合成任务 `demo-console`（adapter `openapi`，文档 `examples/tasks/openapi-demo.json`，1 个已发现操作 `e3d0efeb28dc918b`）。
+  - 首屏按真实任务水合：`demo-console · DemoService`、状态「已发现」、接口清单 1 条、Sources 抽屉显示真实 `task.json`；
+  - 五个阶段切换正常；用例卡展开显示规则/依据/步骤/断言；文件浏览器列出真实目录，多选 → 标签栏 → 确认回填成功且不覆盖项目名；
+  - 执行页以内存态样例（未写入磁盘）验证渲染：分段守恒条、7 格图例、覆盖 KPI、未覆盖操作提示、执行记录表、报告 Markdown 全部正常；
+  - 深浅主题切换正常，主题写入 `localStorage`；
+  - 测试结束后已停掉 8099 后台服务并删除临时任务目录。
+
+**未验证与边界：**
+- 未连接真实 Apple 服务、未调用任何模型、未访问被测业务接口；执行页的浏览器验证使用内存态样例，磁盘上从未写入伪造执行记录。
+- 控制台仍为只读工作台，不提供浏览器端执行能力（POST `execute` 由服务端 403 阻断，属设计约束而非缺陷）。
+- 非 HTTP 执行器、Java/TS 源码兜底、F7 真实模型质量仍属原边界。
+- 未提交、未推送。
+
+## 2026-11-05 续：独立浅色主题与主题切换器验收
+
+**背景：** 用户指出上一轮的界面「只能算暗色模式」，需要一套不刺眼的浅色。上一轮的 `html.light` 只是暗色 token 的反相（近白底 + 近黑字），入口是右下角一个无文字的 ◐ 图标按钮。上节「深浅主题（◐ 切换，写 `localStorage`）」的表述由本节取代。
+
+**改动：**
+
+1. **浅色主题按独立调色板重做**（`html.light`）
+   - 底色 `--bg: #e9e6dd`（暖石灰）、面板 `--surface: #fbf9f4`（纸白，不用纯白）、次级面 `#f3f0e8`／`#e8e3d7`；
+   - 墨色 `--text: #232019`、次级 `#56514a`、三级 `#6a6350`；边框 `#dcd6c7` / `#c3bbaa`；网格 `rgba(60,48,24,.035)`；
+   - 状态色压深：`--ok/--primary: #0f7a55`、`--bad: #ab2b2b`、`--err: #a9530a`、`--blk: #6743ac`、`--skip: #6b655a`、`--idle: #98907c`、`--accent: #94621a`。
+2. **遮罩与阴影 token 化**：新增 `--scrim`、`--shadow-lg`、`--shadow-xl`；浅色为 `rgba(38,32,20,.34)` 遮罩与 14%/20% 暖阴影，替换原先写死的 45% 黑投影。
+3. **可见的主题切换器**：顶栏动作区首位新增「◼ 深色 / ◻ 浅色」分段控件（`#themeDark` / `#themeLight`，`aria-pressed` 表示当前状态）；右下角图标保留为快捷切换。两者共用 `applyTheme()` / `setTheme()`，状态始终一致。
+4. **首帧前生效**：`<head>` 内联脚本在 `<style>` 之前读取 `localStorage['testpilot-theme']` 并设置 `html.light` / `html.dark`；未保存过选择时跟随 `prefers-color-scheme`，并监听系统切换；手动选择后固定。
+5. **顶栏换行**：`.sheet` 允许换行、`.sheet > .grow` 设 `flex: 1 1 320px`，Sources 抽屉打开时动作区整体换行，不再把项目/适配器/提交/环境/状态挤成两行。
+
+**对比度实测**（WCAG 2.1，面板底面 `#fbf9f4`）：
+
+| Token | 值 | 对比度 |
+| --- | --- | --- |
+| `--text` | `#232019` | 15.45:1 |
+| `--text-2` | `#56514a` | 7.47:1 |
+| `--text-3` | `#6a6350` | 5.68:1（页面底色上 4.79:1） |
+| `--ok` / `--primary` | `#0f7a55` | 5.07:1 |
+| `--bad` | `#ab2b2b` | 6.41:1 |
+| `--err` | `#a9530a` | 5.08:1 |
+| `--blk` | `#6743ac` | 6.71:1 |
+| `--skip` | `#6b655a` | 5.49:1 |
+| `--accent` | `#94621a` | 4.96:1 |
+| `--idle`（图形元素） | `#98907c` | 3.02:1 |
+
+**验证结果：**
+
+- 环境：Windows 11 Pro 10.0.26300，Python 3.14.4。
+- 全量回归：`uv run pytest -q -p no:cacheprovider --basetemp=<全新临时目录>`：**516 passed in 74.71s**。
+- `tests/test_ui_server.py::test_ui_dashboard_styling_and_explorer_elements` 新增断言：`html.light` 独立调色板（`--bg: #e9e6dd`、`--surface: #fbf9f4`）、`#themeDark`/`#themeLight` 两个按钮、`深色`/`浅色` 文案、`prefers-color-scheme: light`、以及 `testpilot-theme` 出现位置早于 `<style>`（首帧前生效）。UI 套件 17 项通过。
+- 代码规范：`uv run ruff check .` → All checks passed；`uv run ruff format --check .` → 113 files already formatted。
+- 浏览器实测（`uv run testpilot ui --no-open --port 8099`；演示数据仅注入内存，未写盘）：
+  - 浅色下逐屏核对：数据源表单、模型与预算、接口清单（方法筛选/表格/状态胶囊）、测试集（用例卡展开、规则/步骤/断言）、执行与守恒（守恒条、7 格图例、KPI、记录表、报告）、文件浏览器模态框（纸白卡片 + 暖遮罩）；
+  - 顶栏切换器与右下角图标双向同步，切换后 `localStorage` 更新，刷新后保持且无首帧闪烁；
+  - 深色主题回归无变化（同一页截图对比）；
+  - 抽屉打开时顶栏动作区整体换行，左侧元信息保持单行。
+- 测试结束后已停掉 8099 后台服务。
+
+**未验证与边界：**
+
+- 未用真实项目（长用例标题、超宽接口表）在浅色下做长文本压力核对；未在低色域/高亮度显示器上实测观感。
+- 未改动任何后端逻辑；本轮只涉及 `dashboard.html` 的样式、标记与主题脚本，以及 `tests/test_ui_server.py` 的断言。
+- 未提交、未推送。
+
+## 2026-11-05 续：控件对齐、3px 圆角与冒烟三条修复验收
+
+**背景：** 用户反馈部分控件高度不一致、直角过硬，要求加一点圆角但不能太圆；同时并入冒烟报告的三条问题。
+
+**改动：**
+
+1. **控件等高**：`.with-btn .btn-sm` 25 → 32px（与同排输入框一致）；主题切换器两段按钮 30px 且外框去边，与 `.btn` 齐平；文件浏览器工具栏按钮 25 → 30px；筛选行按钮与输入框统一 28px。
+2. **细圆角**：新增 `--radius: 3px`，作用于按钮、分段控件、输入/下拉/文本域、chip/pill、cmd、note、panel、case、kpis、browser-list、toast、modal-card；表格、阶段栏、抽屉保持直角。`overflow: hidden` 只加在需要裁子元素背景的分组上。
+   - **右栏接缝**：`.app` 改为三列两行网格，`.main` 用 `display: contents` 让页头与内容区成为网格项；Sources 顶栏移出抽屉并与页头同处第一行，实测两者均 144px、底边同像素，分隔线贯通整页；顶栏底色统一为 `--surface`。关闭右栏时 `no-drawer` 将第三列收为 0（面板 648 → 1068px）。
+3. **外部文档**：`Task.document_paths` 支持盘符/UNC/POSIX 绝对路径（拒绝 `..` 与隐藏文件名）；发现时读入并以 `external/<name>` 为快照键，同名加哈希前缀；`Inventory.target_commit` 可为 `None`，纯文档任务可完成发现；外部文档在 source.summary 与提示中给出真实绝对位置。
+4. **文档读取策略**：新增 `document_permitted()` 只判断被点名的文件本身，`runtime/`、`data/` 下的文档可读；本地文档上限与 URL 导入统一为 `MAX_DOCUMENT_BYTES = 20_000_000`。
+5. **`start.bat`**：删除全部 `--commit 000…0`；demo 不声明提交，导入菜单可选提交，非 Git 目录扫描时直接报错返回菜单。
+
+**验证结果：**
+
+- 环境：Windows 11 Pro 10.0.26300，Python 3.14.4。
+- 全量回归：`uv run pytest -q -p no:cacheprovider --basetemp=<全新临时目录>`：**518 passed in 75.36s**（含右栏接缝复测）。
+- 针对新增行为：`tests/test_task_discovery.py` 增 3 项（外部绝对路径快照、`runtime/` 下文档、本地与 URL 上限一致）；`tests/test_task_assets.py` 增加绝对路径接受用例并调整非法路径参数；上述两文件 43 项通过。
+- `ruff check .` 通过；`ruff format --check .` → 113 files already formatted。
+- 浏览器实测（`uv run testpilot ui --no-open`，端口 8123）：浅色/深色下 `.btn` 30px、主题分段按钮 30px、`.with-btn` 输入框与按钮 32px；`.panel`/`.btn`/输入框计算圆角 3px；两张截图附在会话中。
+
+**未验证与边界：**
+
+- 未在真实浏览器窗口里点击系统文件选择框验证全盘选择回填；「任意目录」由 Python 侧路径校验与快照测试覆盖。
+- 未用 Apple 真实文档验证 20 MB 上限与 `runtime/` 场景；冒烟报告建议的 URL 导入路径本轮未实际调用。
+- 未提交、未推送。

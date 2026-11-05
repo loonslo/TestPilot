@@ -48,8 +48,9 @@ def _request_json(
     req_headers = {"Content-Type": "application/json"} if payload is not None else {}
     if headers:
         req_headers.update(headers)
-    if method == "POST" and "X-TestPilot-Token" not in req_headers:
-        # Fetch token from endpoint
+    if "X-TestPilot-Token" not in req_headers:
+        # Read endpoints that expose host paths (e.g. /api/fs/list) require the
+        # same session token as mutations, so every request carries it.
         parsed = urllib.parse.urlsplit(url)
         token_url = f"{parsed.scheme}://{parsed.netloc}/api/auth/token"
         try:
@@ -77,6 +78,10 @@ def test_ui_serves_static_dashboard(test_server: tuple[str, TaskStore]) -> None:
     with urllib.request.urlopen(req) as resp:
         assert resp.status == 200
         assert "no-store" in resp.headers.get("Cache-Control", "")
+        csp = resp.headers.get("Content-Security-Policy", "")
+        assert "default-src 'self'" in csp
+        assert "frame-ancestors 'none'" in csp
+        assert resp.headers.get("X-Content-Type-Options") == "nosniff"
         content = resp.read().decode("utf-8")
         assert "<title>TestPilot" in content
         assert "Sources 追溯面板" in content
@@ -223,6 +228,68 @@ def test_ui_post_cross_site_sec_fetch_site_rejected_403(test_server: tuple[str, 
     assert "cross-site request blocked" in res.get("error", "")
 
 
+def test_ui_fs_list_requires_session_token(test_server: tuple[str, TaskStore]) -> None:
+    base_url, _ = test_server
+    status, res = _request_json(f"{base_url}/api/fs/list", headers={"X-TestPilot-Token": ""})
+    assert status == 403
+    assert "X-TestPilot-Token" in res.get("error", "")
+
+
+def test_ui_fs_list_rejects_path_outside_allowed_roots(
+    test_server: tuple[str, TaskStore], tmp_path: Path
+) -> None:
+    base_url, _ = test_server
+    outside = urllib.parse.quote(str(tmp_path), safe="")
+    status, res = _request_json(f"{base_url}/api/fs/list?path={outside}")
+    assert status == 403
+    assert "outside the console's allowed roots" in res.get("error", "")
+
+
+def test_ui_fs_list_allows_extra_configured_root(tmp_path: Path) -> None:
+    tasks_root = tmp_path / "tasks"
+    tasks_root.mkdir()
+    extra_root = tmp_path / "subjects"
+    extra_root.mkdir()
+    (extra_root / "package.json").write_text("{}", encoding="utf-8")
+
+    server = make_server(tasks_root, host="127.0.0.1", port=0, allowed_roots=(extra_root,))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_port}"
+    try:
+        quoted = urllib.parse.quote(str(extra_root), safe="")
+        status, data = _request_json(f"{base_url}/api/fs/list?path={quoted}")
+        assert status == 200
+        assert "package.json" in [item["name"] for item in data["items"]]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_ui_configure_accepts_openapi_url(test_server: tuple[str, TaskStore]) -> None:
+    base_url, _ = test_server
+    status, _created = _request_json(
+        f"{base_url}/api/tasks/create",
+        method="POST",
+        payload={
+            "task_id": "url-task-01",
+            "target_project": "UrlProject",
+            "target_commit": "b" * 40,
+            "adapter": "openapi",
+            "scope": ["*"],
+        },
+    )
+    assert status == 201
+
+    status, updated = _request_json(
+        f"{base_url}/api/tasks/url-task-01/configure",
+        method="POST",
+        payload={"openapi_url": "https://example.com/openapi.json"},
+    )
+    assert status == 200
+    assert updated["openapi_url"] == "https://example.com/openapi.json"
+
+
 def test_ui_cli_parser_registered() -> None:
     parser = _build_parser()
     subparsers = [action for action in parser._actions if action.dest == "command"]
@@ -230,9 +297,10 @@ def test_ui_cli_parser_registered() -> None:
     choices = subparsers[0].choices
     assert "ui" in choices
     ui_parser = choices["ui"]
-    parsed = ui_parser.parse_args(["--port", "9090", "--no-open"])
+    parsed = ui_parser.parse_args(["--port", "9090", "--no-open", "--allow-root", "subjects"])
     assert parsed.port == 9090
     assert parsed.no_open is True
+    assert parsed.allow_root == [Path("subjects")]
 
 
 def test_ui_task_create_with_openapi_and_discover(test_server: tuple[str, TaskStore]) -> None:
@@ -255,6 +323,14 @@ def test_ui_task_create_with_openapi_and_discover(test_server: tuple[str, TaskSt
     assert status == 200
     assert "operations" in inv
     assert len(inv["operations"]) > 0
+
+    # The transition history carries datetimes; the detail endpoint must
+    # serialize them rather than dropping the connection.
+    status, detail = _request_json(f"{base_url}/api/tasks/doc-task-01")
+    assert status == 200
+    assert detail["status"] == "discovered"
+    assert detail["history"], "discovery records a transition"
+    assert isinstance(detail["history"][0]["at"], str)
 
 
 def test_ui_fs_list_api(test_server: tuple[str, TaskStore]) -> None:
@@ -285,25 +361,61 @@ def test_ui_dashboard_styling_and_explorer_elements(test_server: tuple[str, Task
     with urllib.request.urlopen(req) as resp:
         assert resp.status == 200
         html = resp.read().decode("utf-8")
-        # 1. baoyu-design & No Blue / Dark carbon tokens
+        # 1. Ledger palette: graphite ground, amber structural accent, emerald status
         assert "--bg: #09090b" in html
         assert "--surface: #121215" in html
         assert "--primary: #10b981" in html
+        assert "--accent: #d8a24a" in html
         assert "#0284c7" not in html
         assert "#38bdf8" not in html
         assert "#090d16" not in html
 
-        # 2. Filesystem Explorer Modal and buttons exist
+        # 2. Hand-written CSS only: no third-party CDN script under the strict CSP
+        assert "gstatic.com" not in html
+        assert "tailwind" not in html.lower()
+
+        # 3. No fabricated pipeline data (the dashboard reads real endpoints)
+        assert "NullPointerException" not in html
+        assert "approveAll" not in html
+        assert "RecruitService" not in html
+
+        # 4. Filesystem Explorer Modal and buttons exist
         assert "modalFileBrowser" in html
         assert "openFileBrowser" in html
         assert "browserItemsList" in html
         assert "browserQuickDirs" in html
 
-        # 3. Reduced border-radius (rounded-2xl removed from cards/modals, half radius used)
+        # 5. Sharp corners (no rounded-2xl utility classes)
         assert "rounded-2xl" not in html
 
-        # 4. Folder multi-selection support
+        # 6. Folder multi-selection support
         assert "chkMultiSelect" in html
         assert "selectAllFolders" in html
         assert "browserSelectedChipsBar" in html
         assert "多选" in html
+
+        # 7. The light theme is its own warm-paper palette (not inverted graphite),
+        #    and the header carries a labelled switcher for both themes.
+        assert "html.light {" in html
+        assert "--bg: #e9e6dd" in html
+        assert "--surface: #fbf9f4" in html
+        assert 'id="themeDark"' in html
+        assert 'id="themeLight"' in html
+        assert "深色" in html and "浅色" in html
+        assert "prefers-color-scheme: light" in html
+        # The saved choice must be applied before first paint, not after boot.
+        assert html.index("testpilot-theme") < html.index("<style>")
+
+        # 8. One hairline radius token on controls and cards (not a pill), and
+        #    small buttons sized to the taller control they sit beside.
+        assert "--radius: 3px" in html
+        assert "border-radius: var(--radius)" in html
+        assert ".with-btn .btn-sm { height: 32px" in html
+        assert ".browser-tools .btn-sm { height: 28px; }" in html
+
+        # 9. The Sources bar shares the header row with the sheet, so their
+        #    rules line up; it must stay a sibling of the drawer, not inside it.
+        assert 'id="drawerHead"' in html
+        assert html.index('id="drawerHead"') < html.index('<aside class="drawer"')
+        assert "grid-template-rows: auto minmax(0, 1fr)" in html
+        assert ".app.no-drawer" in html

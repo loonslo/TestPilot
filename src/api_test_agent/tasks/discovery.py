@@ -22,8 +22,14 @@ from api_test_agent.adapters import (
     openapi,
 )
 from api_test_agent.tasks.fastapi_static import extract
-from api_test_agent.tasks.models import Contract, Operation, SourceRef, Task
-from api_test_agent.tasks.openapi_import import fetch_openapi_bundle
+from api_test_agent.tasks.models import (
+    Contract,
+    Operation,
+    SourceRef,
+    Task,
+    is_absolute_document_path,
+)
+from api_test_agent.tasks.openapi_import import MAX_DOCUMENT_BYTES, fetch_openapi_bundle
 from api_test_agent.tasks.store import TaskStore, _write_new
 
 METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
@@ -56,6 +62,9 @@ def get_permitted_extensions() -> set[str]:
     return DEFAULT_PERMITTED_EXTENSIONS | get_all_supported_extensions()
 
 
+SECRET_PATH_PATTERN = re.compile(r"(?i)(credential|secret|token|password|cookie|\.pem$|\.key$)")
+
+
 def permitted(path: str, extra_extensions: set[str] | None = None) -> bool:
     parts = Path(path).parts
     allowed = (
@@ -67,8 +76,23 @@ def permitted(path: str, extra_extensions: set[str] | None = None) -> bool:
         not any(p.startswith(".") or p.lower() in DENIED for p in parts)
         and not any(p.startswith("test_") for p in parts)
         and Path(path).suffix.lower() in allowed
-        and not re.search(r"(?i)(credential|secret|token|password|cookie|\.pem$|\.key$)", path)
+        and not SECRET_PATH_PATTERN.search(path)
     )
+
+
+def document_permitted(path: str | Path) -> bool:
+    """Judge one explicitly named document, not a whole tree.
+
+    Directory denials such as ``runtime`` or ``data`` exist to stop bulk
+    source scans from slurping fixtures; a document the user named is read on
+    purpose, so only the file itself is judged here.
+    """
+    name = Path(path).name
+    if not name or name.startswith("."):
+        return False
+    if Path(name).suffix.lower() not in get_permitted_extensions():
+        return False
+    return not SECRET_PATH_PATTERN.search(name)
 
 
 def git(repo: Path, *args: str) -> bytes:
@@ -79,8 +103,9 @@ def git(repo: Path, *args: str) -> bytes:
 
 
 def ref(path: str, content: str, version: str) -> SourceRef:
+    source_id = hashlib.sha256(path.encode()).hexdigest()[:16]
     return SourceRef(
-        source_id=hashlib.sha256(path.encode()).hexdigest()[:16],
+        source_id=source_id,
         version=version,
         path=path,
         locator="full file",
@@ -89,10 +114,22 @@ def ref(path: str, content: str, version: str) -> SourceRef:
     )
 
 
+def external_snapshot_path(candidate: Path, used: dict[str, str]) -> str:
+    """A workspace-relative key for a document that lives outside the workspace."""
+    path = f"external/{candidate.name}"
+    if path in used:
+        digest = hashlib.sha256(str(candidate).encode()).hexdigest()[:8]
+        path = f"external/{digest}-{candidate.name}"
+    if path in used:
+        raise ValueError("duplicate external document")
+    return path
+
+
 class Inventory(Contract):
     model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=False)
 
-    target_commit: str
+    # None when the task declares no source commit (document-only import).
+    target_commit: str | None
     version_verified: bool
     all_materials_version_verified: bool = False
     materials: tuple[SourceRef, ...]
@@ -135,6 +172,7 @@ def _discover(
     commit_paths: set[str] = set()
     document_paths: set[str] = set()
     imported_documents: dict[str, str] = {}
+    external_documents: dict[str, str] = {}
     if task.source_paths:
         if not task.repository:
             raise ValueError("source selection requires repository")
@@ -175,19 +213,29 @@ def _discover(
         if materials_root is None:
             materials_root = Path.cwd()
         root = materials_root.resolve()
-        for path in task.document_paths:
-            candidate = (root / path).resolve()
-            if not candidate.is_relative_to(root) or not permitted(path):
-                raise ValueError("document path excluded or escapes material root")
-            if candidate.stat().st_size > 1_000_000:
+        for selection in task.document_paths:
+            absolute = is_absolute_document_path(selection)
+            if absolute:
+                candidate = Path(selection).resolve()
+            else:
+                candidate = (root / selection).resolve()
+                if not candidate.is_relative_to(root):
+                    raise ValueError("document path escapes material root")
+            if not document_permitted(candidate):
+                raise ValueError("document path excluded: unsupported or sensitive file")
+            if not candidate.is_file():
+                raise ValueError("document path is not a readable file")
+            if candidate.stat().st_size > MAX_DOCUMENT_BYTES:
                 raise ValueError("document exceeds snapshot limit")
+            path = selection if not absolute else external_snapshot_path(candidate, snapshots)
             content = candidate.read_text("utf-8")
             if path in snapshots and snapshots[path] != content:
                 raise ValueError("document and committed source share a conflicting path")
             snapshots[path] = content
-            # A locally supplied document is not bound to the selected commit.
-            # Annotate it so it can never masquerade as a commit-verified source.
             document_paths.add(path)
+            if absolute:
+                external_documents[path] = candidate.as_posix()
+                warnings.append(f"{path}: external document read from {candidate.as_posix()}")
             checkpoint(path, content)
     if task.openapi_url:
         bundle = fetch_openapi_bundle(task.openapi_url, task.openapi_options)
@@ -217,6 +265,14 @@ def _discover(
             }
         )
         if source.path in imported_documents
+        else source
+        for source in sources
+    ]
+    sources = [
+        source.model_copy(
+            update={"summary": f"External document: {external_documents[source.path]}"}
+        )
+        if source.path in external_documents
         else source
         for source in sources
     ]
@@ -386,15 +442,15 @@ def discover(store: TaskStore, task_id: str, materials_root: Path | None = None)
     (attempt / "started.json").write_text(json.dumps(metadata, indent=2), "utf-8")
 
     def checkpoint(path: str, content: str) -> None:
-        is_document = any(
-            path == selection or path.startswith(selection.rstrip("/") + "/")
-            for selection in task.document_paths or ()
+        is_document = (
+            path.startswith("external/")
+            or path.startswith("url-import/")
+            or any(
+                path == selection or path.startswith(selection.rstrip("/") + "/")
+                for selection in task.document_paths or ()
+            )
         )
-        version = (
-            UNVERIFIED_DOCUMENT_VERSION
-            if is_document or path.startswith("url-import/")
-            else task.target_commit
-        )
+        version = UNVERIFIED_DOCUMENT_VERSION if is_document else task.target_commit
         source = ref(path, content, version)
         payload = {"source": source.model_dump(mode="json"), "content": content}
         snapshot_path = attempt / f"{source.source_id}.json"
