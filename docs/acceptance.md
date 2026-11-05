@@ -847,3 +847,43 @@ UI 的“直接导入服务/完整清单”和“文档路径或 URL”文案已
 **边界说明：**
 - 源码 AST 静态分析（`python-ast`）当前仅支持 Python（FastAPI / Starlette 路由提取）；Java / Spring Boot 或其他非 Python 服务统一通过 OpenAPI/Swagger 文档路线（文件或服务在线 URL 抓取）接入。
 - 未访问日常同步工具。
+
+
+## 2026-11-05：Web 控制台工业级样式（baoyu-design）重构与全盘目录/文件选择器验收
+
+**背景与问题：**
+用户反馈了三项关键体验与视觉诉求：
+1. **样式与美学（baoyu-design）**：原有界面存在较多饱和天蓝色（`#0284c7` / `#38bdf8`）与蓝黑色调暗夜背景（`#090d16` / `#0f172a`），视觉割裂；需重构为基于设计 Token 的 `baoyu-design` 工业级高对比度质感；
+2. **目标数量与目录文件选择自由度**：用户困惑“当前目标怎么只有4个，无法选择任意自己想要的目录和文件”，原有输入框为纯文本，无直观浏览文件系统能力；
+3. **圆角过大**：原有卡片与弹窗使用 `rounded-2xl` 与 `rounded-xl`，偏圆润气泡感；要求将整个页面的圆角弧度减少至少一半。
+
+**改动与实现：**
+1. **`baoyu-design` 工业级设计规范重构**：
+   - 彻底清除全站天蓝与海军蓝底色（`#0284c7`、`#38bdf8`、`#090d16`、`#0f172a` 全部移除）；
+   - 深色模式采用真正纯净的中性碳素暗夜灰（`--bg: #09090b`、`--surface: #121215`、`--border: #27272a`、`--text: #fafafa`）；
+   - 浅色模式采用纯净工整的现代极简浅灰（`--bg: #fafafa`、`--surface: #ffffff`、`--border: #e4e4e7`、`--text: #09090b`）；
+   - 强调色升级为测试领航员标志性的测试通过态经典翡翠绿（`--primary: #10b981` / `#059669`），高对比度且专业沉稳；
+   - 接口请求方式徽章规范化：GET 翠绿、POST 暖琥珀、PUT 紫罗兰、DELETE 玫瑰红。
+2. **圆角整体收敛减半**：
+   - 全局将 `rounded-2xl`（16px）收缩为精巧的 `rounded-md`（6px）；
+   - 将 `rounded-xl`（12px）与 `rounded-lg`（8px）统一精简至 `rounded`（4px）与 `rounded-sm`（2px）；
+   - 移除不必要的大胶囊形状，所有表单输入框、操作按钮、状态徽章与过程文件透视面板均呈现规整精密之机械美学。
+3. **文件系统与目标浏览器（Filesystem Explorer）落地**：
+   - 服务端（`server.py`）新增安全探针路由 `GET /api/fs/list`，支持传递 `path` 与 `filter`（`all`/`doc`/`dir`），支持解析父目录 `parent_path`、工作区根路径及内置快捷路径；
+   - 前端（`dashboard.html`）集成 `modalFileBrowser` 模态框，提供快捷定位栏（工作区/subjects/examples/benchmarks/tasks）、面包屑与路径直输跳转、实时文件名模糊过滤、目录双击下钻、单选确认以及**文件夹与文件多选模式**；
+   - **多文件夹勾选与批量回填**：浏览器支持切换“多选模式”，每行提供独立 Checkbox、顶部常驻已选 Chips 标签栏（带一键移除）、全选目录文件夹与一键清空；在源码目录选择时默认开启多选，勾选多个文件夹后自动以逗号拼装回填至 `inputSourcePaths`（如 `src/, app/, services/`）；
+   - 本地规格文件（`inputDocPath`）、代码仓库根目录（`inputRepoPath`）、源码相对目录（`inputSourcePaths`）均提供一键 `[📂 浏览文件/目录]` 交互；
+   - 顶栏被测目标选择器新增 `[📂 浏览选择目标]` 按钮与动态目标分组，可直接在本地磁盘中点选任意目录或 OpenAPI 文件作为测试目标。
+
+**验证结果：**
+- 环境：Windows 10 Pro，Python 3.14.4，uv 0.12.10，pytest 9.1.1。
+- 新增单测：
+  - `tests/test_ui_server.py::test_ui_fs_list_api`（测试文件系统 API 根目录列举、目录过滤与特定路径识别）；
+  - `tests/test_ui_server.py::test_ui_dashboard_styling_and_explorer_elements`（测试 dashboard.html 静态模板中 baoyu-design Token、纯碳夜背景、无蓝色残留、模态框存在与圆角收敛）。
+- UI 单测套件：`tests/test_ui_server.py` 13 项全通。
+- 全量测试回归：`.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider --basetemp=runtime/tmp-ui-20261105-01`：**512 passed in 79.24s**（全绿，较此前 510 项净增 2 项）。
+- 代码规范：`ruff check src tests` 与 `ruff format --check src tests` 全部通过（89 files already formatted）；`git diff --check` 通过。
+
+**边界说明：**
+- 文件系统浏览限制在当前系统可访问文件树，不越权访问无权限系统受限目录；
+- Web UI 仍受回环 Origin、Host 校验、Token 会话鉴权及执行守卫约束（POST execute 严格 403 阻断）。

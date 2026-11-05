@@ -291,3 +291,28 @@ UI 的“直接导入服务/完整清单”和“文档路径或 URL”文案已
 - 免命令启动：`start.bat` 选项 3 兼容在线 URL 与本地 JSON/YAML 规格文件；选项 4 支持一键扫描本地 Git 仓库并自动识别 HEAD 提交。
 
 实测：全量 510 passed（新增 UI 服务端文档发现测试与 CLI openapi-url 测试）；Ruff check/format 通过；UI 11 项全通。源码 AST 静态分析仅面向 Python（FastAPI/Starlette），非 Python 服务走 OpenAPI 路线。
+
+
+## 2026-11-05：Web 控制台工业级样式（baoyu-design）重构、圆角收敛与任意目录/文件浏览器集成
+
+针对用户反馈的三个核心体验问题：
+1. **UI 样式优化（遵循 `baoyu-design` 工业级美学规范）**：
+   - 移除原有高饱和度天蓝色主色调（`#0284c7` / `#38bdf8`）与蓝黑色暗夜背景（`#090d16` / `#0f172a`）；
+   - 深色模式切换为纯净中性碳素黑/黑曜石设计 Token（`--bg: #09090b`、`--surface: #121215`、`--border: #27272a`、`--text: #fafafa`）；
+   - 浅色模式切换为纯白中性极简浅色 Token（`--bg: #fafafa`、`--surface: #ffffff`、`--border: #e4e4e7`、`--text: #09090b`）；
+   - 统一采用工程校验态经典翡翠绿（`--primary: #10b981` / `#059669`）作为核心主强调色，呼应测试通过、健康与状态守恒判定；
+   - 接口请求徽章规范化：GET 翠绿、POST 暖琥珀、PUT 紫罗兰、DELETE 玫瑰红，彻底消除泛滥紫灰蓝杂色。
+2. **突破“目标仅有 4 个”限制，集成任意本地目录与文件浏览器（Filesystem Explorer）**：
+   - 服务端新增 `GET /api/fs/list` 接口，支持按 `dir`（仅目录）、`doc`（仅 OpenAPI/Swagger 规格 .json/.yaml）或 `all`（全部）安全列出本机或工作区任意目录内容，并提供上级目录导航、工作区/被测项目/基准/示例/任务等快捷定位；
+   - Web 页面新增 `modalFileBrowser` 本地文件与目录选择器模态框，提供路径输入、面包屑导航、目录内容搜索、一键快捷定位、文件类型徽章、双击进入/选取；
+   - 在接口文档模式（`inputDocPath`）、代码仓库模式（`inputRepoPath`）、源码目录（`inputSourcePaths`）旁均新增 `[📂 浏览文件/目录]` 交互按钮，用户可直接选择磁盘上任意文件夹或 OpenAPI 规格文件；
+   - **支持文件夹多选（Multi-folder Selection）**：文件浏览器新增多选模式（`chkMultiSelect`）、独立多选复选框、顶部已勾选标签栏（Chips Bar）、全选当前目录文件夹（`selectAllFolders`）与一键清空；在源码扫描目录（`inputSourcePaths`）旁点击“多选文件夹...”可同时勾选多个源码子目录，自动按逗号拼装回填至配置表单；支持跨目录勾选累积与点击标签即时删除；
+   - 顶栏被测目标下拉框扩展动态任务分组、示例基准与“+ 浏览选择目标”，新增 `[📂 浏览选择目标]` 按钮，允许用户选择任意本地目录或规格文件作为测试目标，彻底解除“只有4个死目标”的束缚。
+3. **全站圆角弧度收敛减半**：
+   - 移除大圆角 `rounded-2xl`（16px）与卡片气泡 `rounded-xl`（12px），整体收敛至小巧克制的 `rounded-md`（6px）、`rounded`（4px）与 `rounded-sm`（2px）；
+   - 按钮、输入框、徽章标签与状态条严格采用精密工程级微圆角，与 `baoyu-design` 工业美学深度契合。
+
+实测结果：
+- 服务端与前端样式单测：`tests/test_ui_server.py` 增至 13 项通过（新增 `test_ui_fs_list_api` 与 `test_ui_dashboard_styling_and_explorer_elements`，断言 Token、无蓝色残留、模态框元素与圆角收敛）；
+- 全量测试：`.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider --basetemp=runtime/tmp-ui-20261105-01`：**512 passed in 79.24s**（全绿，较此前 510 项净增 2 项）；
+- 代码质量：`ruff check src tests` 与 `ruff format --check src tests` 全量通过（89 files already formatted）。

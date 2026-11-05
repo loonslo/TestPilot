@@ -254,3 +254,55 @@ def test_ui_task_create_with_openapi_and_discover(test_server: tuple[str, TaskSt
     assert status == 200
     assert "operations" in inv
     assert len(inv["operations"]) > 0
+
+
+def test_ui_fs_list_api(test_server: tuple[str, TaskStore]) -> None:
+    base_url, _ = test_server
+    # 1. Default list (workspace root)
+    status, data = _request_json(f"{base_url}/api/fs/list")
+    assert status == 200
+    assert "current_path" in data
+    assert "items" in data
+    assert "quick_dirs" in data
+    assert len(data["items"]) > 0
+
+    # 2. Filter directories
+    status, dir_data = _request_json(f"{base_url}/api/fs/list?filter=dir")
+    assert status == 200
+    assert all(item["is_dir"] for item in dir_data["items"])
+
+    # 3. Specific path (examples/tasks)
+    status, task_data = _request_json(f"{base_url}/api/fs/list?path=examples/tasks&filter=doc")
+    assert status == 200
+    names = [item["name"] for item in task_data["items"]]
+    assert "openapi-demo.json" in names
+
+
+def test_ui_dashboard_styling_and_explorer_elements(test_server: tuple[str, TaskStore]) -> None:
+    base_url, _ = test_server
+    req = urllib.request.Request(f"{base_url}/")
+    with urllib.request.urlopen(req) as resp:
+        assert resp.status == 200
+        html = resp.read().decode("utf-8")
+        # 1. baoyu-design & No Blue / Dark carbon tokens
+        assert "--bg: #09090b" in html
+        assert "--surface: #121215" in html
+        assert "--primary: #10b981" in html
+        assert "#0284c7" not in html
+        assert "#38bdf8" not in html
+        assert "#090d16" not in html
+
+        # 2. Filesystem Explorer Modal and buttons exist
+        assert "modalFileBrowser" in html
+        assert "openFileBrowser" in html
+        assert "browserItemsList" in html
+        assert "browserQuickDirs" in html
+
+        # 3. Reduced border-radius (rounded-2xl removed from cards/modals, half radius used)
+        assert "rounded-2xl" not in html
+
+        # 4. Folder multi-selection support
+        assert "chkMultiSelect" in html
+        assert "selectAllFolders" in html
+        assert "browserSelectedChipsBar" in html
+        assert "多选" in html

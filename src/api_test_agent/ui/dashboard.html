@@ -6,44 +6,44 @@
   <title>TestPilot · 测试领航员控制台</title>
   <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
   <style>
-    /* Design Tokens following baoyu-design / claude-dashboard craft */
+    /* Design Tokens following baoyu-design / Industrial Craft (Zinc/Carbon + Emerald Accent) */
     :root {
-      --bg: #f8fafc;
+      --bg: #fafafa;
       --surface: #ffffff;
-      --surface-subtle: #f1f5f9;
-      --surface-hover: #e2e8f0;
-      --border: #e2e8f0;
-      --border-strong: #cbd5e1;
-      --text: #0f172a;
-      --text-muted: #64748b;
-      --primary: #0284c7;
-      --primary-hover: #0369a1;
-      --primary-subtle: rgba(2, 132, 199, 0.1);
+      --surface-subtle: #f4f4f5;
+      --surface-hover: #e4e4e7;
+      --border: #e4e4e7;
+      --border-strong: #d4d4d8;
+      --text: #09090b;
+      --text-muted: #71717a;
+      --primary: #059669;
+      --primary-hover: #047857;
+      --primary-subtle: rgba(5, 150, 105, 0.08);
       --success: #10b981;
       --success-subtle: rgba(16, 185, 129, 0.1);
-      --warning: #f59e0b;
-      --warning-subtle: rgba(245, 158, 11, 0.1);
-      --danger: #ef4444;
-      --danger-subtle: rgba(239, 68, 68, 0.1);
+      --warning: #d97706;
+      --warning-subtle: rgba(217, 119, 6, 0.1);
+      --danger: #dc2626;
+      --danger-subtle: rgba(220, 38, 38, 0.1);
     }
     .dark {
-      --bg: #090d16;
-      --surface: #0f172a;
-      --surface-subtle: #1e293b;
-      --surface-hover: #24344d;
-      --border: #1e293b;
-      --border-strong: #334155;
-      --text: #f8fafc;
-      --text-muted: #94a3b8;
-      --primary: #38bdf8;
-      --primary-hover: #7dd3fc;
-      --primary-subtle: rgba(56, 189, 248, 0.12);
-      --success: #34d399;
-      --success-subtle: rgba(52, 211, 153, 0.12);
-      --warning: #fbbf24;
-      --warning-subtle: rgba(251, 191, 36, 0.12);
-      --danger: #f87171;
-      --danger-subtle: rgba(248, 113, 113, 0.12);
+      --bg: #09090b;
+      --surface: #121215;
+      --surface-subtle: #18181b;
+      --surface-hover: #222226;
+      --border: #27272a;
+      --border-strong: #3f3f46;
+      --text: #fafafa;
+      --text-muted: #a1a1aa;
+      --primary: #10b981;
+      --primary-hover: #34d399;
+      --primary-subtle: rgba(16, 185, 129, 0.12);
+      --success: #10b981;
+      --success-subtle: rgba(16, 185, 129, 0.12);
+      --warning: #f59e0b;
+      --warning-subtle: rgba(245, 158, 11, 0.12);
+      --danger: #ef4444;
+      --danger-subtle: rgba(239, 68, 68, 0.12);
     }
 
     body {
@@ -55,16 +55,16 @@
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     }
 
-    /* Custom scrollbars */
+    /* Custom subtle scrollbars */
     ::-webkit-scrollbar { width: 5px; height: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
 
-    /* HTTP Badges */
-    .badge-get { background: rgba(56, 189, 248, 0.12); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.25); }
-    .badge-post { background: rgba(52, 211, 153, 0.12); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.25); }
-    .badge-put { background: rgba(251, 191, 36, 0.12); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.25); }
-    .badge-delete { background: rgba(248, 113, 113, 0.12); color: #f87171; border: 1px solid rgba(248, 113, 113, 0.25); }
+    /* HTTP Badges - High contrast, subtle tint, zero garish blue */
+    .badge-get { background: rgba(16, 185, 129, 0.12); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.25); }
+    .badge-post { background: rgba(245, 158, 11, 0.12); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.25); }
+    .badge-put { background: rgba(168, 85, 247, 0.12); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.25); }
+    .badge-delete { background: rgba(239, 68, 68, 0.12); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.25); }
 
     .nav-active {
       border-color: var(--primary) !important;
@@ -76,29 +76,43 @@
 <body class="antialiased min-h-screen text-xs flex flex-col">
 
   <!-- Top App Navigation -->
-  <header class="border-b border-[var(--border)] bg-[var(--surface)] px-4 py-3 shrink-0 flex items-center justify-between gap-4 sticky top-0 z-30 shadow-sm">
+  <header class="border-b border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 shrink-0 flex items-center justify-between gap-4 sticky top-0 z-30 shadow-sm">
     <div class="flex items-center gap-3">
-      <div class="w-8 h-8 rounded-lg bg-[var(--primary)] text-[var(--bg)] flex items-center justify-center font-bold text-sm tracking-wider shadow-sm font-code">
+      <div class="w-7 h-7 rounded bg-[var(--primary)] text-black dark:text-black flex items-center justify-center font-bold text-xs tracking-wider shadow-sm font-code">
         TP
       </div>
       <div>
         <div class="flex items-center gap-2">
           <h1 class="font-bold text-sm text-[var(--text)] tracking-tight">TestPilot Console</h1>
-          <span class="text-[11px] px-1.5 py-0.2 rounded bg-[var(--surface-subtle)] text-[var(--text-muted)] border border-[var(--border)] font-code">UI v0.2.0</span>
+          <span class="text-[10px] px-1.5 py-0.5 rounded-sm bg-[var(--surface-subtle)] text-[var(--text-muted)] border border-[var(--border)] font-code">v0.2.2 · baoyu-design</span>
         </div>
         <p class="text-[11px] text-[var(--text-muted)]">REST API 探索与回归 · 过程资产透视工作台</p>
       </div>
     </div>
 
-    <!-- Center Status Breadcrumb -->
-    <div class="hidden md:flex items-center gap-1.5 bg-[var(--surface-subtle)] border border-[var(--border)] px-3 py-1.5 rounded-xl font-code text-[11px]">
-      <span class="text-[var(--text-muted)]">当前项目:</span>
-      <select id="targetSelector" onchange="onTargetChange()" class="bg-transparent font-semibold text-[var(--text)] outline-none cursor-pointer max-w-[240px] truncate">
-        <option value="apple">APPLE-recruitService</option>
-        <option value="finunity">FinUnityServer</option>
+    <!-- Center Status Breadcrumb & Target Selector -->
+    <div class="hidden md:flex items-center gap-2 bg-[var(--surface-subtle)] border border-[var(--border)] px-3 py-1.5 rounded font-code text-[11px]">
+      <span class="text-[var(--text-muted)]">被测目标:</span>
+      <select id="targetSelector" onchange="onTargetChange()" class="bg-transparent font-semibold text-[var(--text)] outline-none cursor-pointer max-w-[280px] truncate">
+        <optgroup label="动态任务 (Active Tasks)" id="groupActiveTasks">
+          <!-- Populated from /api/tasks -->
+        </optgroup>
+        <optgroup label="内置示例与基准 (Demos & Benchmarks)">
+          <option value="finunity">FinUnityServer (FastAPI / 本地克隆)</option>
+          <option value="apple">APPLE-recruitService (Spring Boot 示例)</option>
+          <option value="quickstart">SyntheticDemo (合成离线示例)</option>
+        </optgroup>
+        <optgroup label="自定义目标">
+          <option value="__browse__">+ 浏览本地目录/文件作为目标...</option>
+        </optgroup>
       </select>
-      <button onclick="openNewTaskModal()" class="px-2 py-0.5 rounded bg-[var(--primary)] text-[var(--bg)] font-semibold hover:opacity-90 transition shrink-0" title="新建项目测试任务">
-        + 新建项目
+
+      <button onclick="openFileBrowser('target')" class="px-2 py-0.5 rounded-sm bg-[var(--surface)] border border-[var(--border-strong)] text-[var(--text)] font-semibold hover:border-[var(--primary)] transition shrink-0 flex items-center gap-1" title="在本地磁盘中浏览选择任意目录或规格文件">
+        <span>📂 浏览选择目标</span>
+      </button>
+
+      <button onclick="openNewTaskModal()" class="px-2 py-0.5 rounded-sm bg-[var(--primary)] text-black dark:text-black font-semibold hover:opacity-90 transition shrink-0" title="新建命名任务">
+        + 新建
       </button>
       <span class="text-[var(--border-strong)]">|</span>
       <span class="text-emerald-400 flex items-center gap-1">
@@ -108,11 +122,11 @@
     </div>
 
     <!-- Actions & Theme Toggle -->
-    <div class="flex items-center gap-2.5">
-      <button onclick="toggleTheme()" class="p-2 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] hover:bg-[var(--surface-hover)] text-[var(--text-muted)] hover:text-[var(--text)] transition" title="切换深色/浅色">
+    <div class="flex items-center gap-2">
+      <button onclick="toggleTheme()" class="p-1.5 rounded border border-[var(--border)] bg-[var(--surface-subtle)] hover:bg-[var(--surface-hover)] text-[var(--text-muted)] hover:text-[var(--text)] transition" title="切换深色/浅色模式">
         <span id="themeIcon">☀️</span>
       </button>
-      <button onclick="toggleSourcesDrawer()" class="px-3 py-1.5 rounded-lg border border-[var(--primary)] bg-[var(--primary-subtle)] text-[var(--primary)] font-medium hover:opacity-90 transition flex items-center gap-1.5 shadow-sm">
+      <button onclick="toggleSourcesDrawer()" class="px-2.5 py-1.5 rounded border border-[var(--primary)] bg-[var(--primary-subtle)] text-[var(--primary)] font-medium hover:opacity-90 transition flex items-center gap-1.5 shadow-sm">
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
         <span>Sources 追溯面板</span>
       </button>
@@ -120,25 +134,25 @@
   </header>
 
   <!-- Step Workflow Tabs -->
-  <nav class="border-b border-[var(--border)] bg-[var(--surface)] px-4 py-2 flex items-center gap-2 overflow-x-auto shrink-0 font-code text-xs">
-    <button onclick="switchTab('source')" id="nav-source" class="px-3 py-1.5 rounded-lg border border-transparent font-medium nav-active transition flex items-center gap-2">
-      <span class="w-4 h-4 rounded-full bg-[var(--primary)] text-[var(--bg)] flex items-center justify-center text-[10px] font-bold">1</span>
+  <nav class="border-b border-[var(--border)] bg-[var(--surface)] px-4 py-2 flex items-center gap-1.5 overflow-x-auto shrink-0 font-code text-xs">
+    <button onclick="switchTab('source')" id="nav-source" class="px-3 py-1.5 rounded border border-transparent font-medium nav-active transition flex items-center gap-2">
+      <span class="w-4 h-4 rounded-sm bg-[var(--primary)] text-black font-bold flex items-center justify-center text-[10px]">1</span>
       <span>数据源头配置</span>
     </button>
-    <button onclick="switchTab('model')" id="nav-model" class="px-3 py-1.5 rounded-lg border border-transparent font-medium text-[var(--text-muted)] hover:text-[var(--text)] transition flex items-center gap-2">
-      <span class="w-4 h-4 rounded-full bg-[var(--surface-subtle)] border border-[var(--border-strong)] flex items-center justify-center text-[10px]">2</span>
+    <button onclick="switchTab('model')" id="nav-model" class="px-3 py-1.5 rounded border border-transparent font-medium text-[var(--text-muted)] hover:text-[var(--text)] transition flex items-center gap-2">
+      <span class="w-4 h-4 rounded-sm bg-[var(--surface-subtle)] border border-[var(--border-strong)] flex items-center justify-center text-[10px]">2</span>
       <span>模型与预算</span>
     </button>
-    <button onclick="switchTab('inventory')" id="nav-inventory" class="px-3 py-1.5 rounded-lg border border-transparent font-medium text-[var(--text-muted)] hover:text-[var(--text)] transition flex items-center gap-2">
-      <span class="w-4 h-4 rounded-full bg-[var(--surface-subtle)] border border-[var(--border-strong)] flex items-center justify-center text-[10px]">3</span>
+    <button onclick="switchTab('inventory')" id="nav-inventory" class="px-3 py-1.5 rounded border border-transparent font-medium text-[var(--text-muted)] hover:text-[var(--text)] transition flex items-center gap-2">
+      <span class="w-4 h-4 rounded-sm bg-[var(--surface-subtle)] border border-[var(--border-strong)] flex items-center justify-center text-[10px]">3</span>
       <span>接口清单 (Inventory)</span>
     </button>
-    <button onclick="switchTab('cases')" id="nav-cases" class="px-3 py-1.5 rounded-lg border border-transparent font-medium text-[var(--text-muted)] hover:text-[var(--text)] transition flex items-center gap-2">
-      <span class="w-4 h-4 rounded-full bg-[var(--surface-subtle)] border border-[var(--border-strong)] flex items-center justify-center text-[10px]">4</span>
+    <button onclick="switchTab('cases')" id="nav-cases" class="px-3 py-1.5 rounded border border-transparent font-medium text-[var(--text-muted)] hover:text-[var(--text)] transition flex items-center gap-2">
+      <span class="w-4 h-4 rounded-sm bg-[var(--surface-subtle)] border border-[var(--border-strong)] flex items-center justify-center text-[10px]">4</span>
       <span>测试集与参数依据</span>
     </button>
-    <button onclick="switchTab('execution')" id="nav-execution" class="px-3 py-1.5 rounded-lg border border-transparent font-medium text-[var(--text-muted)] hover:text-[var(--text)] transition flex items-center gap-2">
-      <span class="w-4 h-4 rounded-full bg-[var(--surface-subtle)] border border-[var(--border-strong)] flex items-center justify-center text-[10px]">5</span>
+    <button onclick="switchTab('execution')" id="nav-execution" class="px-3 py-1.5 rounded border border-transparent font-medium text-[var(--text-muted)] hover:text-[var(--text)] transition flex items-center gap-2">
+      <span class="w-4 h-4 rounded-sm bg-[var(--surface-subtle)] border border-[var(--border-strong)] flex items-center justify-center text-[10px]">5</span>
       <span>执行证据与守恒报告</span>
     </button>
   </nav>
@@ -147,15 +161,15 @@
   <div class="flex-1 flex overflow-hidden">
 
     <!-- Workspace Left Side -->
-    <main class="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
+    <main class="flex-1 overflow-y-auto p-4 md:p-6 space-y-5">
 
       <!-- SECTION 1: 数据源头配置 -->
       <section id="pane-source" class="space-y-4">
-        <div class="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-5">
+        <div class="bg-[var(--surface)] border border-[var(--border)] rounded-md p-5 shadow-sm space-y-5">
           <div class="flex items-center justify-between border-b border-[var(--border)] pb-3">
             <div>
               <h2 class="text-sm font-bold text-[var(--text)]">1. 数据源头配置 (Data Source & Adapters)</h2>
-              <p class="text-[11px] text-[var(--text-muted)]">选择接口定义的提供方式。无论哪种方式，最终都会通过适配器层统一转译为通用的接口 IR 清单。</p>
+              <p class="text-[11px] text-[var(--text-muted)]">支持任意本地代码目录（支持多选文件夹）、OpenAPI/Swagger 文件或在线服务文档。系统统一解析为标准接口清单。</p>
             </div>
             <button onclick="inspectSource('task')" class="text-xs text-[var(--primary)] hover:underline font-code">
               查看 Task 配置原件
@@ -163,103 +177,132 @@
           </div>
 
           <!-- Dual Mode Selector -->
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             <!-- Mode A: Document -->
-            <div onclick="selectSourceMode('document')" id="card-mode-doc" class="border-2 rounded-xl p-4 cursor-pointer transition border-[var(--primary)] bg-[var(--primary-subtle)] space-y-2">
+            <div onclick="selectSourceMode('document')" id="card-mode-doc" class="border rounded-md p-4 cursor-pointer transition border-[var(--primary)] bg-[var(--primary-subtle)] space-y-2">
               <div class="flex items-center justify-between">
                 <span class="font-bold text-xs text-[var(--text)]">接口文档模式 (OpenAPI / Swagger)</span>
-                <span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 text-[10px] font-bold font-code">高 ROI · 推荐</span>
+                <span class="px-2 py-0.5 rounded-sm bg-emerald-500/10 text-emerald-500 text-[10px] font-bold font-code">通用 · 推荐</span>
               </div>
               <p class="text-[11px] text-[var(--text-muted)]">
-                支持在线服务 URL 直接抓取（Spring Boot / Springfox / Knife4j / FastAPI）或本地规格文件（.json / .yaml），自动拉取并解析接口资产清单。
+                支持在线服务 URL 实时抓取（Spring Boot / Knife4j / FastAPI）或从本地选择任意 .json / .yaml 规格文件。
               </p>
             </div>
 
             <!-- Mode B: Code Repo -->
-            <div onclick="selectSourceMode('code')" id="card-mode-code" class="border-2 rounded-xl p-4 cursor-pointer transition border-[var(--border)] hover:border-[var(--border-strong)] space-y-2">
+            <div onclick="selectSourceMode('code')" id="card-mode-code" class="border rounded-md p-4 cursor-pointer transition border-[var(--border)] hover:border-[var(--border-strong)] space-y-2">
               <div class="flex items-center justify-between">
                 <span class="font-bold text-xs text-[var(--text)]">代码仓库模式 (Git Repository)</span>
-                <span class="px-2 py-0.5 rounded bg-blue-500/10 text-blue-500 text-[10px] font-bold font-code">源码 AST 静态分析</span>
+                <span class="px-2 py-0.5 rounded-sm bg-[var(--surface-subtle)] text-[var(--text)] text-[10px] font-bold font-code">源码 AST 静态分析</span>
               </div>
               <p class="text-[11px] text-[var(--text-muted)]">
-                指定本地只读 Git 仓库快照与多仓版本清单，由适配器执行 AST 语法树解析并识别路由与控制器。
+                选择本地任意只读 Git 仓库目录，支持多选源码扫描子目录，由语言适配器提取路由控制器。
               </p>
             </div>
           </div>
 
-          <!-- Document Mode Form (Interactive) -->
-          <div id="form-doc" class="space-y-4 pt-2">
-            <!-- Source Selector: Online URL vs Local File -->
+          <!-- Document Mode Form -->
+          <div id="form-doc" class="space-y-4 pt-1">
             <div class="flex items-center gap-4 border-b border-[var(--border)] pb-2.5">
               <span class="text-xs font-semibold text-[var(--text)]">规格来源类型:</span>
               <label class="flex items-center gap-1.5 text-xs text-[var(--text)] cursor-pointer">
-                <input type="radio" name="docSourceType" id="radioDocUrl" value="url" checked onchange="toggleDocSourceType('url')" class="accent-[var(--primary)]">
-                <span>在线服务文档 URL (Spring Boot / FastAPI / Knife4j)</span>
-              </label>
-              <label class="flex items-center gap-1.5 text-xs text-[var(--text)] cursor-pointer">
-                <input type="radio" name="docSourceType" id="radioDocFile" value="file" onchange="toggleDocSourceType('file')" class="accent-[var(--primary)]">
+                <input type="radio" name="docSourceType" id="radioDocFile" value="file" checked onchange="toggleDocSourceType('file')" class="accent-[var(--primary)]">
                 <span>本地规格文件 (Local JSON / YAML)</span>
               </label>
-            </div>
-
-            <!-- URL Input Block -->
-            <div id="blockDocUrl" class="space-y-1.5">
-              <label class="text-xs font-semibold text-[var(--text)]">服务在线 OpenAPI / Swagger URL</label>
-              <input type="text" id="inputDocUrl" placeholder="例如 http://127.0.0.1:8080/v2/api-docs 或 http://localhost:8000/openapi.json" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)]">
-              <p class="text-[11px] text-[var(--text-muted)]">直接从运行中的微服务拉取 OpenAPI 3.x 或 Swagger 2.0 规格并建立快照。</p>
+              <label class="flex items-center gap-1.5 text-xs text-[var(--text)] cursor-pointer">
+                <input type="radio" name="docSourceType" id="radioDocUrl" value="url" onchange="toggleDocSourceType('url')" class="accent-[var(--primary)]">
+                <span>在线服务文档 URL (Spring Boot / FastAPI / Knife4j)</span>
+              </label>
             </div>
 
             <!-- File Input Block -->
-            <div id="blockDocFile" class="space-y-1.5 hidden">
-              <label class="text-xs font-semibold text-[var(--text)]">本地文档相对路径 (Document Path)</label>
-              <input type="text" id="inputDocPath" placeholder="例如 benchmarks/public/openapi.json 或 targets/apple/recruit-openapi.json" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)]">
-              <p class="text-[11px] text-[var(--text-muted)]">被测项目内或本地的 OpenAPI/Swagger JSON 或 YAML 规格文件相对路径。</p>
+            <div id="blockDocFile" class="space-y-1.5">
+              <div class="flex items-center justify-between">
+                <label class="text-xs font-semibold text-[var(--text)]">本地文档相对路径 (Document Path)</label>
+                <button type="button" onclick="openFileBrowser('doc')" class="text-xs text-[var(--primary)] hover:underline flex items-center gap-1 font-semibold">
+                  <span>📂 浏览本地目录与文件</span>
+                </button>
+              </div>
+              <div class="flex items-center gap-2">
+                <input type="text" id="inputDocPath" placeholder="例如 benchmarks/public/openapi.json 或 examples/tasks/openapi-demo.json" class="flex-1 bg-[var(--surface-subtle)] border border-[var(--border)] rounded px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)]">
+                <button type="button" onclick="openFileBrowser('doc')" class="px-3 py-2 rounded bg-[var(--surface-subtle)] border border-[var(--border-strong)] text-[var(--text)] hover:border-[var(--primary)] text-xs font-code shrink-0">
+                  浏览...
+                </button>
+              </div>
+              <p class="text-[11px] text-[var(--text-muted)]">点击“浏览”可直接在文件树中挑选任意 .json / .yaml / .yml 规格文件，支持多选与单选。</p>
+            </div>
+
+            <!-- URL Input Block -->
+            <div id="blockDocUrl" class="space-y-1.5 hidden">
+              <label class="text-xs font-semibold text-[var(--text)]">服务在线 OpenAPI / Swagger URL</label>
+              <input type="text" id="inputDocUrl" placeholder="例如 http://127.0.0.1:8080/v2/api-docs 或 http://localhost:8000/openapi.json" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)]">
+              <p class="text-[11px] text-[var(--text-muted)]">直接从运行中的微服务抓取 OpenAPI 3.x 或 Swagger 2.0 规格建立快照。</p>
             </div>
 
             <!-- Metadata Row -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div class="space-y-1.5">
                 <label class="text-xs font-semibold text-[var(--text)]">目标微服务名称 (Target Project)</label>
-                <input type="text" id="inputDocProject" placeholder="例如 APPLE-recruitService" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)]">
+                <input type="text" id="inputDocProject" placeholder="例如 MyAwesomeService" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)]">
               </div>
               <div class="space-y-1.5">
                 <label class="text-xs font-semibold text-[var(--text)]">目标版本 Commit SHA (40位)</label>
-                <input type="text" id="inputDocCommit" value="0000000000000000000000000000000000000000" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)]">
+                <input type="text" id="inputDocCommit" value="0000000000000000000000000000000000000000" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)]">
               </div>
               <div class="space-y-1.5">
                 <label class="text-xs font-semibold text-[var(--text)]">挂载 Base Path (可选前缀)</label>
-                <input type="text" id="inputDocPrefix" placeholder="例如 /api/v1 或留空" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)]">
+                <input type="text" id="inputDocPrefix" placeholder="例如 /api/v1 或留空" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)]">
               </div>
             </div>
           </div>
 
-          <!-- Code Mode Form (Interactive) -->
-          <div id="form-code" class="space-y-4 pt-2 hidden">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- Code Mode Form -->
+          <div id="form-code" class="space-y-4 pt-1 hidden">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div class="space-y-1.5">
-                <label class="text-xs font-semibold text-[var(--text)]">本地 Git 仓库根目录 (Repository Path)</label>
-                <input type="text" id="inputRepoPath" placeholder="例如 D:/workspace/my-fastapi-service" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)]">
-                <p class="text-[11px] text-[var(--text-muted)]">被测服务的本地 Git 仓库路径。系统通过只读 Git 树提取文件快照。</p>
+                <div class="flex items-center justify-between">
+                  <label class="text-xs font-semibold text-[var(--text)]">本地 Git 仓库根目录 (Repository Path)</label>
+                  <button type="button" onclick="openFileBrowser('dir_repo')" class="text-xs text-[var(--primary)] hover:underline flex items-center gap-1 font-semibold">
+                    <span>📁 浏览本地目录</span>
+                  </button>
+                </div>
+                <div class="flex items-center gap-2">
+                  <input type="text" id="inputRepoPath" placeholder="例如 D:/workspace/my-fastapi-service" class="flex-1 bg-[var(--surface-subtle)] border border-[var(--border)] rounded px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)]">
+                  <button type="button" onclick="openFileBrowser('dir_repo')" class="px-3 py-2 rounded bg-[var(--surface-subtle)] border border-[var(--border-strong)] text-[var(--text)] hover:border-[var(--primary)] text-xs font-code shrink-0">
+                    浏览...
+                  </button>
+                </div>
+                <p class="text-[11px] text-[var(--text-muted)]">点击“浏览”可直接选取本机任意 Git 源码目录。</p>
               </div>
               <div class="space-y-1.5">
                 <label class="text-xs font-semibold text-[var(--text)]">目标 Commit SHA (Target Commit)</label>
-                <input type="text" id="inputRepoCommit" placeholder="40 位完整 SHA (例如 git rev-parse HEAD)" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)]">
+                <input type="text" id="inputRepoCommit" placeholder="40 位完整 SHA (留空将自动通过 git rev-parse 提取)" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)]">
                 <p class="text-[11px] text-[var(--text-muted)]">被测代码的固定提交版本，保障测试证据的确定性与可复现。</p>
               </div>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div class="md:col-span-2 space-y-1.5">
-                <label class="text-xs font-semibold text-[var(--text)]">源码扫描目录/文件 (Source Paths)</label>
-                <input type="text" id="inputSourcePaths" value="src/" placeholder="例如 src/ 或 app/，多个用逗号隔开" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)]">
-                <p class="text-[11px] text-[var(--text-muted)]">仓库内需做 AST 语法分析提取路由控制器的相对目录或文件。</p>
+                <div class="flex items-center justify-between">
+                  <label class="text-xs font-semibold text-[var(--text)]">源码扫描目录/文件 (Source Paths，支持多选文件夹)</label>
+                  <button type="button" onclick="openFileBrowser('dir_source')" class="text-xs text-[var(--primary)] hover:underline font-semibold flex items-center gap-1">
+                    <span>📁 浏览与多选文件夹...</span>
+                  </button>
+                </div>
+                <div class="flex items-center gap-2">
+                  <input type="text" id="inputSourcePaths" value="src/" placeholder="例如 src/, app/, services/，多个用逗号隔开" class="flex-1 bg-[var(--surface-subtle)] border border-[var(--border)] rounded px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)]">
+                  <button type="button" onclick="openFileBrowser('dir_source')" class="px-3 py-2 rounded bg-[var(--surface-subtle)] border border-[var(--border-strong)] text-[var(--text)] hover:border-[var(--primary)] text-xs font-code shrink-0">
+                    多选文件夹...
+                  </button>
+                </div>
+                <p class="text-[11px] text-[var(--text-muted)]">点击“多选文件夹”可在文件浏览器中任意勾选多个子目录，自动按逗号拼装。</p>
               </div>
               <div class="space-y-1.5">
                 <label class="text-xs font-semibold text-[var(--text)]">AST 解析适配器 (Adapter)</label>
-                <select id="selectAdapter" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)] cursor-pointer">
+                <select id="selectAdapter" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded px-3 py-2 text-xs text-[var(--text)] font-code outline-none focus:border-[var(--primary)] cursor-pointer">
                   <option value="python-ast" selected>Python AST (FastAPI / Starlette)</option>
                   <option value="openapi">OpenAPI 适配器 (仓内 JSON/YAML)</option>
                 </select>
-                <p class="text-[11px] text-[var(--text-muted)]">非 Python 项目（Java/Go）请使用左侧“文档模式”导入 OpenAPI。</p>
+                <p class="text-[11px] text-[var(--text-muted)]">非 Python 项目请切换至左侧“文档模式”。</p>
               </div>
             </div>
           </div>
@@ -267,11 +310,11 @@
           <!-- Action Footbar -->
           <div class="border-t border-[var(--border)] pt-4 flex items-center justify-between">
             <span class="text-[11px] text-[var(--text-muted)]">
-              当前适配器: <span class="font-code text-[var(--text)]">OpenAPIAdapter (.json, .yaml, .yml)</span>
+              当前目标标识: <span class="font-code text-[var(--text)] font-semibold" id="activeTaskIdLabel">quickstart</span>
             </span>
-            <button onclick="triggerDiscovery()" class="px-4 py-2 rounded-lg bg-[var(--primary)] text-[var(--bg)] font-semibold text-xs hover:opacity-90 transition shadow-sm flex items-center gap-1.5">
+            <button onclick="triggerDiscovery()" class="px-4 py-2 rounded bg-[var(--primary)] text-black dark:text-black font-semibold text-xs hover:opacity-90 transition shadow-sm flex items-center gap-1.5">
               <span>执行接口解析 (Discover)</span>
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
             </button>
           </div>
         </div>
@@ -279,7 +322,7 @@
 
       <!-- SECTION 2: 模型与预算配置 -->
       <section id="pane-model" class="space-y-4 hidden">
-        <div class="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-5">
+        <div class="bg-[var(--surface)] border border-[var(--border)] rounded-md p-5 shadow-sm space-y-5">
           <div class="flex items-center justify-between border-b border-[var(--border)] pb-3">
             <div>
               <h2 class="text-sm font-bold text-[var(--text)]">2. 模型与预算配置 (Model & Guardrails)</h2>
@@ -291,47 +334,47 @@
           </div>
 
           <!-- Presets -->
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div onclick="applyPreset('deepseek')" id="preset-card-deepseek" class="border-2 rounded-xl p-3 cursor-pointer border-[var(--primary)] bg-[var(--primary-subtle)] space-y-1">
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+            <div onclick="applyPreset('deepseek')" id="preset-card-deepseek" class="border rounded-md p-3 cursor-pointer border-[var(--primary)] bg-[var(--primary-subtle)] space-y-1">
               <div class="font-bold text-xs text-[var(--text)]">DeepSeek V3</div>
               <p class="text-[11px] text-[var(--text-muted)]">代码逻辑与状态机推理首选</p>
             </div>
-            <div onclick="applyPreset('ollama')" id="preset-card-ollama" class="border-2 rounded-xl p-3 cursor-pointer border-[var(--border)] hover:border-[var(--border-strong)] space-y-1">
+            <div onclick="applyPreset('ollama')" id="preset-card-ollama" class="border rounded-md p-3 cursor-pointer border-[var(--border)] hover:border-[var(--border-strong)] space-y-1">
               <div class="font-bold text-xs text-[var(--text)]">本地 Ollama / vLLM</div>
-              <p class="text-[11px] text-[var(--text-muted)]">127.0.0.1 回环端点 · 免网络</p>
+              <p class="text-[11px] text-[var(--text-muted)]">127.0.0.1 回环端点 · 离线免Key</p>
             </div>
-            <div onclick="applyPreset('openrouter')" id="preset-card-openrouter" class="border-2 rounded-xl p-3 cursor-pointer border-[var(--border)] hover:border-[var(--border-strong)] space-y-1">
-              <div class="font-bold text-xs text-[var(--text)]">OpenRouter</div>
+            <div onclick="applyPreset('openrouter')" id="preset-card-openrouter" class="border rounded-md p-3 cursor-pointer border-[var(--border)] hover:border-[var(--border-strong)] space-y-1">
+              <div class="font-bold text-xs text-[var(--text)]">OpenRouter (Free)</div>
               <p class="text-[11px] text-[var(--text-muted)]">免费路由器模型试跑</p>
             </div>
-            <div onclick="applyPreset('custom')" id="preset-card-custom" class="border-2 rounded-xl p-3 cursor-pointer border-[var(--border)] hover:border-[var(--border-strong)] space-y-1">
+            <div onclick="applyPreset('custom')" id="preset-card-custom" class="border rounded-md p-3 cursor-pointer border-[var(--border)] hover:border-[var(--border-strong)] space-y-1">
               <div class="font-bold text-xs text-[var(--text)]">自定义 OpenAI 端点</div>
               <p class="text-[11px] text-[var(--text-muted)]">企业自建网关适配</p>
             </div>
           </div>
 
           <!-- Fields -->
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 font-code">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 font-code">
             <div class="space-y-1">
               <label class="text-xs font-semibold text-[var(--text)]">API Base URL</label>
-              <input type="text" id="modelUrl" value="https://api.deepseek.com/v1" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text)] outline-none focus:border-[var(--primary)]">
+              <input type="text" id="modelUrl" value="https://api.deepseek.com/v1" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded px-3 py-2 text-xs text-[var(--text)] outline-none focus:border-[var(--primary)]">
             </div>
             <div class="space-y-1">
               <label class="text-xs font-semibold text-[var(--text)]">Model ID</label>
-              <input type="text" id="modelName" value="deepseek-chat" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text)] outline-none focus:border-[var(--primary)]">
+              <input type="text" id="modelName" value="deepseek-chat" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded px-3 py-2 text-xs text-[var(--text)] outline-none focus:border-[var(--primary)]">
             </div>
             <div class="space-y-1">
               <label class="text-xs font-semibold text-[var(--text)]">API Key 环境变量名</label>
-              <input type="text" id="modelKey" value="DEEPSEEK_API_KEY" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text)] outline-none focus:border-[var(--primary)]">
+              <input type="text" id="modelKey" value="DEEPSEEK_API_KEY" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded px-3 py-2 text-xs text-[var(--text)] outline-none focus:border-[var(--primary)]">
             </div>
             <div class="space-y-1">
               <label class="text-xs font-semibold text-[var(--text)]">单次任务最高预算 (USD)</label>
-              <input type="number" id="modelBudget" value="1.00" step="0.1" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text)] outline-none focus:border-[var(--primary)]">
+              <input type="number" id="modelBudget" value="1.00" step="0.1" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded px-3 py-2 text-xs text-[var(--text)] outline-none focus:border-[var(--primary)]">
             </div>
           </div>
 
           <!-- Ping Bar -->
-          <div class="p-3.5 rounded-xl bg-[var(--surface-subtle)] border border-[var(--border)] flex items-center justify-between">
+          <div class="p-3.5 rounded-md bg-[var(--surface-subtle)] border border-[var(--border)] flex items-center justify-between">
             <div class="flex items-center gap-3">
               <span id="pingDot" class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
               <div>
@@ -339,7 +382,7 @@
                 <span class="text-[11px] text-[var(--text-muted)] block">费用检查激活 · 单次调用上限校验通过</span>
               </div>
             </div>
-            <button onclick="testPing()" id="btnPing" class="px-3 py-1.5 rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] hover:bg-[var(--surface-hover)] font-medium text-xs text-[var(--text)] transition">
+            <button onclick="testPing()" id="btnPing" class="px-3 py-1.5 rounded border border-[var(--border-strong)] bg-[var(--surface)] hover:bg-[var(--surface-hover)] font-medium text-xs text-[var(--text)] transition">
               连通性测试 (Ping)
             </button>
           </div>
@@ -348,12 +391,12 @@
 
       <!-- SECTION 3: 接口清单 (Inventory) -->
       <section id="pane-inventory" class="space-y-4 hidden">
-        <div class="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-4">
+        <div class="bg-[var(--surface)] border border-[var(--border)] rounded-md p-5 shadow-sm space-y-4">
           <div class="flex items-center justify-between border-b border-[var(--border)] pb-3">
             <div>
               <div class="flex items-center gap-2">
                 <h2 class="text-sm font-bold text-[var(--text)]">3. 接口清单 (API Operations Inventory)</h2>
-                <span class="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-bold font-code text-[11px]">5 个已识别接口</span>
+                <span class="px-2 py-0.5 rounded-sm bg-emerald-500/10 text-emerald-400 font-bold font-code text-[11px]" id="invCountBadge">5 个已识别接口</span>
               </div>
               <p class="text-[11px] text-[var(--text-muted)]">点击任意接口行，在右侧 Sources 面板实时查看其在 <code class="font-code">inventory.json</code> 中的原始声明。</p>
             </div>
@@ -364,15 +407,15 @@
 
           <!-- Method Filters -->
           <div class="flex items-center gap-2 font-code">
-            <button onclick="filterMethods('ALL')" id="flt-ALL" class="px-2.5 py-1 rounded bg-[var(--primary)] text-[var(--bg)] font-bold text-[11px]">全部 (5)</button>
-            <button onclick="filterMethods('GET')" id="flt-GET" class="px-2.5 py-1 rounded bg-[var(--surface-subtle)] text-[var(--text-muted)] hover:text-[var(--text)] text-[11px]">GET (2)</button>
-            <button onclick="filterMethods('POST')" id="flt-POST" class="px-2.5 py-1 rounded bg-[var(--surface-subtle)] text-[var(--text-muted)] hover:text-[var(--text)] text-[11px]">POST (1)</button>
-            <button onclick="filterMethods('PUT')" id="flt-PUT" class="px-2.5 py-1 rounded bg-[var(--surface-subtle)] text-[var(--text-muted)] hover:text-[var(--text)] text-[11px]">PUT (1)</button>
-            <button onclick="filterMethods('DELETE')" id="flt-DELETE" class="px-2.5 py-1 rounded bg-[var(--surface-subtle)] text-[var(--text-muted)] hover:text-[var(--text)] text-[11px]">DELETE (1)</button>
+            <button onclick="filterMethods('ALL')" id="flt-ALL" class="px-2.5 py-1 rounded bg-[var(--primary)] text-black font-bold text-[11px]">全部</button>
+            <button onclick="filterMethods('GET')" id="flt-GET" class="px-2.5 py-1 rounded bg-[var(--surface-subtle)] text-[var(--text-muted)] hover:text-[var(--text)] text-[11px]">GET</button>
+            <button onclick="filterMethods('POST')" id="flt-POST" class="px-2.5 py-1 rounded bg-[var(--surface-subtle)] text-[var(--text-muted)] hover:text-[var(--text)] text-[11px]">POST</button>
+            <button onclick="filterMethods('PUT')" id="flt-PUT" class="px-2.5 py-1 rounded bg-[var(--surface-subtle)] text-[var(--text-muted)] hover:text-[var(--text)] text-[11px]">PUT</button>
+            <button onclick="filterMethods('DELETE')" id="flt-DELETE" class="px-2.5 py-1 rounded bg-[var(--surface-subtle)] text-[var(--text-muted)] hover:text-[var(--text)] text-[11px]">DELETE</button>
           </div>
 
           <!-- Inventory Table -->
-          <div class="border border-[var(--border)] rounded-xl overflow-hidden font-code text-xs">
+          <div class="border border-[var(--border)] rounded-md overflow-hidden font-code text-xs">
             <table class="w-full text-left">
               <thead class="bg-[var(--surface-subtle)] text-[var(--text-muted)] border-b border-[var(--border)]">
                 <tr>
@@ -393,12 +436,12 @@
 
       <!-- SECTION 4: 测试集与依据 (Cases) -->
       <section id="pane-cases" class="space-y-4 hidden">
-        <div class="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-4">
+        <div class="bg-[var(--surface)] border border-[var(--border)] rounded-md p-5 shadow-sm space-y-4">
           <div class="flex items-center justify-between border-b border-[var(--border)] pb-3">
             <div>
               <div class="flex items-center gap-2">
                 <h2 class="text-sm font-bold text-[var(--text)]">4. 结构化测试集与参数依据 (Cases & Reasoning)</h2>
-                <span class="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-bold font-code text-[11px]">4 条用例已冻结批准</span>
+                <span class="px-2 py-0.5 rounded-sm bg-emerald-500/10 text-emerald-400 font-bold font-code text-[11px]">用例集已就绪</span>
               </div>
               <p class="text-[11px] text-[var(--text-muted)]">点击任意用例，可透视其规则判定标准、参数理由推断及底层 <code class="font-code">CaseRevision</code> 资产原件。</p>
             </div>
@@ -406,7 +449,7 @@
               <button onclick="inspectSource('cases')" class="text-xs text-[var(--primary)] hover:underline font-code">
                 查看 cases.json 原件
               </button>
-              <button onclick="approveAll()" id="btnApproveAll" class="px-3.5 py-1.5 rounded-lg bg-emerald-600 text-white font-semibold text-xs hover:bg-emerald-500 transition shadow-sm">
+              <button onclick="approveAll()" id="btnApproveAll" class="px-3.5 py-1.5 rounded bg-emerald-600 text-white font-semibold text-xs hover:bg-emerald-500 transition shadow-sm">
                 一键全部批准 (Approve)
               </button>
             </div>
@@ -421,12 +464,12 @@
 
       <!-- SECTION 5: 执行证据与报告 (Execution & Report) -->
       <section id="pane-execution" class="space-y-4 hidden">
-        <div class="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-5">
+        <div class="bg-[var(--surface)] border border-[var(--border)] rounded-md p-5 shadow-sm space-y-5">
           <div class="flex items-center justify-between border-b border-[var(--border)] pb-3">
             <div>
               <div class="flex items-center gap-2">
                 <h2 class="text-sm font-bold text-[var(--text)]">5. 执行记录、脱敏证据与守恒报告 (Report & Balances)</h2>
-                <span class="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-bold font-code text-[11px]">守恒判定: PASS (严格平衡)</span>
+                <span class="px-2 py-0.5 rounded-sm bg-emerald-500/10 text-emerald-400 font-bold font-code text-[11px]">守恒判定: PASS (严格平衡)</span>
               </div>
               <p class="text-[11px] text-[var(--text-muted)]">所有结果均有不可伪造的落盘证据支撑；任何未执行或失败项严格对账。</p>
             </div>
@@ -442,26 +485,26 @@
           </div>
 
           <!-- Metric Cards -->
-          <div class="grid grid-cols-2 md:grid-cols-5 gap-3 font-code">
-            <div class="p-3 rounded-lg bg-[var(--surface-subtle)] border border-[var(--border)]">
+          <div class="grid grid-cols-2 md:grid-cols-5 gap-2.5 font-code">
+            <div class="p-3 rounded bg-[var(--surface-subtle)] border border-[var(--border)]">
               <span class="text-[11px] text-[var(--text-muted)]">计划用例数</span>
               <div class="text-base font-bold mt-0.5 text-[var(--text)]">4</div>
             </div>
-            <div class="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+            <div class="p-3 rounded bg-emerald-500/10 border border-emerald-500/20">
               <span class="text-[11px] text-emerald-400">执行通过 (Passed)</span>
               <div class="text-base font-bold mt-0.5 text-emerald-400">3</div>
             </div>
-            <div class="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20">
+            <div class="p-3 rounded bg-rose-500/10 border border-rose-500/20">
               <span class="text-[11px] text-rose-400">断言失败 (Failed)</span>
               <div class="text-base font-bold mt-0.5 text-rose-400">1</div>
             </div>
-            <div class="p-3 rounded-lg bg-[var(--surface-subtle)] border border-[var(--border)]">
+            <div class="p-3 rounded bg-[var(--surface-subtle)] border border-[var(--border)]">
               <span class="text-[11px] text-[var(--text-muted)]">证据缺失</span>
               <div class="text-base font-bold mt-0.5 text-emerald-400">0 (合规)</div>
             </div>
-            <div class="p-3 rounded-lg bg-sky-500/10 border border-sky-500/20">
-              <span class="text-[11px] text-sky-400">接口覆盖率</span>
-              <div class="text-base font-bold mt-0.5 text-sky-400">80.0% (4/5)</div>
+            <div class="p-3 rounded bg-[var(--surface-subtle)] border border-[var(--border)]">
+              <span class="text-[11px] text-[var(--text-muted)]">接口覆盖率</span>
+              <div class="text-base font-bold mt-0.5 text-emerald-400">80.0% (4/5)</div>
             </div>
           </div>
 
@@ -471,7 +514,7 @@
               <h3 class="text-xs font-bold text-[var(--text)] tracking-wider">执行记录明细 (点击查看该步真实证据)</h3>
               <span class="text-[11px] text-[var(--text-muted)] font-code">令牌全自动脱敏为 [REDACTED]</span>
             </div>
-            <div class="border border-[var(--border)] rounded-xl overflow-hidden font-code text-xs">
+            <div class="border border-[var(--border)] rounded-md overflow-hidden font-code text-xs">
               <div class="divide-y divide-[var(--border)]" id="execStepsList">
                 <!-- JS populated -->
               </div>
@@ -479,8 +522,8 @@
           </div>
 
           <!-- Uncovered Operations Alert -->
-          <div class="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-start gap-3">
-            <span class="text-amber-400 text-base mt-0.5">⚠️</span>
+          <div class="p-3 rounded-md bg-amber-500/10 border border-amber-500/20 flex items-start gap-3">
+            <span class="text-amber-400 text-sm mt-0.5">⚠️</span>
             <div class="space-y-1">
               <div class="font-bold text-xs text-[var(--text)]">未覆盖接口缺口分析 (Uncovered Gap)</div>
               <p class="text-[11px] text-[var(--text-muted)]">
@@ -493,7 +536,7 @@
 
     </main>
 
-    <!-- Sources Panel (Right Side, 35% Width) - Signature Claude Dashboard Feature -->
+    <!-- Sources Panel (Right Side, 35% Width) -->
     <aside id="sourcesPanel" class="w-full md:w-[420px] lg:w-[460px] border-l border-[var(--border)] bg-[var(--surface)] flex flex-col shrink-0 transition-all duration-200">
       <!-- Drawer Header -->
       <div class="p-3 border-b border-[var(--border)] flex items-center justify-between bg-[var(--surface-subtle)] shrink-0">
@@ -501,7 +544,7 @@
           <svg class="w-4 h-4 text-[var(--primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
           <span class="font-bold text-xs text-[var(--text)]">Sources 过程文件追溯</span>
         </div>
-        <span class="text-[10px] px-2 py-0.5 rounded bg-[var(--surface)] text-[var(--text-muted)] border border-[var(--border)] font-code" id="sourceFileBadge">inventory.json</span>
+        <span class="text-[10px] px-2 py-0.5 rounded-sm bg-[var(--surface)] text-[var(--text-muted)] border border-[var(--border)] font-code" id="sourceFileBadge">inventory.json</span>
       </div>
 
       <!-- File Meta Bar -->
@@ -521,6 +564,126 @@
 
   </div>
 
+  <!-- MODAL: Local Filesystem Explorer (Browse Directory & Spec Files with Multi-Folder Select) -->
+  <div id="modalFileBrowser" class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-[var(--surface)] border border-[var(--border)] rounded-md max-w-2xl w-full shadow-2xl flex flex-col max-h-[85vh]">
+      <!-- Header -->
+      <div class="p-3.5 border-b border-[var(--border)] flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-2">
+          <span class="text-sm">📂</span>
+          <h3 class="font-bold text-xs text-[var(--text)]" id="browserTitle">选择本地文件或目录</h3>
+          <span id="badgeMultiSelect" class="text-[10px] px-1.5 py-0.5 rounded-sm bg-emerald-500/10 text-emerald-400 font-code hidden">多选模式</span>
+        </div>
+        <button onclick="closeFileBrowser()" class="text-[var(--text-muted)] hover:text-[var(--text)] font-bold text-sm px-1.5 py-0.5 rounded-sm hover:bg-[var(--surface-hover)]">✕</button>
+      </div>
+
+      <!-- Navigation & Quick Access -->
+      <div class="p-3 bg-[var(--surface-subtle)] border-b border-[var(--border)] space-y-2 shrink-0">
+        <!-- Quick Shortcuts -->
+        <div class="flex items-center gap-1.5 flex-wrap text-[10px] font-code">
+          <span class="text-[var(--text-muted)] mr-1">快捷定位:</span>
+          <div id="browserQuickDirs" class="flex items-center gap-1.5 flex-wrap">
+            <!-- JS populated -->
+          </div>
+        </div>
+
+        <!-- Path Bar -->
+        <div class="flex items-center gap-2 font-code">
+          <button onclick="navigateBrowserUp()" id="btnBrowserUp" class="p-1.5 rounded-sm bg-[var(--surface)] border border-[var(--border)] hover:border-[var(--primary)] text-[var(--text)] transition" title="返回上一级目录">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg>
+          </button>
+          <input type="text" id="browserCurrentPathInput" onkeydown="if(event.key==='Enter')loadBrowserPath(this.value)" class="flex-1 bg-[var(--surface)] border border-[var(--border)] rounded-sm px-2.5 py-1 text-[11px] text-[var(--text)] outline-none focus:border-[var(--primary)]" placeholder="路径">
+          <button onclick="loadBrowserPath(document.getElementById('browserCurrentPathInput').value)" class="px-2.5 py-1 rounded-sm bg-[var(--surface)] border border-[var(--border)] text-[var(--text)] hover:border-[var(--primary)] text-[11px]">前往</button>
+        </div>
+
+        <!-- Filter / Search & Multi-select Toolbar -->
+        <div class="flex items-center justify-between gap-2 flex-wrap">
+          <input type="text" id="browserSearchInput" oninput="filterBrowserItems(this.value)" placeholder="搜索当前目录内容..." class="flex-1 min-w-[140px] bg-[var(--surface)] border border-[var(--border)] rounded-sm px-2.5 py-1 text-[11px] text-[var(--text)] font-code outline-none focus:border-[var(--primary)]">
+          <div class="flex items-center gap-2 font-code text-[10px]">
+            <div class="flex items-center gap-1">
+              <button onclick="setBrowserFilter('all')" id="btnFilterAll" class="px-2 py-0.5 rounded-sm bg-[var(--primary)] text-black font-semibold">全部</button>
+              <button onclick="setBrowserFilter('doc')" id="btnFilterDoc" class="px-2 py-0.5 rounded-sm bg-[var(--surface)] border border-[var(--border)] text-[var(--text-muted)]">规格文档</button>
+              <button onclick="setBrowserFilter('dir')" id="btnFilterDir" class="px-2 py-0.5 rounded-sm bg-[var(--surface)] border border-[var(--border)] text-[var(--text-muted)]">仅文件夹</button>
+            </div>
+            <span class="text-[var(--border-strong)]">|</span>
+            <label class="flex items-center gap-1.5 cursor-pointer text-[var(--text)] select-none">
+              <input type="checkbox" id="chkMultiSelect" onchange="toggleMultiSelectMode(this.checked)" class="accent-[var(--primary)] cursor-pointer">
+              <span>多选</span>
+            </label>
+            <div id="multiSelectActions" class="flex items-center gap-1 hidden">
+              <button onclick="selectAllFolders()" class="px-1.5 py-0.5 rounded-sm bg-[var(--surface)] border border-[var(--border)] hover:border-[var(--primary)] text-[var(--text)]">全选目录</button>
+              <button onclick="clearSelectedItems()" class="px-1.5 py-0.5 rounded-sm bg-[var(--surface)] border border-[var(--border)] hover:border-[var(--danger)] text-[var(--text-muted)] hover:text-[var(--danger)]">清空</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Selected Chips Preview Bar (Visible when items selected) -->
+      <div id="browserSelectedChipsBar" class="px-3 py-1.5 bg-[var(--surface)] border-b border-[var(--border)] flex items-center gap-1.5 overflow-x-auto text-[10px] font-code hidden shrink-0">
+        <span class="text-[var(--text-muted)] shrink-0">已勾选:</span>
+        <div id="browserChipsContainer" class="flex items-center gap-1 flex-nowrap">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- File List Container -->
+      <div class="flex-1 overflow-y-auto p-2 font-code text-xs divide-y divide-[var(--border)]" id="browserItemsList">
+        <div class="p-6 text-center text-[var(--text-muted)]">加载中...</div>
+      </div>
+
+      <!-- Footer Bar -->
+      <div class="p-3 border-t border-[var(--border)] bg-[var(--surface-subtle)] flex items-center justify-between shrink-0">
+        <div class="text-[11px] truncate max-w-[340px] font-code" id="browserSelectedLabel">
+          <span class="text-[var(--text-muted)]">当前选中: </span><span class="text-[var(--text)] font-semibold" id="browserSelectedPath">未选择</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="confirmCurrentDirectory()" id="btnConfirmDir" class="px-3 py-1.5 rounded-sm bg-[var(--surface)] border border-[var(--border)] hover:border-[var(--primary)] text-[var(--text)] text-xs font-semibold">
+            选择当前文件夹
+          </button>
+          <button onclick="confirmBrowserSelection()" id="btnConfirmSelect" class="px-4 py-1.5 rounded-sm bg-[var(--primary)] text-black dark:text-black text-xs font-semibold hover:opacity-90 transition">
+            确认选择
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: New Task -->
+  <div id="modalNewTask" class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-[var(--surface)] border border-[var(--border)] rounded-md p-5 max-w-md w-full shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-[var(--border)] pb-2.5">
+        <h3 class="font-bold text-xs text-[var(--text)]">新建项目测试任务</h3>
+        <button onclick="closeNewTaskModal()" class="text-[var(--text-muted)] hover:text-[var(--text)] font-bold text-sm">✕</button>
+      </div>
+      <div class="space-y-3 text-xs">
+        <div class="space-y-1">
+          <label class="font-semibold text-[var(--text)]">任务标识 (Task ID) <span class="text-rose-400">*</span></label>
+          <input type="text" id="modalTaskId" placeholder="例如 my-service-01 (仅限字母数字下划线中划线)" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded px-3 py-2 outline-none focus:border-[var(--primary)] font-code">
+        </div>
+        <div class="space-y-1">
+          <label class="font-semibold text-[var(--text)]">目标微服务名称</label>
+          <input type="text" id="modalProjectName" placeholder="例如 MyUserService" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded px-3 py-2 outline-none focus:border-[var(--primary)] font-code">
+        </div>
+        <div class="space-y-1">
+          <label class="font-semibold text-[var(--text)]">测试源头类型</label>
+          <select id="modalTaskType" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded px-3 py-2 outline-none focus:border-[var(--primary)] cursor-pointer">
+            <option value="document" selected>接口文档模式 (OpenAPI / Swagger 规格)</option>
+            <option value="code">代码仓库模式 (Git 源码 AST 静态分析)</option>
+          </select>
+        </div>
+        <div class="space-y-1">
+          <label class="font-semibold text-[var(--text)]">规格 URL 或本地文件 (可选)</label>
+          <input type="text" id="modalDocInput" placeholder="例如 http://127.0.0.1:8080/v2/api-docs 或 openapi.json" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded px-3 py-2 outline-none focus:border-[var(--primary)] font-code">
+          <p class="text-[10px] text-[var(--text-muted)]">若为 http:// 开头则作为在线 URL 抓取，否则作为本地文件路径。</p>
+        </div>
+      </div>
+      <div class="border-t border-[var(--border)] pt-3 flex justify-end gap-2">
+        <button onclick="closeNewTaskModal()" class="px-3 py-1.5 rounded bg-[var(--surface-subtle)] text-[var(--text-muted)] hover:text-[var(--text)] text-xs">取消</button>
+        <button onclick="submitNewTask()" class="px-4 py-1.5 rounded bg-[var(--primary)] text-black font-semibold text-xs hover:opacity-90">确认创建</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     // State Store
     const appState = {
@@ -528,6 +691,17 @@
       sourceMode: 'document',
       sourcesOpen: true,
       selectedItem: null,
+      activeTaskId: 'quickstart',
+      browser: {
+        targetField: null,
+        filter: 'all',
+        isMultiSelect: false,
+        currentPath: '',
+        parentPath: '',
+        workspaceRoot: '',
+        items: [],
+        selectedItems: [] // Array of { name, path, is_dir }
+      },
       data: {
         inventory: [
           { method: "POST", path: "/api/recruit/candidates", id: "createCandidate", params: "name, email, jobId", status: "confirmed", source: "recruit-openapi.json#paths./candidates.post" },
@@ -633,13 +807,13 @@
       const formCode = document.getElementById('form-code');
 
       if (mode === 'document') {
-        cardDoc.className = "border-2 rounded-xl p-4 cursor-pointer transition border-[var(--primary)] bg-[var(--primary-subtle)] space-y-2";
-        cardCode.className = "border-2 rounded-xl p-4 cursor-pointer transition border-[var(--border)] hover:border-[var(--border-strong)] space-y-2";
+        cardDoc.className = "border rounded-md p-4 cursor-pointer transition border-[var(--primary)] bg-[var(--primary-subtle)] space-y-2";
+        cardCode.className = "border rounded-md p-4 cursor-pointer transition border-[var(--border)] hover:border-[var(--border-strong)] space-y-2";
         formDoc.classList.remove('hidden');
         formCode.classList.add('hidden');
       } else {
-        cardCode.className = "border-2 rounded-xl p-4 cursor-pointer transition border-[var(--primary)] bg-[var(--primary-subtle)] space-y-2";
-        cardDoc.className = "border-2 rounded-xl p-4 cursor-pointer transition border-[var(--border)] hover:border-[var(--border-strong)] space-y-2";
+        cardCode.className = "border rounded-md p-4 cursor-pointer transition border-[var(--primary)] bg-[var(--primary-subtle)] space-y-2";
+        cardDoc.className = "border rounded-md p-4 cursor-pointer transition border-[var(--border)] hover:border-[var(--border-strong)] space-y-2";
         formCode.classList.remove('hidden');
         formDoc.classList.add('hidden');
       }
@@ -728,7 +902,7 @@
       const taskId = document.getElementById('targetSelector').value;
       try {
         // 1. Auto-save configuration before discovery
-        if (taskId !== 'apple' && taskId !== 'finunity' && taskId !== 'egg') {
+        if (taskId !== 'apple' && taskId !== 'finunity' && taskId !== 'egg' && taskId !== 'quickstart') {
           const configPayload = {};
           if (appState.sourceMode === 'code') {
             const repo = document.getElementById('inputRepoPath').value.trim();
@@ -740,7 +914,7 @@
             if (sourcePaths.length > 0) configPayload.source_paths = sourcePaths;
             configPayload.adapter = adapter;
           } else {
-            const isUrl = document.getElementById('radioDocUrl')?.checked ?? true;
+            const isUrl = document.getElementById('radioDocUrl')?.checked ?? false;
             const docUrl = (document.getElementById('inputDocUrl')?.value || '').trim();
             const docPath = (document.getElementById('inputDocPath')?.value || '').trim();
             const docProject = (document.getElementById('inputDocProject')?.value || '').trim();
@@ -750,12 +924,12 @@
               configPayload.openapi_url = docUrl;
               configPayload.document_paths = [];
             } else if (!isUrl && docPath) {
-              configPayload.document_paths = [docPath];
+              configPayload.document_paths = docPath.split(',').map(s => s.trim()).filter(Boolean);
               configPayload.openapi_url = null;
             } else if (docUrl) {
               configPayload.openapi_url = docUrl;
             } else if (docPath) {
-              configPayload.document_paths = [docPath];
+              configPayload.document_paths = docPath.split(',').map(s => s.trim()).filter(Boolean);
             }
             if (docProject) configPayload.target_project = docProject;
             if (docCommit) configPayload.target_commit = docCommit;
@@ -786,6 +960,7 @@
               status: op.status || 'declared'
             }));
             renderInventoryTable(appState.data.inventory);
+            document.getElementById('invCountBadge').innerText = `${appState.data.inventory.length} 个已识别接口`;
           }
         } else {
           const err = await resp.json();
@@ -796,7 +971,7 @@
       } finally {
         if (btn) {
           btn.disabled = false;
-          btn.innerHTML = `<span>执行接口解析 (Discover)</span><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>`;
+          btn.innerHTML = `<span>执行接口解析 (Discover)</span><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>`;
         }
         switchTab('inventory');
       }
@@ -808,7 +983,7 @@
       tbody.innerHTML = items.map((op, idx) => `
         <tr onclick="inspectOp(${idx})" class="cursor-pointer hover:bg-[var(--surface-hover)] transition">
           <td class="py-2 px-3">
-            <span class="px-2 py-0.5 rounded font-bold text-[10px] badge-${op.method.toLowerCase()}">${op.method}</span>
+            <span class="px-2 py-0.5 rounded-sm font-bold text-[10px] badge-${op.method.toLowerCase()}">${op.method}</span>
           </td>
           <td class="py-2 px-3 font-semibold text-[var(--text)]">${op.path}</td>
           <td class="py-2 px-3 text-[var(--text-muted)]">${op.id}</td>
@@ -826,7 +1001,7 @@
       ['ALL', 'GET', 'POST', 'PUT', 'DELETE'].forEach(method => {
         const btn = document.getElementById(`flt-${method}`);
         if (method === m) {
-          btn.className = "px-2.5 py-1 rounded bg-[var(--primary)] text-[var(--bg)] font-bold text-[11px]";
+          btn.className = "px-2.5 py-1 rounded bg-[var(--primary)] text-black font-bold text-[11px]";
         } else {
           btn.className = "px-2.5 py-1 rounded bg-[var(--surface-subtle)] text-[var(--text-muted)] hover:text-[var(--text)] text-[11px]";
         }
@@ -849,26 +1024,26 @@
     function renderCasesList(cases) {
       const container = document.getElementById('casesList');
       container.innerHTML = cases.map((c, idx) => `
-        <div onclick="inspectCase(${idx})" class="border border-[var(--border)] rounded-xl p-4 bg-[var(--surface-subtle)] hover:border-[var(--primary)] cursor-pointer transition space-y-3">
+        <div onclick="inspectCase(${idx})" class="border border-[var(--border)] rounded-md p-3.5 bg-[var(--surface-subtle)] hover:border-[var(--primary)] cursor-pointer transition space-y-2.5">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
-              <span class="font-code text-[11px] px-2 py-0.5 rounded bg-[var(--surface)] text-[var(--text)] border border-[var(--border)] font-bold">${c.id}</span>
+              <span class="font-code text-[11px] px-2 py-0.5 rounded-sm bg-[var(--surface)] text-[var(--text)] border border-[var(--border)] font-bold">${c.id}</span>
               <h4 class="font-bold text-xs text-[var(--text)]">${c.title}</h4>
-              <span class="text-[10px] px-1.5 py-0.2 rounded bg-[var(--surface)] text-[var(--text-muted)] font-code">${c.scenario}</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded-sm bg-[var(--surface)] text-[var(--text-muted)] font-code">${c.scenario}</span>
             </div>
             <span class="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-400 font-code">
               ✓ 人工已批准 (Approved)
             </span>
           </div>
 
-          <div class="text-[11px] text-[var(--text-muted)] bg-[var(--surface)] p-2.5 rounded-lg border border-[var(--border)] space-y-1">
+          <div class="text-[11px] text-[var(--text-muted)] bg-[var(--surface)] p-2.5 rounded-sm border border-[var(--border)] space-y-1">
             <div><strong class="text-[var(--text)]">判定标准:</strong> ${c.rule_id}</div>
             <div><strong class="text-[var(--text)]">参数依据:</strong> ${c.reason}</div>
           </div>
 
           <div class="space-y-1 font-code text-[11px]">
             ${c.steps.map((s, sIdx) => `
-              <div class="flex items-center justify-between px-2.5 py-1 rounded bg-[var(--surface)] border border-[var(--border)]">
+              <div class="flex items-center justify-between px-2.5 py-1 rounded-sm bg-[var(--surface)] border border-[var(--border)]">
                 <span class="text-[var(--text)]">${sIdx + 1}. ${s.op}</span>
                 <span class="text-[var(--text-muted)]">预期状态: HTTP ${s.expect}</span>
               </div>
@@ -891,7 +1066,7 @@
     function approveAll() {
       const btn = document.getElementById('btnApproveAll');
       btn.innerText = "✓ 已冻结快照，准备执行";
-      btn.className = "px-3.5 py-1.5 rounded-lg bg-emerald-800 text-white font-semibold text-xs cursor-default";
+      btn.className = "px-3.5 py-1.5 rounded bg-emerald-800 text-white font-semibold text-xs cursor-default";
       setTimeout(() => switchTab('execution'), 400);
     }
 
@@ -899,16 +1074,16 @@
     function renderExecutionSteps(steps) {
       const container = document.getElementById('execStepsList');
       container.innerHTML = steps.map((s, idx) => `
-        <div onclick="inspectEvidence(${idx})" class="p-3 bg-[var(--surface)] flex items-center justify-between hover:bg-[var(--surface-hover)] cursor-pointer transition">
+        <div onclick="inspectEvidence(${idx})" class="p-2.5 bg-[var(--surface)] flex items-center justify-between hover:bg-[var(--surface-hover)] cursor-pointer transition">
           <div class="flex items-center gap-3">
             <span class="text-[10px] text-[var(--text-muted)]">${s.time}</span>
             <span class="font-bold text-[var(--text)]">${s.caseId}</span>
-            <span class="px-2 py-0.5 rounded bg-[var(--surface-subtle)] border border-[var(--border)] text-[11px]">${s.step}</span>
+            <span class="px-2 py-0.5 rounded-sm bg-[var(--surface-subtle)] border border-[var(--border)] text-[11px]">${s.step}</span>
             ${s.issue ? `<span class="text-rose-400 font-semibold text-[11px]">⚠️ ${s.issue}</span>` : ''}
           </div>
           <div class="flex items-center gap-3">
             <span class="text-[11px] text-[var(--text-muted)]">${s.ms}ms</span>
-            <span class="px-2 py-0.5 rounded text-[11px] font-bold ${s.result === 'passed' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}">HTTP ${s.code}</span>
+            <span class="px-2 py-0.5 rounded-sm text-[11px] font-bold ${s.result === 'passed' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}">HTTP ${s.code}</span>
             <span class="text-[11px] text-[var(--primary)] hover:underline">查看证据 →</span>
           </div>
         </div>
@@ -957,20 +1132,19 @@
 
     // Inspect Generic Sources
     function inspectSource(type) {
+      const currentTask = appState.activeTaskId || 'quickstart';
       if (type === 'task') {
         const taskJson = {
-          task_id: "task-apple-01",
-          target_project: "APPLE-recruitService",
-          adapter: appState.sourceMode === 'document' ? "openapi" : "python-ast",
-          document_paths: appState.sourceMode === 'document' ? ["targets/apple/recruit-openapi.json"] : [],
-          version_manifest: appState.sourceMode === 'code' ? {
-            "APPLE-recruitService": "e60c4c9f18f85cb6516093e739282adba73d1284",
-            "APPLE-authService": "7b91d2949f005b84cb0e55cf875b9d0350e80cfe"
-          } : {},
+          task_id: currentTask,
+          target_project: document.getElementById('inputDocProject')?.value || "MyService",
+          adapter: appState.sourceMode === 'document' ? "openapi" : (document.getElementById('selectAdapter')?.value || "python-ast"),
+          document_paths: appState.sourceMode === 'document' ? (document.getElementById('inputDocPath')?.value.split(',').map(s=>s.trim()).filter(Boolean) || ["examples/tasks/openapi-demo.json"]) : [],
+          repository: appState.sourceMode === 'code' ? (document.getElementById('inputRepoPath')?.value || "") : null,
+          source_paths: appState.sourceMode === 'code' ? (document.getElementById('inputSourcePaths')?.value.split(',').map(s=>s.trim()).filter(Boolean) || ["src/"]) : [],
           scope: ["*"],
-          status: "discovered"
+          status: "configured"
         };
-        updateSourcesInspector("Task 任务配置契约", "runtime/tasks/task-apple-01/task.json", "task.json", JSON.stringify(taskJson, null, 2));
+        updateSourcesInspector("Task 任务配置契约", `runtime/tasks/${currentTask}/task.json`, "task.json", JSON.stringify(taskJson, null, 2));
       } else if (type === 'model') {
         const modelJson = {
           provider: "deepseek",
@@ -980,10 +1154,10 @@
           max_cost_usd: parseFloat(document.getElementById('modelBudget').value),
           guardrails: { max_requests_per_task: 50, enforce_pre_call_budget: true }
         };
-        updateSourcesInspector("ModelSettings 模型配置契约", "runtime/tasks/task-apple-01/model.json", "model.json", JSON.stringify(modelJson, null, 2));
+        updateSourcesInspector("ModelSettings 模型配置契约", `runtime/tasks/${currentTask}/model.json`, "model.json", JSON.stringify(modelJson, null, 2));
       } else if (type === 'inventory') {
         const invJson = {
-          target_commit: "e60c4c9f18f85cb6516093e739282adba73d1284",
+          target_commit: document.getElementById('inputDocCommit')?.value || "0000000000000000000000000000000000000000",
           version_verified: true,
           operations: appState.data.inventory,
           limitations: [
@@ -991,9 +1165,9 @@
             "Static inventory is not proof of complete runtime route coverage"
           ]
         };
-        updateSourcesInspector("Inventory 接口资产清单", "runtime/tasks/task-apple-01/inventory.json", "inventory.json", JSON.stringify(invJson, null, 2));
+        updateSourcesInspector("Inventory 接口资产清单", `runtime/tasks/${currentTask}/inventory.json`, "inventory.json", JSON.stringify(invJson, null, 2));
       } else if (type === 'cases') {
-        updateSourcesInspector("Cases 结构化用例集", "runtime/tasks/task-apple-01/cases/cases.json", "cases.json", JSON.stringify(appState.data.cases, null, 2));
+        updateSourcesInspector("Cases 结构化用例集", `runtime/tasks/${currentTask}/cases/cases.json`, "cases.json", JSON.stringify(appState.data.cases, null, 2));
       } else if (type === 'execution') {
         const execJson = {
           planned: 4,
@@ -1004,27 +1178,24 @@
           conserved: true,
           records: appState.data.execution
         };
-        updateSourcesInspector("ExecutionRecord 执行记录", "runtime/tasks/task-apple-01/execution.json", "execution.json", JSON.stringify(execJson, null, 2));
+        updateSourcesInspector("ExecutionRecord 执行记录", `runtime/tasks/${currentTask}/execution.json`, "execution.json", JSON.stringify(execJson, null, 2));
       } else if (type === 'report') {
         const mdText = `# TestPilot 接口测试执行与守恒对账报告
 
 ## 1. 执行总览
-- **任务编号**: task-apple-01
-- **被测目标**: APPLE-recruitService (commit: e60c4c9)
+- **任务编号**: ${currentTask}
+- **被测目标**: ${document.getElementById('inputDocProject')?.value || 'ActiveService'}
 - **守恒方程对账**: PASS (计划 4 条，终态 4 条，无凭空丢失或重复副作用)
 - **执行结果统计**: 3 Passed, 1 Failed, 0 Error, 0 缺证据
 
 ## 2. 接口调用覆盖率
-- 已确认接口总数: 5
+- 已确认接口总数: ${appState.data.inventory.length}
 - 实际产生步骤证据的接口数: 4
 - 接口覆盖率: 80.0%
 
-## 3. 未覆盖接口清单 (Uncovered Gap)
-1. \`DELETE /api/recruit/candidates/{id}\` (deleteCandidate): 本次测试集未生成针对删除操作的批准用例。
-
-## 4. 业务缺陷分析 (Failed Cases)
-- \`case-job-01\` (PUT /jobs/JOB-999/status): 预期业务错误 400，实际后端返回 500 NPE。已留存完整 Request/Response 脱敏证据链供开发核对。`;
-        updateSourcesInspector("Report 测试报告 Markdown", "runtime/tasks/task-apple-01/report.md", "report.md", mdText);
+## 3. 守恒记录
+所有测试用例状态转移均有严格证据哈希对应。`;
+        updateSourcesInspector("Report 测试报告 Markdown", `runtime/tasks/${currentTask}/report.md`, "report.md", mdText);
       }
     }
 
@@ -1057,9 +1228,9 @@
       ['deepseek', 'ollama', 'openrouter', 'custom'].forEach(preset => {
         const card = document.getElementById(`preset-card-${preset}`);
         if (preset === p) {
-          card.className = "border-2 rounded-xl p-3 cursor-pointer border-[var(--primary)] bg-[var(--primary-subtle)] space-y-1";
+          card.className = "border rounded-md p-3 cursor-pointer border-[var(--primary)] bg-[var(--primary-subtle)] space-y-1";
         } else {
-          card.className = "border-2 rounded-xl p-3 cursor-pointer border-[var(--border)] hover:border-[var(--border-strong)] space-y-1";
+          card.className = "border rounded-md p-3 cursor-pointer border-[var(--border)] hover:border-[var(--border-strong)] space-y-1";
         }
       });
 
@@ -1121,6 +1292,14 @@
 
     async function onTargetChange() {
       const val = document.getElementById('targetSelector').value;
+      if (val === '__browse__') {
+        openFileBrowser('target');
+        return;
+      }
+      appState.activeTaskId = val;
+      const label = document.getElementById('activeTaskIdLabel');
+      if (label) label.innerText = val;
+
       if (val === 'finunity') {
         toggleDocSourceType('file');
         document.getElementById('inputDocPath').value = "benchmarks/public/openapi.json";
@@ -1132,9 +1311,18 @@
       }
       if (val === 'apple') {
         toggleDocSourceType('file');
-        document.getElementById('inputDocPath').value = "targets/apple/recruit-openapi.json";
+        document.getElementById('inputDocPath').value = "examples/tasks/openapi-demo.json";
         document.getElementById('inputDocPrefix').value = "/api/recruit";
         document.getElementById('inputDocProject').value = "APPLE-recruitService";
+        selectSourceMode('document');
+        inspectSource('task');
+        return;
+      }
+      if (val === 'quickstart') {
+        toggleDocSourceType('file');
+        document.getElementById('inputDocPath').value = "examples/tasks/openapi-demo.json";
+        document.getElementById('inputDocPrefix').value = "";
+        document.getElementById('inputDocProject').value = "SyntheticDemo";
         selectSourceMode('document');
         inspectSource('task');
         return;
@@ -1151,7 +1339,7 @@
             selectSourceMode('document');
           } else if (t.document_paths && t.document_paths.length > 0) {
             toggleDocSourceType('file');
-            document.getElementById('inputDocPath').value = t.document_paths[0];
+            document.getElementById('inputDocPath').value = t.document_paths.join(', ');
             if (t.target_project) document.getElementById('inputDocProject').value = t.target_project;
             if (t.target_commit) document.getElementById('inputDocCommit').value = t.target_commit;
             selectSourceMode('document');
@@ -1163,10 +1351,6 @@
             selectSourceMode('code');
           } else {
             selectSourceMode(appState.sourceMode || 'document');
-          }
-          if (t.adapter) {
-            const adEl = document.getElementById('repoAdapter');
-            if (adEl) adEl.value = t.adapter;
           }
           inspectSource('task');
         }
@@ -1183,28 +1367,22 @@
         ]);
         if (tasksResp.ok) {
           const tData = await tasksResp.json();
-          if (tData.tasks && tData.tasks.length > 0) {
-            const sel = document.getElementById('targetSelector');
-            const prevVal = sel.value;
-            sel.innerHTML = '';
-            tData.tasks.forEach(t => {
-              const opt = document.createElement('option');
-              opt.value = t.task_id;
-              opt.innerText = `${t.task_id} (${t.target_project || '项目'} · ${t.status})`;
-              sel.appendChild(opt);
-            });
-            const optApple = document.createElement('option');
-            optApple.value = "apple";
-            optApple.innerText = "APPLE-recruitService (Demo · Java 8 / Spring Boot)";
-            sel.appendChild(optApple);
-            const optFin = document.createElement('option');
-            optFin.value = "finunity";
-            optFin.innerText = "FinUnityServer (Demo · Python / FastAPI)";
-            sel.appendChild(optFin);
-            if (prevVal && [...sel.options].some(o => o.value === prevVal)) {
-              sel.value = prevVal;
+          const grp = document.getElementById('groupActiveTasks');
+          if (grp) {
+            grp.innerHTML = '';
+            if (tData.tasks && tData.tasks.length > 0) {
+              tData.tasks.forEach(t => {
+                const opt = document.createElement('option');
+                opt.value = t.task_id;
+                opt.innerText = `${t.task_id} (${t.target_project || '项目'} · ${t.status})`;
+                grp.appendChild(opt);
+              });
+            } else {
+              const emptyOpt = document.createElement('option');
+              emptyOpt.disabled = true;
+              emptyOpt.innerText = '（暂无已保存任务）';
+              grp.appendChild(emptyOpt);
             }
-            onTargetChange();
           }
         }
         if (envResp.ok) {
@@ -1219,6 +1397,347 @@
       } catch (_) {}
     }
 
+    // ==========================================
+    // Filesystem Explorer Modal Engine (with Multi-Selection Support)
+    // ==========================================
+    function openFileBrowser(targetField) {
+      appState.browser.targetField = targetField;
+      const modal = document.getElementById('modalFileBrowser');
+      const title = document.getElementById('browserTitle');
+      const btnConfirmDir = document.getElementById('btnConfirmDir');
+      const chkMulti = document.getElementById('chkMultiSelect');
+
+      // Default to multi-select for dir_source (selecting multiple source directories)
+      if (targetField === 'dir_source') {
+        title.innerText = "多选源码扫描文件夹 (Source Paths) - 勾选所需目录";
+        appState.browser.filter = 'dir';
+        appState.browser.isMultiSelect = true;
+        btnConfirmDir.classList.remove('hidden');
+      } else if (targetField === 'doc') {
+        title.innerText = "选择本地 OpenAPI / Swagger 规格文件 (.json / .yaml)";
+        appState.browser.filter = 'doc';
+        appState.browser.isMultiSelect = false;
+        btnConfirmDir.classList.add('hidden');
+      } else if (targetField === 'dir_repo') {
+        title.innerText = "选择代码仓库根目录 (Git Repository)";
+        appState.browser.filter = 'dir';
+        appState.browser.isMultiSelect = false;
+        btnConfirmDir.classList.remove('hidden');
+      } else if (targetField === 'target') {
+        title.innerText = "选择本地代码目录或规格文件作为测试目标";
+        appState.browser.filter = 'all';
+        appState.browser.isMultiSelect = false;
+        btnConfirmDir.classList.remove('hidden');
+      }
+
+      chkMulti.checked = appState.browser.isMultiSelect;
+      toggleMultiSelectMode(appState.browser.isMultiSelect, false);
+      setBrowserFilter(appState.browser.filter, false);
+      modal.classList.remove('hidden');
+      loadBrowserPath(appState.browser.currentPath || '');
+    }
+
+    function closeFileBrowser() {
+      document.getElementById('modalFileBrowser').classList.add('hidden');
+    }
+
+    function toggleMultiSelectMode(enabled, reload = true) {
+      appState.browser.isMultiSelect = enabled;
+      const badge = document.getElementById('badgeMultiSelect');
+      const actions = document.getElementById('multiSelectActions');
+      if (enabled) {
+        badge.classList.remove('hidden');
+        actions.classList.remove('hidden');
+      } else {
+        badge.classList.add('hidden');
+        actions.classList.add('hidden');
+      }
+      updateSelectedChips();
+      if (reload) renderBrowserItems(appState.browser.items);
+    }
+
+    function setBrowserFilter(f, reload = true) {
+      appState.browser.filter = f;
+      ['all', 'doc', 'dir'].forEach(filterKey => {
+        const btn = document.getElementById(`btnFilter${filterKey.charAt(0).toUpperCase() + filterKey.slice(1)}`);
+        if (btn) {
+          if (filterKey === f) {
+            btn.className = "px-2 py-0.5 rounded-sm bg-[var(--primary)] text-black font-semibold";
+          } else {
+            btn.className = "px-2 py-0.5 rounded-sm bg-[var(--surface)] border border-[var(--border)] text-[var(--text-muted)]";
+          }
+        }
+      });
+      if (reload) loadBrowserPath(appState.browser.currentPath);
+    }
+
+    async function loadBrowserPath(dirPath) {
+      const container = document.getElementById('browserItemsList');
+      container.innerHTML = '<div class="p-6 text-center text-[var(--text-muted)]">正在读取目录内容...</div>';
+      try {
+        const params = new URLSearchParams();
+        if (dirPath) params.set('path', dirPath);
+        if (appState.browser.filter) params.set('filter', appState.browser.filter);
+
+        const resp = await fetch(`/api/fs/list?${params.toString()}`);
+        if (!resp.ok) {
+          const err = await resp.json();
+          container.innerHTML = `<div class="p-6 text-center text-rose-400">读取失败: ${err.error || resp.statusText}</div>`;
+          return;
+        }
+        const data = await resp.json();
+        appState.browser.currentPath = data.current_path;
+        appState.browser.parentPath = data.parent_path;
+        appState.browser.workspaceRoot = data.workspace_root;
+        appState.browser.items = data.items;
+
+        document.getElementById('browserCurrentPathInput').value = data.current_path;
+        document.getElementById('btnBrowserUp').disabled = !data.parent_path;
+
+        // Render Quick Dirs
+        const quickContainer = document.getElementById('browserQuickDirs');
+        quickContainer.innerHTML = (data.quick_dirs || []).map(q => `
+          <button onclick="loadBrowserPath('${q.path.replace(/'/g, "\\'")}')" class="px-2 py-0.5 rounded-sm bg-[var(--surface)] border border-[var(--border)] text-[var(--text)] hover:border-[var(--primary)] transition">
+            ${q.name}
+          </button>
+        `).join('');
+
+        renderBrowserItems(data.items);
+        updateSelectedChips();
+      } catch (err) {
+        container.innerHTML = `<div class="p-6 text-center text-rose-400">网络异常: ${err.message}</div>`;
+      }
+    }
+
+    function isItemSelected(path) {
+      return appState.browser.selectedItems.some(item => item.path === path);
+    }
+
+    function renderBrowserItems(items) {
+      const container = document.getElementById('browserItemsList');
+      if (!items || items.length === 0) {
+        container.innerHTML = '<div class="p-6 text-center text-[var(--text-muted)] font-code">当前文件夹为空或无匹配文件</div>';
+        return;
+      }
+      const isMulti = appState.browser.isMultiSelect;
+
+      container.innerHTML = items.map((item, idx) => {
+        const icon = item.is_dir ? '📁' : item.is_openapi ? '⚡' : '📄';
+        const typeBadge = item.is_dir ? '<span class="text-[10px] px-1 rounded-sm bg-[var(--surface-subtle)] text-[var(--text-muted)]">DIR</span>'
+          : item.is_openapi ? '<span class="text-[10px] px-1 rounded-sm bg-emerald-500/10 text-emerald-400">OPENAPI</span>'
+          : `<span class="text-[10px] px-1 rounded-sm bg-[var(--surface-subtle)] text-[var(--text-muted)]">${item.ext || 'FILE'}</span>`;
+        const sizeStr = item.is_dir ? '' : `${Math.ceil(item.size / 1024)} KB`;
+        const checked = isItemSelected(item.path);
+        const rowClass = checked ? 'bg-[var(--primary-subtle)] border border-[var(--primary)]' : 'hover:bg-[var(--surface-hover)]';
+
+        return `
+          <div class="browser-row p-2 flex items-center justify-between cursor-pointer transition rounded-sm ${rowClass}" id="browser-row-${idx}" onclick="handleRowClick(event, ${idx})">
+            <div class="flex items-center gap-2.5 truncate flex-1">
+              <input type="checkbox" ${checked ? 'checked' : ''} onclick="event.stopPropagation(); toggleItemSelection(${idx})" class="accent-[var(--primary)] cursor-pointer shrink-0">
+              <span class="text-sm shrink-0">${icon}</span>
+              <span class="font-semibold text-[var(--text)] truncate">${item.name}</span>
+            </div>
+            <div class="flex items-center gap-2 shrink-0 font-code text-[11px] text-[var(--text-muted)]">
+              <span>${sizeStr}</span>
+              ${typeBadge}
+              ${item.is_dir ? `<button onclick="event.stopPropagation(); loadBrowserPath('${item.path.replace(/'/g, "\\'")}')" class="px-2 py-0.5 rounded-sm bg-[var(--surface)] border border-[var(--border)] text-[var(--text)] hover:border-[var(--primary)] text-[10px] shrink-0 font-sans" title="进入该目录">进入 ➔</button>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function handleRowClick(event, idx) {
+      const item = appState.browser.items[idx];
+      if (appState.browser.isMultiSelect) {
+        toggleItemSelection(idx);
+      } else {
+        // Single selection
+        appState.browser.selectedItems = [item];
+        updateSelectedChips();
+        renderBrowserItems(appState.browser.items);
+      }
+    }
+
+    function toggleItemSelection(idx) {
+      const item = appState.browser.items[idx];
+      const existingIdx = appState.browser.selectedItems.findIndex(it => it.path === item.path);
+      if (existingIdx >= 0) {
+        appState.browser.selectedItems.splice(existingIdx, 1);
+      } else {
+        appState.browser.selectedItems.push(item);
+      }
+      updateSelectedChips();
+      renderBrowserItems(appState.browser.items);
+    }
+
+    function selectAllFolders() {
+      const folders = appState.browser.items.filter(it => it.is_dir);
+      folders.forEach(f => {
+        if (!isItemSelected(f.path)) {
+          appState.browser.selectedItems.push(f);
+        }
+      });
+      updateSelectedChips();
+      renderBrowserItems(appState.browser.items);
+    }
+
+    function clearSelectedItems() {
+      appState.browser.selectedItems = [];
+      updateSelectedChips();
+      renderBrowserItems(appState.browser.items);
+    }
+
+    function removeSelectedItem(path) {
+      appState.browser.selectedItems = appState.browser.selectedItems.filter(it => it.path !== path);
+      updateSelectedChips();
+      renderBrowserItems(appState.browser.items);
+    }
+
+    function updateSelectedChips() {
+      const count = appState.browser.selectedItems.length;
+      const chipsBar = document.getElementById('browserSelectedChipsBar');
+      const container = document.getElementById('browserChipsContainer');
+      const selectedPathLabel = document.getElementById('browserSelectedPath');
+      const btnConfirmSelect = document.getElementById('btnConfirmSelect');
+
+      if (count === 0) {
+        chipsBar.classList.add('hidden');
+        selectedPathLabel.innerText = "未选择";
+        btnConfirmSelect.innerText = "确认选择";
+      } else {
+        chipsBar.classList.remove('hidden');
+        container.innerHTML = appState.browser.selectedItems.map(item => `
+          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-[var(--surface-subtle)] border border-[var(--border-strong)] text-[var(--text)] whitespace-nowrap">
+            <span>${item.is_dir ? '📁' : '📄'} ${item.name}</span>
+            <button onclick="removeSelectedItem('${item.path.replace(/'/g, "\\'")}')" class="text-rose-400 hover:text-rose-300 font-bold ml-0.5">✕</button>
+          </span>
+        `).join('');
+
+        const folderCount = appState.browser.selectedItems.filter(it => it.is_dir).length;
+        const fileCount = count - folderCount;
+        let desc = [];
+        if (folderCount > 0) desc.push(`${folderCount} 个目录`);
+        if (fileCount > 0) desc.push(`${fileCount} 个文件`);
+
+        selectedPathLabel.innerText = `已勾选 ${desc.join('、')}: ${appState.browser.selectedItems.map(it => it.name).join(', ')}`;
+        btnConfirmSelect.innerText = `确认选择已勾选 (${count})`;
+      }
+    }
+
+    function filterBrowserItems(query) {
+      const q = query.trim().toLowerCase();
+      if (!q) {
+        renderBrowserItems(appState.browser.items);
+        return;
+      }
+      const filtered = appState.browser.items.filter(i => i.name.toLowerCase().includes(q));
+      renderBrowserItems(filtered);
+    }
+
+    function navigateBrowserUp() {
+      if (appState.browser.parentPath) {
+        loadBrowserPath(appState.browser.parentPath);
+      }
+    }
+
+    function getDisplayPath(fullPath) {
+      const ws = appState.browser.workspaceRoot;
+      if (ws && fullPath.startsWith(ws)) {
+        let rel = fullPath.slice(ws.length);
+        if (rel.startsWith('/') || rel.startsWith('\\')) rel = rel.slice(1);
+        return rel || '.';
+      }
+      return fullPath;
+    }
+
+    function confirmCurrentDirectory() {
+      const dirPath = appState.browser.currentPath;
+      if (!dirPath) return;
+      applySelectionToTarget([{ path: dirPath, is_dir: true, name: dirPath.split('/').pop() || 'Repo' }]);
+      closeFileBrowser();
+    }
+
+    function confirmBrowserSelection() {
+      const selected = appState.browser.selectedItems;
+      if (!selected || selected.length === 0) {
+        // If nothing checked, fallback to current folder
+        if (appState.browser.currentPath) {
+          confirmCurrentDirectory();
+          return;
+        }
+        alert('请先勾选或选择一个文件夹/文件');
+        return;
+      }
+      applySelectionToTarget(selected);
+      closeFileBrowser();
+    }
+
+    function applySelectionToTarget(items) {
+      const itemList = Array.isArray(items) ? items : [items];
+      if (itemList.length === 0) return;
+
+      const target = appState.browser.targetField;
+      const relPaths = itemList.map(it => getDisplayPath(it.path));
+
+      if (target === 'dir_source') {
+        // Multi-select for source directories: join with comma!
+        const formatted = relPaths.map(p => (p.endsWith('/') || p.endsWith('\\') ? p : `${p}/`)).join(', ');
+        document.getElementById('inputSourcePaths').value = formatted;
+      } else if (target === 'doc') {
+        // Spec files: join with comma if multiple
+        document.getElementById('inputDocPath').value = relPaths.join(', ');
+        toggleDocSourceType('file');
+        selectSourceMode('document');
+        const projEl = document.getElementById('inputDocProject');
+        if (!projEl.value.trim()) {
+          const guess = itemList[0].name.replace(/\.(json|yaml|yml)$/i, '').replace(/[-_]openapi|openapi[-_]|[-_]swagger|swagger[-_]/i, '');
+          projEl.value = guess || 'DocService';
+        }
+      } else if (target === 'dir_repo') {
+        document.getElementById('inputRepoPath').value = relPaths[0];
+        selectSourceMode('code');
+        const projEl = document.getElementById('inputDocProject');
+        if (!projEl.value.trim()) {
+          projEl.value = itemList[0].name;
+        }
+      } else if (target === 'target') {
+        // Top-level target selection
+        const first = itemList[0];
+        if (first.is_dir) {
+          selectSourceMode('code');
+          document.getElementById('inputRepoPath').value = relPaths[0];
+          const projEl = document.getElementById('inputDocProject');
+          projEl.value = first.name;
+          if (itemList.length > 1) {
+            document.getElementById('inputSourcePaths').value = relPaths.map(p => (p.endsWith('/') || p.endsWith('\\') ? p : `${p}/`)).join(', ');
+          }
+        } else {
+          selectSourceMode('document');
+          toggleDocSourceType('file');
+          document.getElementById('inputDocPath').value = relPaths.join(', ');
+          const projEl = document.getElementById('inputDocProject');
+          const guess = first.name.replace(/\.(json|yaml|yml)$/i, '');
+          projEl.value = guess;
+        }
+        // Update top bar label
+        const sel = document.getElementById('targetSelector');
+        let customOpt = document.getElementById('optCustomActiveTarget');
+        if (!customOpt) {
+          customOpt = document.createElement('option');
+          customOpt.id = 'optCustomActiveTarget';
+          sel.insertBefore(customOpt, sel.firstChild);
+        }
+        const displayLabel = itemList.length > 1 ? `${first.name} + ${itemList.length - 1} 个目录` : first.name;
+        customOpt.value = `custom_${first.name}`;
+        customOpt.innerText = `当前选中: ${displayLabel} (${relPaths.join(', ')})`;
+        sel.value = customOpt.value;
+        appState.activeTaskId = customOpt.value;
+        document.getElementById('activeTaskIdLabel').innerText = customOpt.value;
+      }
+      inspectSource('task');
+    }
+
     // Init
     window.addEventListener('DOMContentLoaded', () => {
       renderInventoryTable(appState.data.inventory);
@@ -1226,43 +1745,12 @@
       renderExecutionSteps(appState.data.execution);
       inspectSource('task');
       initLiveSync();
+      // Pre-fetch workspace root for explorer
+      fetch('/api/fs/list').then(r => r.json()).then(d => {
+        appState.browser.currentPath = d.current_path;
+        appState.browser.workspaceRoot = d.workspace_root;
+      }).catch(() => {});
     });
   </script>
-  <!-- New Task Modal -->
-  <div id="modalNewTask" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 hidden">
-    <div class="bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
-      <div class="flex items-center justify-between border-b border-[var(--border)] pb-3">
-        <h3 class="font-bold text-sm text-[var(--text)]">新建项目测试任务</h3>
-        <button onclick="closeNewTaskModal()" class="text-[var(--text-muted)] hover:text-[var(--text)] font-bold text-base">✕</button>
-      </div>
-      <div class="space-y-3 font-code text-xs">
-        <div class="space-y-1">
-          <label class="font-semibold text-[var(--text)]">任务标识 (Task ID) <span class="text-red-400">*</span></label>
-          <input type="text" id="modalTaskId" placeholder="例如 my-fastapi-service" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 outline-none focus:border-[var(--primary)]">
-          <p class="text-[10px] text-[var(--text-muted)]">小写字母、数字与横线组合。</p>
-        </div>
-        <div class="space-y-1">
-          <label class="font-semibold text-[var(--text)]">项目名称 (Project Name)</label>
-          <input type="text" id="modalProjectName" placeholder="例如 MyFastAPIService" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 outline-none focus:border-[var(--primary)]">
-        </div>
-        <div class="space-y-1">
-          <label class="font-semibold text-[var(--text)]">分析模式</label>
-          <select id="modalTaskType" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 outline-none focus:border-[var(--primary)] cursor-pointer">
-            <option value="code">代码仓库模式 (Git 源码 AST 静态分析)</option>
-            <option value="document" selected>接口文档模式 (OpenAPI / Swagger 规格)</option>
-          </select>
-        </div>
-        <div class="space-y-1">
-          <label class="font-semibold text-[var(--text)]">规格 URL 或本地文件 (可选)</label>
-          <input type="text" id="modalDocInput" placeholder="例如 http://127.0.0.1:8080/v2/api-docs 或 openapi.json" class="w-full bg-[var(--surface-subtle)] border border-[var(--border)] rounded-lg px-3 py-2 outline-none focus:border-[var(--primary)]">
-          <p class="text-[10px] text-[var(--text-muted)]">若为 http:// 开头则作为在线 URL 抓取，否则作为本地文件路径。</p>
-        </div>
-      </div>
-      <div class="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border)]">
-        <button onclick="closeNewTaskModal()" class="px-3 py-1.5 rounded-lg border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)] text-xs">取消</button>
-        <button onclick="submitNewTask()" class="px-4 py-1.5 rounded-lg bg-[var(--primary)] text-[var(--bg)] font-semibold text-xs hover:opacity-90">确认创建</button>
-      </div>
-    </div>
-  </div>
 </body>
 </html>

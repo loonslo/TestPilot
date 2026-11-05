@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import re
 import secrets
 import socket
@@ -168,6 +169,12 @@ class UIRequestHandler(BaseHTTPRequestHandler):
             )
             html_content = html_content.replace("<head>", f"<head>\n{injected_meta}", 1)
             self._send_text(html_content, content_type="text/html; charset=utf-8")
+            return
+
+        # 1.5 File System Browser
+        if path == "/api/fs/list":
+            query_params = urllib.parse.parse_qs(parsed.query)
+            self._handle_fs_list(query_params)
             return
 
         # 2. Registered Adapters
@@ -330,6 +337,97 @@ class UIRequestHandler(BaseHTTPRequestHandler):
                 return
 
         self._send_error(f"Unknown endpoint: {path}", status=HTTPStatus.NOT_FOUND)
+
+    def _handle_fs_list(self, query_params: dict[str, list[str]]) -> None:
+        raw_path = query_params.get("path", [""])[0].strip()
+        filter_mode = query_params.get("filter", ["all"])[0].strip().lower()
+
+        workspace_root = Path.cwd().resolve()
+        if raw_path:
+            target_path = Path(raw_path).resolve()
+        else:
+            target_path = workspace_root
+
+        if not target_path.exists() or not target_path.is_dir():
+            target_path = workspace_root
+
+        parent_path = (
+            str(target_path.parent).replace("\\", "/") if target_path.parent != target_path else ""
+        )
+
+        quick_dirs = [
+            {"name": "工作区根目录", "path": str(workspace_root).replace("\\", "/")},
+            {
+                "name": "被测源码 (subjects)",
+                "path": str((workspace_root / "subjects").resolve()).replace("\\", "/"),
+            },
+            {
+                "name": "示例任务 (examples)",
+                "path": str((workspace_root / "examples").resolve()).replace("\\", "/"),
+            },
+            {
+                "name": "基准规格 (benchmarks)",
+                "path": str((workspace_root / "benchmarks").resolve()).replace("\\", "/"),
+            },
+            {
+                "name": "任务资产 (runtime/tasks)",
+                "path": str((workspace_root / "runtime" / "tasks").resolve()).replace("\\", "/"),
+            },
+        ]
+        quick_dirs = [q for q in quick_dirs if Path(q["path"]).exists()]
+
+        items: list[dict[str, Any]] = []
+        try:
+            with os.scandir(target_path) as entries:
+                for entry in entries:
+                    name = entry.name
+                    if name.startswith(".") or name in {"__pycache__", "node_modules"}:
+                        continue
+                    try:
+                        is_dir = entry.is_dir(follow_symlinks=False)
+                        size = entry.stat(follow_symlinks=False).st_size if not is_dir else 0
+                    except OSError, PermissionError:
+                        continue
+
+                    entry_full_path = str(Path(entry.path).resolve()).replace("\\", "/")
+                    ext = Path(name).suffix.lower()
+                    is_openapi = ext in {".json", ".yaml", ".yml"}
+                    is_code = ext in {".py", ".java", ".ts", ".js", ".go", ".rs"}
+
+                    if filter_mode == "dir" and not is_dir:
+                        continue
+                    if filter_mode == "doc" and not (is_dir or is_openapi):
+                        continue
+                    if filter_mode == "code" and not (is_dir or is_code):
+                        continue
+
+                    items.append(
+                        {
+                            "name": name,
+                            "path": entry_full_path,
+                            "is_dir": is_dir,
+                            "size": size,
+                            "ext": ext,
+                            "is_openapi": is_openapi,
+                            "is_code": is_code,
+                        }
+                    )
+        except (OSError, PermissionError) as exc:
+            self._send_error(f"Cannot read directory: {exc}", status=HTTPStatus.FORBIDDEN)
+            return
+
+        items.sort(key=lambda x: (not x["is_dir"], x["name"].lower()))
+
+        self._send_json(
+            {
+                "current_path": str(target_path).replace("\\", "/"),
+                "parent_path": parent_path,
+                "workspace_root": str(workspace_root).replace("\\", "/"),
+                "filter": filter_mode,
+                "quick_dirs": quick_dirs,
+                "items": items,
+            }
+        )
 
     def _handle_source_inspection(self, task_id: str, folder: Path, src_type: str) -> None:
         rel_base = f"runtime/tasks/{task_id}"
