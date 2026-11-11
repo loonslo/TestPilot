@@ -11,6 +11,7 @@
   <style>
     /* Design Tokens following baoyu-design / Industrial Craft (Zinc/Carbon + Emerald Accent) */
     :root {
+      color-scheme: light;
       --bg: #fafafa;
       --surface: #ffffff;
       --surface-subtle: #f4f4f5;
@@ -30,6 +31,7 @@
       --danger-subtle: rgba(220, 38, 38, 0.1);
     }
     .dark {
+      color-scheme: dark;
       --bg: #09090b;
       --surface: #121215;
       --surface-subtle: #18181b;
@@ -47,6 +49,41 @@
       --warning-subtle: rgba(245, 158, 11, 0.12);
       --danger: #ef4444;
       --danger-subtle: rgba(239, 68, 68, 0.12);
+    }
+
+    /* High-contrast Native Select & Form Controls Fixes for Dark Mode */
+    select, input, textarea {
+      color-scheme: light;
+    }
+    .dark select, .dark input, .dark textarea {
+      color-scheme: dark;
+    }
+    select {
+      background-color: var(--surface-subtle);
+      color: var(--text);
+    }
+    select option, select optgroup {
+      background-color: var(--surface);
+      color: var(--text);
+      padding: 6px 10px;
+    }
+    .dark select option {
+      background-color: #18181b !important;
+      color: #fafafa !important;
+    }
+    .dark select optgroup {
+      background-color: #121215 !important;
+      color: #34d399 !important;
+      font-weight: 700 !important;
+    }
+    html:not(.dark) select option {
+      background-color: #ffffff !important;
+      color: #09090b !important;
+    }
+    html:not(.dark) select optgroup {
+      background-color: #f4f4f5 !important;
+      color: #059669 !important;
+      font-weight: 700 !important;
     }
 
     /* Enforce baoyu-design sharp precision: reduce all radii to 2px */
@@ -110,17 +147,17 @@
     <!-- Center Status Breadcrumb & Target Selector -->
     <div class="hidden md:flex items-center gap-2 bg-[var(--surface-subtle)] border border-[var(--border)] px-3 py-1.5 rounded font-code text-[11px]">
       <span class="text-[var(--text-muted)]">被测目标:</span>
-      <select id="targetSelector" onchange="onTargetChange()" class="bg-transparent font-semibold text-[var(--text)] outline-none cursor-pointer max-w-[280px] truncate">
-        <optgroup label="动态任务 (Active Tasks)" id="groupActiveTasks">
+      <select id="targetSelector" onchange="onTargetChange()" class="bg-transparent font-semibold text-[var(--text)] outline-none cursor-pointer max-w-[340px] truncate py-0.5">
+        <optgroup label="📋 动态任务 (Active Tasks)" id="groupActiveTasks">
           <!-- Populated from /api/tasks -->
         </optgroup>
-        <optgroup label="内置示例与基准 (Demos & Benchmarks)">
-          <option value="finunity">FinUnityServer (FastAPI / 本地克隆)</option>
-          <option value="apple">APPLE-recruitService (Spring Boot 示例)</option>
-          <option value="quickstart">SyntheticDemo (合成离线示例)</option>
+        <optgroup label="📦 内置示例与基准 (Demos & Benchmarks)">
+          <option value="finunity">🏛️ FinUnityServer (FastAPI / 金融基准)</option>
+          <option value="apple">🍃 APPLE-recruitService (Spring Boot 示例)</option>
+          <option value="quickstart">🧪 SyntheticDemo (离线合成示例)</option>
         </optgroup>
-        <optgroup label="自定义目标">
-          <option value="__browse__">+ 浏览本地目录/文件作为目标...</option>
+        <optgroup label="📂 自定义本地目标 (Custom Targets)">
+          <option value="__browse__">➕ 浏览本地目录/文件作为新目标...</option>
         </optgroup>
       </select>
 
@@ -1391,7 +1428,7 @@
               tData.tasks.forEach(t => {
                 const opt = document.createElement('option');
                 opt.value = t.task_id;
-                opt.innerText = `${t.task_id} (${t.target_project || '项目'} · ${t.status})`;
+                opt.innerText = `⚡ ${t.task_id} (${t.target_project || '项目'} · ${t.status})`;
                 grp.appendChild(opt);
               });
             } else {
@@ -1747,7 +1784,7 @@
         }
         const displayLabel = itemList.length > 1 ? `${first.name} + ${itemList.length - 1} 个目录` : first.name;
         customOpt.value = `custom_${first.name}`;
-        customOpt.innerText = `当前选中: ${displayLabel} (${relPaths.join(', ')})`;
+        customOpt.innerText = `📂 自定义: ${displayLabel} (${relPaths.join(', ')})`;
         sel.value = customOpt.value;
         appState.activeTaskId = customOpt.value;
         document.getElementById('activeTaskIdLabel').innerText = customOpt.value;
