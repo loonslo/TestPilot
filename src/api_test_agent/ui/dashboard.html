@@ -703,6 +703,7 @@
       background: var(--bg); border: 1px solid var(--line-strong);
       font: 400 11.5px var(--mono); color: var(--text);
     }
+    .browser-bar select { flex: 0 0 88px; min-width: 88px; height: 30px; }
     .browser-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
     .browser-tools .btn-sm { height: 28px; }
     .browser-tools input[type="text"] { height: 28px; }
@@ -1124,6 +1125,7 @@
     <div class="modal-body">
       <div class="browser-bar">
         <button class="btn btn-sm btn-quiet" id="btnBrowserUp" onclick="navigateBrowserUp()">↑ 上级</button>
+        <select id="browserDriveSelect" aria-label="切换磁盘" title="切换磁盘" hidden></select>
         <input type="text" id="browserCurrentPathInput" onkeydown="if(event.key==='Enter'){loadBrowserPath(this.value)}" aria-label="当前路径">
         <button class="btn btn-sm" onclick="loadBrowserPath(document.getElementById('browserCurrentPathInput').value)">跳转</button>
       </div>
@@ -3042,6 +3044,18 @@
       document.getElementById('btnBrowserUp').disabled = !S.browser.parentPath;
       document.getElementById('btnConfirmDir').disabled = false;
       const quickDirs = repoPath ? [{ name: '仓库根目录', path: repoPath }] : (data.quick_dirs || []);
+      const driveSelect = document.getElementById('browserDriveSelect');
+      const drives = repoPath ? [] : quickDirs.filter((item) => /^[a-zA-Z]:\/$/.test(item.path));
+      driveSelect.replaceChildren();
+      driveSelect.hidden = drives.length === 0;
+      for (const drive of drives) {
+        const option = document.createElement('option');
+        option.value = drive.path;
+        option.textContent = drive.name;
+        driveSelect.append(option);
+      }
+      const currentDrive = String(data.current_path || '').match(/^[a-zA-Z]:\//);
+      driveSelect.value = currentDrive ? currentDrive[0] : '';
       document.getElementById('browserQuickDirs').innerHTML = quickDirs
         .map((q) => `<button class="chip chip-bare" data-goto="${esc(q.path)}">${esc(q.name)}</button>`)
         .join('');
@@ -3102,6 +3116,9 @@
     document.getElementById('browserQuickDirs').addEventListener('click', (event) => {
       const btn = event.target.closest('[data-goto]');
       if (btn) loadBrowserPath(btn.dataset.goto);
+    });
+    document.getElementById('browserDriveSelect').addEventListener('change', (event) => {
+      if (event.target.value) loadBrowserPath(event.target.value);
     });
     document.getElementById('browserChipsContainer').addEventListener('click', (event) => {
       const btn = event.target.closest('[data-remove]');
