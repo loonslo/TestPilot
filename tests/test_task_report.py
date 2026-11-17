@@ -6,13 +6,134 @@ from test_task_design import prepared as prepared
 from test_task_execution import approved_setup as approved_setup
 
 from api_test_agent.cli import main
-from api_test_agent.tasks.approval import ExecutionConfig, ReviewSubmission, approve, fingerprint
-from api_test_agent.tasks.design import export_review, load_inventory
+from api_test_agent.tasks.approval import (
+    ExecutionConfig,
+    ReviewSubmission,
+    approve,
+    current_cases,
+    fingerprint,
+)
+from api_test_agent.tasks.design import design, export_review, load_inventory
 from api_test_agent.tasks.discovery import discover
 from api_test_agent.tasks.execution import execute_task
 from api_test_agent.tasks.models import Assertion, CaseRevision, Rule, Step, Task
 from api_test_agent.tasks.report import generate_report
 from api_test_agent.tasks.store import TaskStore
+
+
+def test_historical_report_uses_its_selection_and_approval_after_revision(approved_setup):
+    store, config, first_approval, _ = approved_setup
+    first_run = "a" * 32
+    second_run = "b" * 32
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, json={"items": []}))
+    with httpx.Client(transport=transport) as client:
+        first = execute_task(
+            store,
+            "demo",
+            case_ids=["list-items", "list-items-2"],
+            execution_id=first_run,
+            http_client=client,
+        )
+        assert first.passed == 2
+        assert store.load("demo").status == "completed"
+        previous = store.cases("demo")[0]
+        revision = CaseRevision.model_validate(
+            previous.model_dump()
+            | {
+                "revision": 2,
+                "supersedes": previous.fingerprint(),
+                "title": "List items, revised title",
+                "change_summary": "Clarified title",
+            }
+        )
+        store.add_case("demo", revision)
+        assert store.load("demo").status == "awaiting_review"
+        with pytest.raises(ValueError, match="cannot be executed"):
+            execute_task(store, "demo", approval_id=first_approval, http_client=client)
+
+        review = export_review(store, "demo", config)
+        submission = ReviewSubmission(
+            review_id=review.parent.name,
+            review_hash=(review.parent / "manifest.sha256").read_text("ascii"),
+            actor="human-reviewer",
+            decisions=[
+                {
+                    "case_id": case.case_id,
+                    "revision_hash": case.fingerprint(),
+                    "decision": "approved",
+                    "reason": "Reviewed for second batch",
+                }
+                for case in current_cases(store, "demo").values()
+            ],
+        )
+        second_approval = approve(store, "demo", submission, config).name
+        second = execute_task(
+            store, "demo", case_ids=[revision.case_id], execution_id=second_run, http_client=client
+        )
+        assert second.passed == 1
+
+    latest, _, _ = generate_report(store, "demo")
+    old, _, _ = generate_report(store, "demo", execution_id=first_run, publish=False)
+    assert (latest.execution_id, latest.approval_id) == (second_run, second_approval)
+    assert latest.accounting.planned == latest.accounting.passed == 1
+    assert latest.accounting.conserved
+    assert (old.execution_id, old.approval_id, old.task_status) == (
+        first_run,
+        first_approval,
+        "completed",
+    )
+    assert old.accounting.planned == old.accounting.passed == 2
+    assert old.accounting.conserved
+    assert previous.fingerprint() in {record.revision_hash for record in old.records}
+    active_report = json.loads((store.folder("demo") / "active-report.json").read_text("utf-8"))
+    assert active_report["report_id"] == latest.report_id
+
+
+def test_document_only_task_executes_without_claiming_commit_verification(prepared, tmp_path):
+    store, inventory, output = prepared
+    store.create(
+        Task(
+            task_id="documents",
+            target_project="synthetic",
+            scope=["*"],
+            document_paths=["api.json"],
+        )
+    )
+    discover(store, "documents", tmp_path)
+    output["cases"][0]["target_commit"] = None
+    design(store, "documents", supplied_response=json.dumps(output))
+    case = store.cases("documents")[0]
+    config = ExecutionConfig(
+        environment="synthetic",
+        base_url="http://127.0.0.1:18081",
+        allowed_operations=[inventory.operations[0].operation_id],
+    )
+    review = export_review(store, "documents", config)
+    approve(
+        store,
+        "documents",
+        ReviewSubmission(
+            review_id=review.parent.name,
+            review_hash=(review.parent / "manifest.sha256").read_text("ascii"),
+            actor="human-reviewer",
+            decisions=[
+                {
+                    "case_id": case.case_id,
+                    "revision_hash": case.fingerprint(),
+                    "decision": "approved",
+                    "reason": "Reviewed document-only test",
+                }
+            ],
+        ),
+        config,
+    )
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, json={"items": []}))
+    with httpx.Client(transport=transport) as client:
+        execute_task(store, "documents", case_ids=[case.case_id], http_client=client)
+    report, _, _ = generate_report(store, "documents")
+    assert report.declared_commit is None
+    assert not report.version_verified
+    assert report.accounting.conserved and report.accounting.passed == 1
 
 
 def test_generate_report_completed_task(approved_setup):

@@ -32,6 +32,7 @@ INSTRUCTION = (
     "Return only JSON matching the supplied response schema. "
     "Do not execute requests, approve tests, "
     "or claim tests passed. Use only supplied operation IDs and exact source records. "
+    "Use materials.target_commit as the case target_commit, including null for an unbound target. "
     "Create a valid baseline before negative/boundary changes; explain every parameter, including "
     "background parameters. Include required/missing/null/type/format checks where applicable. "
     "Never guess error codes or business rules. Mark uncertain rules as "
@@ -276,7 +277,14 @@ def design(
     operation_ids: set[str] | None = None,
 ) -> Path:
     task = store.load(task_id)
-    if task.status not in {"discovered", "designed", "awaiting_review"}:
+    if task.status not in {
+        "discovered",
+        "designed",
+        "awaiting_review",
+        "ready",
+        "completed",
+        "incomplete",
+    }:
         raise ValueError("design requires completed discovery")
     ensure_design_complete(store, task_id)
     inventory = load_inventory(store, task_id)
@@ -284,6 +292,14 @@ def design(
     folder.mkdir(parents=True)
     try:
         request = design_request(inventory, max_chars, operation_ids)
+        existing_ids = [case.case_id for case in store.cases(task_id)]
+        if existing_ids:
+            payload = json.loads(request)
+            payload["existing_case_ids"] = sorted(set(existing_ids))
+            payload["instructions"] += " Create NEW unique case IDs, never reuse existing_case_ids."
+            request = json.dumps(payload, ensure_ascii=False)
+            if len(request) > max_chars:
+                raise ValueError("design input including existing IDs exceeds material size limit")
         (folder / "request.json").write_text(request, "utf-8")
         request_hash = hashlib.sha256(request.encode()).hexdigest()
         (folder / "request.sha256").write_text(request_hash, "ascii")
@@ -378,7 +394,14 @@ def recover_design(store: TaskStore, task_id: str, attempt_id: str) -> Path:
         raise ValueError("invalid design attempt ID")
     folder = store.folder(task_id) / "designs" / attempt_id
     task = store.load(task_id)
-    if task.status not in {"discovered", "designed", "awaiting_review"}:
+    if task.status not in {
+        "discovered",
+        "designed",
+        "awaiting_review",
+        "ready",
+        "completed",
+        "incomplete",
+    }:
         raise ValueError("task is not accepting design recovery")
     marker = json.loads((folder / "import-started.json").read_text("utf-8"))
     if marker["task_hash"] != task_binding(task):
@@ -462,7 +485,14 @@ def export_review(
     store: TaskStore, task_id: str, execution_config: ExecutionConfig | None = None
 ) -> Path:
     task = store.load(task_id)
-    if task.status not in {"discovered", "designed", "awaiting_review", "ready"}:
+    if task.status not in {
+        "discovered",
+        "designed",
+        "awaiting_review",
+        "ready",
+        "completed",
+        "incomplete",
+    }:
         raise ValueError("review export requires discovered/designed task")
     ensure_design_complete(store, task_id)
     inventory = load_inventory(store, task_id)
@@ -587,7 +617,7 @@ def export_review(
         "rule_confirmations": [],
     }
     (folder / "decision-template.json").write_text(json.dumps(template, indent=2), "utf-8")
-    if task.status == "ready":
+    if task.status in {"ready", "completed", "incomplete"}:
         store.transition(task_id, "awaiting_review", "Exported a new review snapshot")
     if task.status == "discovered":
         store.transition(task_id, "designed", "Imported draft definitions validated for review")

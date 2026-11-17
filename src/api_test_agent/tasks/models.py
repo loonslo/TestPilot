@@ -102,7 +102,7 @@ class CaseRevision(Contract):
     revision: int = Field(ge=1)
     title: str = Field(min_length=1)
     origin: Literal["human", "ai"]
-    target_commit: str = Field(pattern=r"^[0-9a-f]{40}$")
+    target_commit: str | None = Field(default=None, pattern=r"^[0-9a-f]{40}$")
     operation_ids: tuple[str, ...] = Field(min_length=1)
     purpose: str = Field(min_length=1)
     scenario: Literal["normal", "validation", "boundary", "combination", "auth", "state", "repeat"]

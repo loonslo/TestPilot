@@ -29,9 +29,9 @@ TRANSITIONS = {
     # 一次执行可以只覆盖批准集合中的一部分（单用例或 max_cases 限制）：
     # 这种运行正常结束后任务回到 ready，剩余用例仍可继续执行。
     "running": {"ready", "completed", "incomplete", "blocked", "aborted"},
-    "incomplete": {"running", "completed", "ready", "blocked", "aborted"},
+    "incomplete": {"running", "completed", "ready", "awaiting_review", "blocked", "aborted"},
     "blocked": {"created", "ready", "running", "aborted"},
-    "completed": {"ready", "running", "blocked", "aborted"},
+    "completed": {"ready", "running", "awaiting_review", "blocked", "aborted"},
     "aborted": set(),
 }
 
@@ -175,7 +175,7 @@ class TaskStore:
 
     def add_case(self, task_id: str, case: CaseRevision) -> Path:
         task = self.load(task_id)
-        if task.status in {"running", "completed", "incomplete", "aborted"}:
+        if task.status in {"running", "aborted"}:
             raise ValueError("task no longer accepts design revisions")
         if task.target_commit != case.target_commit:
             raise ValueError("select a matching task commit before importing cases")
@@ -192,7 +192,7 @@ class TaskStore:
         # A newly imported hash has no review decisions: its effective state is always draft.
         path = folder / f"{case.revision:08d}.json"
         _write_new(path, case)
-        if task.status == "ready":
+        if task.status in {"ready", "completed", "incomplete"}:
             self.transition(
                 task_id, "awaiting_review", "New case revision invalidates execution approval"
             )

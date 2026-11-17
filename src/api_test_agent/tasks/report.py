@@ -13,6 +13,7 @@ Boundaries:
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -35,6 +36,7 @@ def generate_report(
     *,
     execution_id: str | None = None,
     output_dir: Path | None = None,
+    publish: bool = True,
 ) -> tuple[Report, Path, Path]:
     task = store.load(task_id)
 
@@ -45,36 +47,55 @@ def generate_report(
     except Exception:
         inventory = None
 
-    # 2. Load active approval if exists
-    active_approval_id = None
-    pointer_approval = store.folder(task_id) / "active-approval.json"
-    if pointer_approval.is_file():
-        try:
-            active_approval_id = json.loads(pointer_approval.read_text("utf-8")).get("approval_id")
-        except Exception:
-            pass
-
-    approval_snapshot = None
-    if active_approval_id:
-        try:
-            approval_snapshot = read_approval(store, task_id, active_approval_id)
-        except Exception:
-            pass
-
-    # 3. Locate execution
+    # Historical execution owns its approval and selection, even after another review.
+    execution_pointer = store.folder(task_id) / "active-execution.json"
     if execution_id is None:
-        pointer_exec = store.folder(task_id) / "active-execution.json"
-        if pointer_exec.is_file():
-            try:
-                execution_id = json.loads(pointer_exec.read_text("utf-8")).get("execution_id")
-            except Exception:
-                pass
+        if execution_pointer.is_file():
+            execution_id = json.loads(execution_pointer.read_text("utf-8")).get("execution_id")
+    execution_summary = {}
+    approval_id = None
+    if execution_id is not None:
+        if not re.fullmatch(r"[0-9a-f]{32}", execution_id):
+            raise ValueError("invalid execution ID")
+        folder = store.folder(task_id) / "executions" / execution_id
+        summary_file = folder / "execution.json"
+        if summary_file.is_file():
+            execution_summary = json.loads(summary_file.read_text("utf-8"))
+            if (
+                execution_summary.get("execution_id") != execution_id
+                or execution_summary.get("task_id") != task_id
+            ):
+                raise ValueError("execution summary identity differs from its directory")
+            approval_id = execution_summary["approval_id"]
+        elif folder.is_dir() and execution_pointer.is_file():
+            active_execution = json.loads(execution_pointer.read_text("utf-8"))
+            if active_execution.get("execution_id") != execution_id:
+                raise ValueError("execution has no saved summary")
+            approval_id = active_execution["approval_id"]
+        else:
+            raise ValueError("execution was not found")
+    else:
+        pointer_approval = store.folder(task_id) / "active-approval.json"
+        if pointer_approval.is_file():
+            approval_id = json.loads(pointer_approval.read_text("utf-8")).get("approval_id")
+
+    approval_snapshot = read_approval(store, task_id, approval_id) if approval_id else None
+    planned_cases = approval_snapshot.cases if approval_snapshot else ()
+    if approval_snapshot and execution_id:
+        inventory = approval_snapshot.inventory
+    selected_ids = execution_summary.get("case_ids")
+    if selected_ids is None and execution_summary.get("scope") == "case":
+        selected_ids = [execution_summary["case_id"]]  # Runs saved before multi-selection.
+    if selected_ids is not None:
+        planned_cases = tuple(case for case in planned_cases if case.case_id in selected_ids)
+        if len(planned_cases) != len(selected_ids):
+            raise ValueError("execution selection differs from its approval")
 
     records = store.execution_records(task_id, execution_id) if execution_id else []
     issues = store.issues(task_id, execution_id) if execution_id else []
 
     # 4. Compute accounting
-    planned = len(approval_snapshot.cases) if approval_snapshot else 0
+    planned = len(planned_cases)
     passed = 0
     failed = 0
     error = 0
@@ -86,9 +107,7 @@ def generate_report(
     missing_evidence_ids: list[str] = []
     record_evidence_status: dict[str, bool] = {}
 
-    approved_cases = (
-        {case.fingerprint(): case for case in approval_snapshot.cases} if approval_snapshot else {}
-    )
+    approved_cases = {case.fingerprint(): case for case in planned_cases}
     for r in records:
         if r.outcome in {"passed", "failed", "error"}:
             r_missing_ids: list[str] = []
@@ -140,12 +159,19 @@ def generate_report(
             record_evidence_status[r.revision_hash] = True
 
     # If execution hasn't run yet, but approval exists:
-    if not records and planned > 0:
+    if not records and planned > 0 and not execution_summary.get("interrupted"):
         not_run = planned
+
+    if execution_summary.get("interrupted"):
+        recorded_hashes = {record.revision_hash for record in records}
+        unknown = [case for case in planned_cases if case.fingerprint() not in recorded_hashes]
+        missing_evidence_count += len(unknown)
+        missing_evidence_ids.extend(f"interrupted_unknown_{case.case_id}" for case in unknown)
 
     conserved = (
         planned == (passed + failed + error + blocked + skipped + not_run)
         and missing_evidence_count == 0
+        and all(record.revision_hash in approved_cases for record in records)
     )
 
     accounting = ExecutionAccounting(
@@ -173,10 +199,9 @@ def generate_report(
     }
 
     step_to_op: dict[tuple[str, str], str] = {}
-    if approval_snapshot:
-        for c in approval_snapshot.cases:
-            for s in c.steps:
-                step_to_op[(c.case_id, s.step_id)] = s.operation_id
+    for c in planned_cases:
+        for s in c.steps:
+            step_to_op[(c.case_id, s.step_id)] = s.operation_id
 
     for r in records:
         if not record_evidence_status.get(r.revision_hash, False):
@@ -219,6 +244,12 @@ def generate_report(
 
     # 6. Scenario Coverage
     all_cases = store.cases(task_id)
+    if execution_id and approval_snapshot:
+        all_cases = [
+            case
+            for case in all_cases
+            if approval_snapshot.all_case_hashes.get(case.case_id) == case.fingerprint()
+        ]
     designed_scenarios: set[tuple[str, str]] = set()
     executed_scenarios: set[tuple[str, str]] = set()
     for c in all_cases:
@@ -244,6 +275,10 @@ def generate_report(
     # Uncovered and out-of-scope operations
     uncovered_ops = []
     limitations = []
+    if execution_summary.get("interrupted"):
+        limitations.append(
+            "服务中断：缺少终态记录的用例结果未知，不能认定未发送请求；请核对副作用后再开始新批次。"
+        )
     if inventory:
         for op in inventory.operations:
             if op.operation_id not in called_operations:
@@ -252,34 +287,27 @@ def generate_report(
                 limitations.append(f"{op.method} {op.path}: {op.status} - {op.reason}")
 
     report_id = uuid4().hex
-    exec_summary_file = (
-        (store.folder(task_id) / "executions" / execution_id / "execution.json")
-        if execution_id
-        else None
+    actual_commit = execution_summary.get("actual_commit")
+    declared_commit = execution_summary.get("declared_commit", task.target_commit)
+    is_version_verified = execution_summary.get("version_verified") is True
+    report_status = execution_summary.get("task_status", task.status)
+    environment = (
+        approval_snapshot.execution_config.environment if approval_snapshot else task.environment
     )
-    actual_commit = None
-    is_version_verified = False
-    if exec_summary_file and exec_summary_file.is_file():
-        try:
-            exec_summary_data = json.loads(exec_summary_file.read_text("utf-8"))
-            is_version_verified = bool(exec_summary_data.get("version_verified", False))
-            actual_commit = exec_summary_data.get("actual_commit")
-        except Exception:
-            pass
 
     report_model = Report(
         report_id=report_id,
         task_id=task_id,
         generated_at=datetime.now(UTC),
-        task_status=task.status,
+        task_status=report_status,
         target_project=task.target_project,
         target_commit=task.target_commit,
         repository=task.repository,
-        environment=task.environment,
-        declared_commit=task.target_commit,
+        environment=environment,
+        declared_commit=declared_commit,
         actual_commit=actual_commit,
         version_verified=is_version_verified,
-        approval_id=active_approval_id,
+        approval_id=approval_id,
         execution_id=execution_id,
         accounting=accounting,
         operation_coverage=op_coverage,
@@ -296,13 +324,13 @@ def generate_report(
         f"# TestPilot 任务报告：{task_id}",
         "",
         f"- **生成时间**：{report_model.generated_at.strftime('%Y-%m-%d %H:%M:%S UTC')}",
-        f"- **任务状态**：`{task.status}`",
+        f"- **任务状态**：`{report_status}`",
         f"- **目标项目**：`{task.target_project or '未指定'}`",
-        f"- **声明目标提交**：`{task.target_commit or '未指定'}`",
+        f"- **声明目标提交**：`{declared_commit or '未指定'}`",
         f"- **实测运行版本**：`{actual_commit or '未核验'}`",
-        f"- **测试环境**：`{task.environment or '未指定'}`"
+        f"- **测试环境**：`{environment or '未指定'}`"
         f"（version_verified: {str(is_version_verified).lower()}）",
-        f"- **批准编号**：`{active_approval_id or '无'}`",
+        f"- **批准编号**：`{approval_id or '无'}`",
         f"- **执行编号**：`{execution_id or '无'}`",
         "",
         *(
@@ -329,7 +357,7 @@ def generate_report(
         "",
         "| 指标 | 数量 | 说明 |",
         "| --- | --- | --- |",
-        f"| 计划执行数 (Planned) | {accounting.planned} | 冻结批准清单中的用例总数 |",
+        f"| 计划执行数 (Planned) | {accounting.planned} | 本次执行选择的已批准用例数 |",
         f"| 通过 (Passed) | {accounting.passed} | 主体步骤与断言全部通过且证据已落盘 |",
         f"| 失败 (Failed) | {accounting.failed} | 断言不符预期，证据已落盘 |",
         f"| 异常 (Error) | {accounting.error} | 网络连接、解析或执行异常 |",
@@ -424,7 +452,13 @@ def generate_report(
     md_lines.append("")
 
     # Unapproved and Deferred Cases Section
-    review_states = store.review_states(task_id)
+    if execution_id and approval_snapshot:
+        review_states = dict.fromkeys(approval_snapshot.all_case_hashes, "未选入批准")
+        review_states.update(
+            {d.case_id: d.decision for d in approval_snapshot.submission.decisions}
+        )
+    else:
+        review_states = store.review_states(task_id)
     non_approved = {cid: state for cid, state in review_states.items() if state != "approved"}
     md_lines.extend(
         [
@@ -472,12 +506,11 @@ def generate_report(
     _write_new(json_path, report_model)
     md_path.write_text(md_content, encoding="utf-8")
 
-    # Link/update active-report.json in task folder
-    (store.folder(task_id) / "active-report.json").write_text(
-        json.dumps({"report_id": report_id, "report_path": str(json_path)}),
-        encoding="utf-8",
-    )
-    # Also write top-level report.md in task folder for easy human reading
-    (store.folder(task_id) / "report.md").write_text(md_content, encoding="utf-8")
+    if publish:
+        (store.folder(task_id) / "active-report.json").write_text(
+            json.dumps({"report_id": report_id, "report_path": str(json_path)}),
+            encoding="utf-8",
+        )
+        (store.folder(task_id) / "report.md").write_text(md_content, encoding="utf-8")
 
     return report_model, md_path, json_path

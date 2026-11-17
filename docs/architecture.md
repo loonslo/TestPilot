@@ -45,7 +45,7 @@ flowchart TB
 | **Task** | `uv run testpilot task configure <id>` | 绑定目标仓库/提交/资料范围 | 否 | 离线记录，不访问网络 |
 | **Task** | `uv run testpilot task discover <id>` | 静态解析 FastAPI/OpenAPI 声明 | 否 | 静态 AST/Spec 解析，不执行被测代码 |
 | **Task** | `uv run testpilot task materials <id>` | 导出受字符预算限制的模型材料 | 否 | 严格按字符上限裁剪，无截断残缺 |
-| **Task** | `uv run testpilot task design <id>` | 生成数据化测试用例（或导入离线响应） | 需参数配置 | 支持离线导入；商业模型调用前严格预算守卫 |
+| **Task** | `uv run testpilot task design <id>` | 生成数据化测试用例（或导入离线响应） | 需参数配置 | 支持网页或 CLI 发起；模型费用由用户管理，保留超时和输入输出长度控制 |
 | **Task** | `uv run testpilot task review <id>` | 导出 Markdown 审核材料与参数理由表 | 否 | 纯离线生成审核文档，草稿置为 pending_review |
 | **Task** | `uv run testpilot task approve <id>` | 人工决定并冻结本轮执行集合 | 否 | 冻结快照和执行器指纹，模型无权批准 |
 | **Task** | `uv run testpilot task verify-approval <id>` | 复核冻结快照哈希完整性 | 否 | 检测用例或执行器是否被篡改 |
@@ -80,14 +80,14 @@ flowchart TB
 
 | 步骤 | 做什么 | 对应命令 | 输入 | 必须留下的结果 (输出) | 负责人 (Role) | 进入下一步的条件 / 拒绝条件 | 恢复方式 |
 |---|---|---|---|---|---|---|---|
-| **1. 定义任务** | 明确项目、范围、版本、目标环境与预算 | `task create`<br/>`task configure`<br/>`task validate-target` | 任务标识、项目名、目标提交、测试范围、环境标识 | `task.json` (状态: `created`) | 用户 / 测试工程师 | 范围与授权明确；**拒绝**：ID 重复、绝对/隐藏路径、生产环境标识 (`prod`) | 重新配置或 `task state <id> created` |
+| **1. 定义任务** | 明确项目、范围、版本与目标环境 | `task create`<br/>`task configure`<br/>`task validate-target` | 任务标识、项目名、目标提交、测试范围、环境标识 | `task.json` (状态: `created`) | 用户 / 测试工程师 | 范围与授权明确；**拒绝**：ID 重复、绝对/隐藏路径、生产环境标识 (`prod`) | 重新配置或 `task state <id> created` |
 | **2. 固定资料** | 读取指定版本的源码、接口文档、业务规则 | `task discover` (前置采集) | 目标 Git 只读提交、指定文档目录 | 采集资料快照、`inventory.json` 来源清单与 SHA256 哈希 | 宿主系统 (只读适配器) | 资料可追溯，缺失显式记录；**拒绝**：文件超限、凭据文件混入 | 修正资料路径并重新执行 |
 | **3. 发现接口** | 提取 method、path、参数、响应、鉴权与关联信息 | `task discover` | 源码 AST (FastAPI) 与 OpenAPI/Swagger 规范 | 接口清单、冲突项与未解析声明 (`discovery/<attempt>/`) | 静态解析适配器 | 每个接口有明确状态；**拒绝**：YAML/JSON 键重复、无法解析语法 | 修正文档或代码语法后重新发现 (生成新 attempt) |
 | **4. 确认测试依据** | 区分文档规定、业务确认、代码观察和模型推测 | `task review` (规则准备) | `inventory.json` 中的声明与规则文件 | 规则清单及其确认状态 (`rules/`) | 测试工程师 / 架构师 | 推测不能直接作为缺陷标准；**拒绝**：未标记来源的伪需求 | 明确规则类别并标注确认状态 |
 | **5. 设计场景** | 为接口选择正常、异常、边界、权限及状态关联场景 | `task design` (矩阵构建) | 接口清单、7 类场景矩阵规范 | 场景矩阵及不适用理由 (`scenarios.json`) | 测试设计员 / 宿主矩阵生成器 | 清楚哪些已设计、哪些仍缺；**拒绝**：矩阵场景与接口定义不匹配 | 补全场景映射或显式记录排除原因 |
 | **6. 生成用例** | 写明前置条件、数据、步骤、断言、清理与参数理由 | `task design`<br/>`task design-recover` | 场景矩阵、字符材料、可选模型配置 | 带修订号的结构化用例 (`cases/<id>/<rev>.json`)、调用元数据 | 生成模型 / 测试设计员 (数据化输出) | 引用、步骤和断言通过静态校验；**拒绝**：缺参数理由、非法引用、商业模型单次费用 > 0.15 USD | 离线 `--response` 导入；`task design-recover` 恢复草稿 |
 | **7. 人工审核与冻结** | 审核规则、用例、目标及允许的操作，冻结执行快照 | `task review`<br/>`task approve`<br/>`task verify-approval` | `review.md`、人工决定清单 (`decisions.json`)、执行配置 | `approval.json`、`approval.sha256` (状态: `ready`) | 人工审核员 (**严禁模型自审**) | 批准内容与实际执行内容一致；**拒绝**：未审用例漏网、指纹不匹配、模型尝试调用 approve | 审核员修正 `decisions.json` 后重新执行 `task approve` |
-| **8. 环境预检** | 核对运行版本、账号、隔离、数据和预算 | `task execute` (前置守卫) | `approval.json`、`ExecutionConfig` | 环境校验记录、执行器兼容检查 | 执行引擎 (宿主守卫) | 实际环境满足批准条件；**拒绝**：生产环境 (`prod`)、环境不匹配、未知执行类型 (`execution_kind`) | 调整执行配置或纠正被测服务环境 |
+| **8. 环境预检** | 核对运行版本、账号、隔离与数据 | `task execute` (前置守卫) | `approval.json`、`ExecutionConfig` | 环境校验记录、执行器兼容检查 | 执行引擎 (宿主守卫) | 实际环境满足批准条件；**拒绝**：生产环境 (`prod`)、环境不匹配、未知执行类型 (`execution_kind`) | 调整执行配置或纠正被测服务环境 |
 | **9. 执行与收集证据** | 确定性执行；记录请求、响应、断言和异常 | `task execute` | 批准快照、受控被测服务 (127.0.0.1) | 每次执行独立的证据链 (`evidence/`、`events.jsonl`) | 执行引擎 (宿主) | 严格遵守请求上限与回环地址；敏感凭据自动脱敏；中断保存 `incomplete` | 修复环境后使用 `--approval` 续跑未执行用例 |
 | **10. 报告与维护** | 对账结果、说明覆盖缺口，修订后重新审核，复用回归 | `task report`<br/>`task export-regression` | `execution.json`、落盘证据记录、回归目录 | 守恒报告 (`report.md`)、更新后的 `cases.yaml` (带 `task_binding`) | 报告引擎 / 资产维护工程师 | 结果可解释、可复核、可重放；对账公式守恒；**拒绝**：凭据缺失却声称 passed | 补齐证据重新生成报告；修正 `--approval` 重新导出 |
 
@@ -105,8 +105,8 @@ flowchart TB
 | **单项目/单仓库测试** | **已支持** | **已支持** | **合成服务验收** | 在回环环境基于真实 HTTP 合成服务完成 10 步端到端小闭环验证（合成资料 → 导入设计 → 审核冻结 → 探针环境预检 → HTTP 执行 → 报告与桥接）；衡仓 (FinUnityServer) 55cf875 沙箱副本完成机制与探索验收。**未经验收真实模型设计质量、未验证复杂生产业务、未验证真人实际审核效果**。 |
 | **多仓库联动 (Multi-Repo)** | **已支持** | **机制支持** | **未真实验收** | `ProjectConfig.repository`、`task.target_project`、`version_manifest` 及来源路径支持不同项目与相对根。但**尚未验收跨仓库依赖解析、多仓库协同提交触发与多服务联合编排**。审核仍核对单个 target_commit，当前严禁声称支持复杂多微服务跨仓库自动测试。 |
 | **多执行器 (Multi-Runner)** | **已支持** | **机制支持** | **部分已验收** | `runner.py` 内置 `RUNNER_REGISTRY` 与 `register_runner` 机制，`CaseRevision.execution_kind` 字段支持拓展。**已实现并真实验收单进程 pytest 与统一任务 loopback HTTP 发包**；F8 回归桥接已打通回归执行器直接调度统一任务用例（`task_command`，按 `--case-id` 离散执行）。外部 runner（如 Newman、Playwright runner）处于机制预留阶段，未做真实验收；统一任务执行端对未知类型直接拦截为 `blocked`。 |
-| **UI 操作 (Web Console)** | **已支持** | **机制支持** | **未真实验收** | 提供 Web Console (`testpilot ui`) 作为**任务配置与资产查看工作台**（只读透视与状态探活）。已落地服务端严格防护（校验回环 Host、Origin 端口白名单、Sec-Fetch-Site 阻断跨站、强制 `X-TestPilot-Token` 凭据授权）。但**不支持任何浏览器端自动化驱动（如 Playwright/Selenium 端到端点击），POST /execute 接口已被执行前守卫显式封禁**。UI 仅用于人工透视与配置，绝不能当作“已真实验收 UI 自动化测试执行能力”。 |
-| **付费商业模型接入** | **已支持** | **机制支持** | **受控真实验收** | 字段支持 `ModelConfig` 与费用预算；机制支持基于 Token 单价的最坏情况调用前费用预留守卫（`worst_case_cost`）与 `--allow-paid` 拦截。当前探索基准固定为免费路由；回归模块经用户逐次批准可调用 DeepSeek `deepseek-chat`。严禁未经批准的持续商业调用。 |
+| **UI 操作 (Web Console)** | **已支持** | **机制支持** | **合成服务与浏览器闭环通过** | 任务创建、资料选择、模型配置、生成／导入、表单修订、人工批准、后台 HTTP 执行、批次与报告。不是被测产品的浏览器自动化执行器；真实业务与模型质量尚未验收。 |
+| **模型接入** | **已支持** | **机制支持** | **真实模型质量未验收** | 统一 task/Web 流程按用户配置调用，费用和额度由用户管理。历史 explorer 与发布差异 plan 仍保留其原有控制。 |
 
 ---
 
@@ -127,11 +127,9 @@ flowchart TB
   1. 执行器仅接纳已实现的 `http` 和 `structured-http-v1` 执行类型。
   2. 遇到未支持的执行类型（例如未经适配的外部 runner 或未知脚本类型），执行引擎**拒绝伪造 HTTP 请求**，直接将该用例标记为 `blocked`，生成 `environment_issue` 审计事件，确保测试结果客观真实。
 
-### 5.3 商业付费预算与最坏情况费用预留守卫 (Paid Model Budget & Cost Reservation Guard)
-- **校验位置**：`design_model.py` (`generate_task_design_with_model`) 与 `regression/cli.py` (`plan`)。
-- **拦截规则**：
-  1. **调用前最坏情况费用预留**：内置基准价格表（如 DeepSeek、OpenRouter 等）并支持在 `BudgetSettings` 配置 `cost_per_million_input_tokens` 与 `cost_per_million_output_tokens`。在网络发包前，根据输入字符估算 token 上界及模型最大生成 token 上限，计算 `worst_case_cost`。若 `worst_case_cost > max_cost_usd`，在发包前抛出异常拦截；若调用外部商业模型且定价未知，直接拒绝发起调用，杜绝“配置了预算但调用超额”风险。
-  2. 回归模块 `plan` 命令若未指定 `--stub` 或 `--no-ai`，必须显式传递 `--allow-paid` 或配置环境变量 `TESTPILOT_ALLOW_PAID_MODEL=1`，否则在发起模型调用前直接退出，保护用户资金安全。
+### 5.3 模型调用配置与运行限制
+统一任务的 `design_model.py` 接受用户配置的兼容端点、模型、密钥环境变量名、超时和输出长度；只发起一次无工具调用，不强制金额或每日请求预算，不依赖价格表。凭据不落盘。费用由用户在供应商侧管理。
+历史探索 Agent 与回归 `plan` 是独立入口，本轮没有改写它们的预算和 `--allow-paid` 行为。
 
 ### 5.4 UI 访问边界与服务端会话授权守卫 (UI Boundary & Mutation Auth Guard)
 - **校验位置**：`ui/server.py` (`TaskDashboardHandler`)。
@@ -139,7 +137,7 @@ flowchart TB
   1. **CORS 与同源防护**：移除任何通配符 `*` CORS 标头，仅信任回环地址（`127.0.0.1` / `localhost`）且 Origin 端口必须与当前服务端端口严格一致；阻断 `Sec-Fetch-Site: cross-site` 恶意跨站请求。
   2. **服务端变更鉴权**：服务器启动时生成高熵随机会话令牌 `auth_token`，挂载 GET `/api/auth/token` 并在页面中注入；所有修改类 POST 请求强制核验 `X-TestPilot-Token` 请求头，缺失或不符直接返回 `403 Forbidden`。
   3. **防路径穿越**：针对 `task_id` 实施严格的合法字符校验 (`^[A-Za-z0-9_.-]+$`)，任何含 `../`、`\` 的恶意路径均被拒绝。
-  4. **只读访问限制**：UI 定位为“任务配置与资产查看控制台”。检测到尝试通过 Web API 触发 `POST /api/tasks/{task_id}/execute`，统一返回 `403 Forbidden`，强制要求执行必须由人工在受信终端显式触发。
+  4. **网页批准与执行**：人通过网页提交审核决定，绑定所见用例哈希、环境和审核材料。`execute` 在后台调用原执行引擎，拒绝无效批准；每任务变更锁防止重复执行与执行中编辑。所有 API 数据访问要求会话凭据，服务仅绑定回环地址。
 
 ---
 
@@ -158,3 +156,13 @@ flowchart TB
 - **粒度隔离与离散执行**：导出的 entry 为离散命令行参数列表，并带有 `--case-id <case_id>`（及必要的 `--root`），避免单用例条目重复执行整个任务用例集。
 - **回归执行器接通**：`regression/runner.py` 注册了 `task_command` 适配器并注入 `RUNNER_REGISTRY["task"]`；`testpilot run` 执行到携带 `task_binding` 的用例时，自动调用统一任务执行器并解析退出码和测试结果，实现真正的回归复用。
 - **数据保护**：读取已有 `cases.yaml` 出现解析错误或损坏时抛出 `ValueError`，拒绝覆写已有资产。
+
+## 2026-11-13：Web 工作台状态与批次边界
+
+`ui/workflow.py` 负责网页编排、原子配置文件、每任务变更锁与后台作业；业务校验复用 `tasks` 服务，浏览器不拥有独立批准规则。模型配置存放在任务根目录下的本机文件，只含变量名，不含密钥。
+
+- 用例以 `case_id + revision + fingerprint` 标识。完成／未完成后可新增修订，审批重新进入待审核；历史修订与证据不覆盖。
+- 每次执行开始先落盘范围、批准和版本信息；结束写入实际结果。报告按该批次的批准和选择范围计算，不能读取新批准冒充旧批准。
+- 网页回归是显式创建新批次，可关联上一批并选择已批准用例。跨版本自动重绑与跨仓库编排未实现；新目标版本创建新任务并重新核对资料与用例。
+- 中断作业在重启后显式显示 interrupted。用户检查副作用后可在网页标记中断并解锁；不自动重发请求，缺少终态的结果记为未知证据缺口，不冒充未执行或通过。已校验但未完成入库的设计批次可在网页恢复导入，复用原 design-recover 校验，不再次调用模型。
+- 文件浏览支持本机盘符与绝对路径，不要求 --allow-root；保留敏感文件名／隐藏配置拒绝以及被测源码 data/备份边界。网络共享路径不在本轮 Web 选择支持范围。

@@ -4,14 +4,19 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Generator
+from copy import deepcopy
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
 import pytest
+from test_task_design import prepared as prepared
+from test_task_execution import approved_setup as approved_setup
 
 from api_test_agent.cli import _build_parser
 from api_test_agent.tasks.store import TaskStore
@@ -19,7 +24,10 @@ from api_test_agent.ui.server import make_server
 
 
 @pytest.fixture
-def test_server(tmp_path: Path) -> Generator[tuple[str, TaskStore]]:
+def test_server(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Generator[tuple[str, TaskStore]]:
+    monkeypatch.setattr("api_test_agent.ui.server.read_env", lambda _: None)
     tasks_root = tmp_path / "tasks"
     tasks_root.mkdir()
     store = TaskStore(tasks_root)
@@ -84,7 +92,7 @@ def test_ui_serves_static_dashboard(test_server: tuple[str, TaskStore]) -> None:
         assert resp.headers.get("X-Content-Type-Options") == "nosniff"
         content = resp.read().decode("utf-8")
         assert "<title>TestPilot" in content
-        assert "Sources 追溯面板" in content
+        assert "技术详情" in content
         assert "testpilot-token" in content
 
 
@@ -201,7 +209,7 @@ def test_ui_post_untrusted_origin_rejected_403(test_server: tuple[str, TaskStore
         headers={"Origin": "http://evil.com"},
     )
     assert status == 403
-    assert "untrusted Origin" in res.get("error", "")
+    assert "untrusted Host or Origin" in res.get("error", "")
 
 
 def test_ui_post_cross_port_origin_rejected_403(test_server: tuple[str, TaskStore]) -> None:
@@ -213,7 +221,7 @@ def test_ui_post_cross_port_origin_rejected_403(test_server: tuple[str, TaskStor
         headers={"Origin": "http://127.0.0.1:9999"},
     )
     assert status == 403
-    assert "cross-port Origin" in res.get("error", "")
+    assert "untrusted Host or Origin" in res.get("error", "")
 
 
 def test_ui_post_cross_site_sec_fetch_site_rejected_403(test_server: tuple[str, TaskStore]) -> None:
@@ -235,35 +243,29 @@ def test_ui_fs_list_requires_session_token(test_server: tuple[str, TaskStore]) -
     assert "X-TestPilot-Token" in res.get("error", "")
 
 
-def test_ui_fs_list_rejects_path_outside_allowed_roots(
+def test_ui_fs_lists_external_directory_and_filters_protected_paths(
     test_server: tuple[str, TaskStore], tmp_path: Path
 ) -> None:
     base_url, _ = test_server
-    outside = urllib.parse.quote(str(tmp_path), safe="")
-    status, res = _request_json(f"{base_url}/api/fs/list?path={outside}")
+    outside = tmp_path / "other-project"
+    outside.mkdir()
+    (outside / "api.json").write_text("{}", encoding="utf-8")
+    (outside / "credentials.json").write_text("{}", encoding="utf-8")
+    (outside / ".git").mkdir()
+    quoted = urllib.parse.quote(str(outside), safe="")
+    status, result = _request_json(f"{base_url}/api/fs/list?path={quoted}&filter=doc")
+    assert status == 200
+    assert [item["name"] for item in result["items"]] == ["api.json"]
+    assert any(Path(item["path"]) == Path(outside.anchor) for item in result["quick_dirs"])
+    forbidden = urllib.parse.quote(str(outside / ".git"), safe="")
+    status, _ = _request_json(f"{base_url}/api/fs/list?path={forbidden}")
     assert status == 403
-    assert "outside the console's allowed roots" in res.get("error", "")
-
-
-def test_ui_fs_list_allows_extra_configured_root(tmp_path: Path) -> None:
-    tasks_root = tmp_path / "tasks"
-    tasks_root.mkdir()
-    extra_root = tmp_path / "subjects"
-    extra_root.mkdir()
-    (extra_root / "package.json").write_text("{}", encoding="utf-8")
-
-    server = make_server(tasks_root, host="127.0.0.1", port=0, allowed_roots=(extra_root,))
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    base_url = f"http://127.0.0.1:{server.server_port}"
-    try:
-        quoted = urllib.parse.quote(str(extra_root), safe="")
-        status, data = _request_json(f"{base_url}/api/fs/list?path={quoted}")
-        assert status == 200
-        assert "package.json" in [item["name"] for item in data["items"]]
-    finally:
-        server.shutdown()
-        server.server_close()
+    status, _ = _request_json(
+        f"{base_url}/api/tasks/create",
+        "POST",
+        {"document_paths": [str(outside / "credentials.json")]},
+    )
+    assert status == 403
 
 
 def test_ui_configure_accepts_openapi_url(test_server: tuple[str, TaskStore]) -> None:
@@ -416,6 +418,271 @@ def test_ui_dashboard_styling_and_explorer_elements(test_server: tuple[str, Task
         # 9. The Sources bar shares the header row with the sheet, so their
         #    rules line up; it must stay a sibling of the drawer, not inside it.
         assert 'id="drawerHead"' in html
-        assert html.index('id="drawerHead"') < html.index('<aside class="drawer"')
+        assert html.index('id="drawerHead"') < html.index('<aside class="drawer')
+        assert 'class="app no-drawer"' in html
         assert "grid-template-rows: auto minmax(0, 1fr)" in html
         assert ".app.no-drawer" in html
+
+
+def test_web_workflow_runs_scoped_batches_and_preserves_old_report(
+    test_server, prepared, tmp_path, monkeypatch
+):
+    base_url, _ = test_server
+    _, _, template = prepared
+    request_started = threading.Event()
+    release_request = threading.Event()
+    calls = []
+
+    class SyntheticService(BaseHTTPRequestHandler):
+        def do_GET(self):
+            calls.append(self.path)
+            request_started.set()
+            release_request.wait(timeout=5)
+            body = b'{"items": [1]}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    target = ThreadingHTTPServer(("127.0.0.1", 0), SyntheticService)
+    thread = threading.Thread(target=target.serve_forever, daemon=True)
+    thread.start()
+
+    def get(path, expected=200):
+        status, data = _request_json(f"{base_url}{path}")
+        assert status == expected, data
+        return data
+
+    def post(path, data=None, expected=200):
+        status, result = _request_json(f"{base_url}{path}", "POST", data or {})
+        assert status == expected, result
+        return result
+
+    def wait_job(task_path, job):
+        for _ in range(150):
+            jobs = get(f"{task_path}/workflow")["jobs"]
+            state = next(item for item in jobs if item["job_id"] == job["job_id"])
+            if state["status"] != "running":
+                return state
+            time.sleep(0.025)
+        pytest.fail("Background job did not finish")
+
+    def human_approval(task_path, ids):
+        review = post(f"{task_path}/review")
+        assert all(case_id in review["markdown"] for case_id in ids)
+        payload = {
+            "review_id": review["review_id"],
+            "review_hash": review["review_hash"],
+            "actor": "synthetic-reviewer",
+            "decisions": [
+                {
+                    "case_id": case_id,
+                    "revision_hash": review["cases"][case_id],
+                    "decision": "approved",
+                    "reason": "Checked parameters and expected status",
+                }
+                for case_id in ids
+            ],
+        }
+        return post(f"{task_path}/approve", payload)["approval_id"], payload
+
+    try:
+        task = post(
+            "/api/tasks/create",
+            {
+                "target_project": "Synthetic UI workflow",
+                "scope": ["*"],
+                "document_paths": [str(tmp_path / "api.json")],
+            },
+            201,
+        )
+        assert task["task_id"].startswith("task-")
+        assert task["target_commit"] is None
+        task_path = f"/api/tasks/{task['task_id']}"
+        inventory = post(f"{task_path}/discover")
+        operation_id = inventory["operations"][0]["operation_id"]
+        source = inventory["materials"][0]
+        case = deepcopy(template["cases"][0])
+        case.update(target_commit=None, operation_ids=[operation_id])
+        case["rules"][0]["sources"] = [source]
+        case["steps"][0]["operation_id"] = operation_id
+        case["steps"][0]["parameters"][0]["source_ids"] = [source["source_id"]]
+        assessments = [{**row, "operation_id": operation_id} for row in template["assessments"]]
+        design_output = {"cases": [case], "assessments": assessments}
+
+        def fake_generator(settings):
+            assert settings.model_id == "unknown-model"
+
+            def generate(request):
+                assert json.loads(request)["operations"][0]["operation_id"] == operation_id
+                return json.dumps(design_output)
+
+            return generate
+
+        monkeypatch.setattr("api_test_agent.ui.workflow.model_generator", fake_generator)
+        monkeypatch.setattr("api_test_agent.ui.workflow.read_env", lambda _: "fake-provider-key")
+        config = post(
+            "/api/model/config",
+            {
+                "model_id": "unknown-model",
+                "base_url": "https://example.invalid/v1",
+                "api_key_env": "SYNTHETIC_PROVIDER_KEY",
+            },
+        )
+        assert config["key_configured"] is True
+        assert "fake-provider-key" not in json.dumps(get("/api/model/config"))
+        generated = post(f"{task_path}/generate", {"operation_ids": [operation_id]}, 202)
+        assert wait_job(task_path, generated)["status"] == "completed"
+        extra_case = {**case, "case_id": "additional-list-check"}
+        post(
+            f"{task_path}/cases",
+            {"response": json.dumps({**design_output, "cases": [extra_case]})},
+        )
+        post(
+            f"{task_path}/environment",
+            {
+                "environment": "local",
+                "base_url": f"http://127.0.0.1:{target.server_port}",
+                "allowed_operations": [operation_id],
+            },
+        )
+        post(f"{task_path}/execute", {"approval_id": "unapproved"}, 403)
+        assert not calls
+
+        approval_id, original_review = human_approval(
+            task_path, [case["case_id"], extra_case["case_id"]]
+        )
+        first = post(f"{task_path}/execute", {"approval_id": approval_id}, 202)
+        assert request_started.wait(timeout=5)
+        assert get(f"{task_path}/batches")["batches"][0]["status"] == "running"
+        post(f"{task_path}/execute", {"approval_id": approval_id}, 409)
+        release_request.set()
+        assert wait_job(task_path, first)["outcome"] == "passed"
+        first_batch = f"{task_path}/batches/{first['execution_id']}"
+        first_result = get(first_batch)
+        assert first_result["report"]["accounting"]["passed"] == 2
+        evidence_id = first_result["records"][0]["evidence_ids"][0]
+        evidence = get(f"{first_batch}/evidence/{evidence_id}")
+        assert evidence["evidence_id"] == evidence_id
+
+        scoped = post(
+            f"{task_path}/execute",
+            {
+                "approval_id": approval_id,
+                "case_ids": [case["case_id"]],
+                "previous_execution_id": first["execution_id"],
+            },
+            202,
+        )
+        assert wait_job(task_path, scoped)["outcome"] == "passed"
+        scoped_result = get(f"{task_path}/batches/{scoped['execution_id']}")
+        assert scoped_result["batch"]["previous_execution_id"] == first["execution_id"]
+        assert scoped_result["report"]["accounting"]["planned"] == 1
+
+        edited = deepcopy(case)
+        edited["assertions"][0]["expected"] = False
+        edited["change_summary"] = "Intentionally verify mismatch is reported"
+        current = get(f"{task_path}/workflow")["case_hashes"]
+        revised = post(
+            f"{task_path}/cases/{case['case_id']}",
+            {"expected_hash": current[case["case_id"]], "case": edited},
+        )
+        assert revised["revision"] == 2
+        assert get(f"{task_path}/workflow")["approval"]["stale"] is True
+        post(f"{task_path}/execute", {"approval_id": approval_id}, 403)
+        post(f"{task_path}/approve", original_review, 400)
+        new_approval_id, _ = human_approval(task_path, [case["case_id"]])
+        post(
+            f"{task_path}/execute",
+            {"approval_id": new_approval_id, "case_ids": [extra_case["case_id"]]},
+            403,
+        )
+        third = post(f"{task_path}/execute", {"approval_id": new_approval_id}, 202)
+        assert wait_job(task_path, third)["outcome"] == "failed"
+        failed_result = get(f"{task_path}/batches/{third['execution_id']}")
+        assert failed_result["report"]["accounting"]["failed"] == 1
+        assert failed_result["report"]["accounting"]["passed"] == 0
+        assert len(calls) == 4
+        assert get(first_batch) == first_result
+        later_case = {**case, "case_id": "later-batch-case"}
+        post(
+            f"{task_path}/cases", {"response": json.dumps({**design_output, "cases": [later_case]})}
+        )
+        assert get(f"{task_path}/workflow")["approval"]["stale"] is True
+        assert get(first_batch) == first_result
+    finally:
+        release_request.set()
+        target.shutdown()
+        target.server_close()
+
+
+def test_web_recovery_keeps_unknown_results_without_replaying(approved_setup):
+    import httpx
+
+    from api_test_agent.tasks.execution import execute_task
+    from api_test_agent.ui.workflow import WebWorkflow, write_json
+
+    store, config, approval_id, _ = approved_setup
+    sent = []
+
+    def handle(request):
+        sent.append(request)
+        return httpx.Response(200, json={"items": [1]})
+
+    with httpx.Client(transport=httpx.MockTransport(handle)) as client:
+        execute_task(store, "demo", http_client=client)
+    pointer = json.loads((store.folder("demo") / "active-execution.json").read_text("utf-8"))
+    execution_id = pointer["execution_id"]
+    folder = store.folder("demo") / "executions" / execution_id
+    # Simulate a process loss before one case's final record was persisted.
+    next((folder / "records").glob("*.json")).unlink()
+    store.transition("demo", "running", "Synthetic crash fixture")
+    write_json(
+        store.folder("demo") / "web-jobs" / "crash.json",
+        {
+            "job_id": "crash",
+            "kind": "execute",
+            "status": "running",
+            "started_at": "2026-11-12T00:00:00Z",
+            "execution_id": execution_id,
+            "approval_id": approval_id,
+        },
+    )
+    workflow = WebWorkflow(store)
+    with pytest.raises(ValueError, match="确认"):
+        workflow.post("demo", "recover", {}, None)
+    workflow.post("demo", "recover", {"acknowledge": True}, None)
+    result = workflow.batch("demo", execution_id)
+    assert store.load("demo").status == "incomplete"
+    assert result["report"]["accounting"]["missing_evidence_count"] == 1
+    assert result["report"]["accounting"]["conserved"] is False
+    assert result["report"]["accounting"]["not_run"] == 0
+    assert len(sent) == 2
+
+
+def test_web_console_rejects_public_binding(tmp_path):
+    with pytest.raises(ValueError, match="loopback"):
+        make_server(tmp_path, host="0.0.0.0", port=0)
+
+
+def test_web_recovers_validated_design_without_model_call(prepared, monkeypatch):
+    from api_test_agent.tasks import design as design_module
+    from api_test_agent.ui.workflow import WebWorkflow
+
+    store, _, output = prepared
+    workflow = WebWorkflow(store)
+    with monkeypatch.context() as context:
+
+        def interrupt(*args, **kwargs):
+            raise RuntimeError("simulated write interruption")
+
+        context.setattr(design_module, "finish_import", interrupt)
+        with pytest.raises(RuntimeError, match="interruption"):
+            workflow.post("demo", "cases", {"response": json.dumps(output)}, None)
+    pending = workflow.overview("demo")["pending_imports"]
+    assert len(pending) == 1
+    workflow.post("demo", "recover-design", {"design_id": pending[0]}, None)
+    assert workflow.overview("demo")["pending_imports"] == []
+    assert len(store.cases("demo")) == 1
+    assert store.load("demo").status == "designed"

@@ -240,7 +240,7 @@ def test_new_revision_returns_to_draft_without_altering_old_review(prepared):
     assert len(store.review_history("demo")) == 2
 
 
-def test_live_adapter_budget_and_model_metadata_with_fake_provider(tmp_path, monkeypatch):
+def test_live_adapter_unknown_pricing_and_model_metadata_with_fake_provider(tmp_path, monkeypatch):
     from types import SimpleNamespace
 
     from api_test_agent.tasks import design_model
@@ -248,18 +248,20 @@ def test_live_adapter_budget_and_model_metadata_with_fake_provider(tmp_path, mon
     monkeypatch.chdir(tmp_path)
     config = tmp_path / "model.toml"
     config.write_text(
-        '[model]\nmodel_id="openrouter/free"\n[budget]\nmax_requests_per_day=1\n', encoding="utf-8"
+        '[model]\nmodel_id="unknown-commercial-model"\n[budget]\nmax_cost_usd=0\n', encoding="utf-8"
     )
     monkeypatch.setattr(design_model, "read_env", lambda name: "synthetic-key-for-fake-client")
     calls = []
 
     class FakeClient:
-        model_id = "openrouter/free"
+        model_id = "unknown-commercial-model"
 
         def __init__(self, settings, key):
-            pass
+            assert settings.timeout_seconds == 90
 
         def chat(self, messages, tools, **kwargs):
+            assert kwargs == {"tool_choice": "none", "max_tokens": 2048}
+            assert tools == []
             calls.append(messages)
             return SimpleNamespace(
                 content='{"cases":[]}',
@@ -271,15 +273,13 @@ def test_live_adapter_budget_and_model_metadata_with_fake_provider(tmp_path, mon
             )
 
     monkeypatch.setattr(design_model, "ModelClient", FakeClient)
-    generator = design_model.live_generator(config, sleep=lambda seconds: None)
+    generator = design_model.live_generator(config)
     reply = generator("synthetic-request")
     assert reply.metadata["model"] == "fake-provider"
-    assert reply.metadata["budget"]["model_calls"] == 1
-    with pytest.raises(ValueError, match="daily_requests"):
-        generator("second request refused")
+    assert reply.metadata["total_tokens"] == 20
+    assert reply.metadata["provider_cost_usd"] == 0
     assert len(calls) == 1
-    ledger = (tmp_path / "runtime/model-usage.json").read_text("utf-8")
-    assert "synthetic-key-for-fake-client" not in ledger
+    assert "synthetic-key-for-fake-client" not in str(reply.metadata)
 
 
 def test_live_adapter_reads_configured_api_key_env(tmp_path, monkeypatch):
@@ -290,8 +290,9 @@ def test_live_adapter_reads_configured_api_key_env(tmp_path, monkeypatch):
         '[model]\nmodel_id="deepseek-chat"\nbase_url="https://api.deepseek.com/v1"\napi_key_env="CUSTOM_KEY"\n',
         encoding="utf-8",
     )
-    generator = design_model.live_generator(config, sleep=lambda seconds: None)
-    with pytest.raises(ValueError, match="CUSTOM_KEY is not set"):
+    monkeypatch.setattr(design_model, "read_env", lambda name: None)
+    generator = design_model.live_generator(config)
+    with pytest.raises(ValueError, match="CUSTOM_KEY"):
         generator("test request")
 
 
@@ -325,7 +326,7 @@ def test_live_adapter_allows_local_endpoint_without_key(tmp_path, monkeypatch):
             )
 
     monkeypatch.setattr(design_model, "ModelClient", FakeClient)
-    generator = design_model.live_generator(config, sleep=lambda seconds: None)
+    generator = design_model.live_generator(config)
     reply = generator("test request")
     assert reply.metadata["model"] == "local-ollama"
 
@@ -461,7 +462,9 @@ def test_generation_interrupt_leaves_explicit_failure(prepared):
     assert store.cases("demo") == []
 
 
-def test_provider_reported_cost_stops_before_drafts_are_imported(prepared, tmp_path, monkeypatch):
+def test_provider_reported_cost_is_recorded_and_drafts_are_imported(
+    prepared, tmp_path, monkeypatch
+):
     from types import SimpleNamespace
 
     from api_test_agent.tasks import design_model
@@ -489,10 +492,9 @@ def test_provider_reported_cost_stops_before_drafts_are_imported(prepared, tmp_p
             )
 
     monkeypatch.setattr(design_model, "ModelClient", FakePaidReply)
-    generator = design_model.live_generator(config, sleep=lambda seconds: None)
-    with pytest.raises(ValueError, match="cost"):
-        design(store, "demo", generator)
-    assert store.cases("demo") == []
+    generator = design_model.live_generator(config)
+    design(store, "demo", generator)
+    assert store.cases("demo")
     marker = next(store.folder("demo").glob("designs/*/model-call.json"))
-    assert json.loads(marker.read_text("utf-8"))["budget"]["cost_usd"] == 0.01
+    assert json.loads(marker.read_text("utf-8"))["provider_cost_usd"] == 0.01
     assert "synthetic-fake-client-key" not in marker.read_text("utf-8")

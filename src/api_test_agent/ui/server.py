@@ -26,14 +26,14 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-
-from pydantic import ValidationError
+from uuid import uuid4
 
 from api_test_agent.adapters import get_all_supported_extensions, list_adapters
 from api_test_agent.envvars import read_env
-from api_test_agent.tasks.discovery import discover
+from api_test_agent.tasks.discovery import SECRET_PATH_PATTERN, discover, document_permitted, git
 from api_test_agent.tasks.models import Task
 from api_test_agent.tasks.store import TaskStore
+from api_test_agent.ui.workflow import BusyTask, WebWorkflow, safe_error
 
 logger = logging.getLogger(__name__)
 
@@ -57,24 +57,7 @@ class UIRequestHandler(BaseHTTPRequestHandler):
 
     store: TaskStore
     static_dir: Path = STATIC_DIR
-
-    def _apply_cors(self) -> None:
-        """Reflect only an exact same-origin request.
-
-        A loopback host alone is not enough: any other local page on a different
-        port is a different origin and must not get a readable CORS grant.
-        """
-        origin = self.headers.get("Origin")
-        if not origin:
-            return
-        parsed = urllib.parse.urlsplit(origin)
-        server_port = getattr(self.server, "server_port", None)
-        if parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
-            return
-        if not server_port or parsed.port != server_port:
-            return
-        self.send_header("Access-Control-Allow-Origin", origin)
-        self.send_header("Vary", "Origin")
+    workflow: WebWorkflow
 
     def _token_ok(self) -> bool:
         server_token = getattr(self.server, "auth_token", "")
@@ -84,72 +67,91 @@ class UIRequestHandler(BaseHTTPRequestHandler):
             self.headers.get("X-TestPilot-Token")
             or self.headers.get("Authorization", "").replace("Bearer ", "").strip()
         )
-        return secrets.compare_digest(client_token, server_token)
+        return secrets.compare_digest(client_token.encode(), server_token.encode())
+
+    def _check_origin(self) -> bool:
+        """Require a local host and, for browser requests, the console origin."""
+        host = self.headers.get("Host", "")
+        origin = self.headers.get("Origin")
+        if self.headers.get("Sec-Fetch-Site", "").lower() == "cross-site":
+            self._send_error("Forbidden: cross-site request blocked", status=HTTPStatus.FORBIDDEN)
+            return False
+        try:
+            parsed_host = urllib.parse.urlsplit(f"http://{host}")
+            parsed_origin = urllib.parse.urlsplit(origin) if origin else None
+            port = self.server.server_port
+            trusted = (
+                parsed_host.hostname in {"127.0.0.1", "localhost", "::1"}
+                and (parsed_host.port or 80) == port
+                and not parsed_host.username
+                and not parsed_host.password
+                and not parsed_host.path
+                and not parsed_host.query
+                and not parsed_host.fragment
+                and (
+                    parsed_origin is None
+                    or (
+                        parsed_origin.scheme == "http"
+                        and parsed_origin.hostname == parsed_host.hostname
+                        and (parsed_origin.port or 80) == port
+                        and not parsed_origin.username
+                        and not parsed_origin.password
+                        and not parsed_origin.path
+                        and not parsed_origin.query
+                        and not parsed_origin.fragment
+                    )
+                )
+            )
+        except ValueError:
+            trusted = False
+        if not trusted:
+            self._send_error("Forbidden: untrusted Host or Origin", status=HTTPStatus.FORBIDDEN)
+        return trusted
 
     def _check_read_auth(self) -> bool:
-        """Session token for read endpoints that expose host filesystem or artifacts."""
         if not self._token_ok():
             self._send_error(
                 "Forbidden: invalid or missing X-TestPilot-Token session credential",
                 status=HTTPStatus.FORBIDDEN,
             )
-            return False
-        if self.headers.get("Sec-Fetch-Site", "").lower() == "cross-site":
-            self._send_error("Forbidden: cross-site request blocked", status=HTTPStatus.FORBIDDEN)
             return False
         return True
 
     def _is_allowed_path(self, target: Path) -> bool:
-        for root in getattr(self.server, "allowed_roots", ()):
-            try:
-                target.relative_to(root)
-                return True
-            except ValueError:
-                continue
-        return False
-
-    def _check_mutation_auth(self) -> bool:
-        """Enforce strict host, origin, and session token checks for POST mutations."""
-        # 1. Host header validation
-        host = self.headers.get("Host", "")
-        host_name = host.split(":")[0].strip("[]")
-        if host_name not in {"127.0.0.1", "localhost", "::1"}:
-            self._send_error(f"Forbidden: untrusted Host {host!r}", status=HTTPStatus.FORBIDDEN)
+        if not target.is_absolute() or target.drive.startswith(("\\", "//")):
             return False
-
-        # 2. Origin check: If present, must be loopback and match server port
-        origin = self.headers.get("Origin")
-        if origin:
-            parsed = urllib.parse.urlsplit(origin)
-            if parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
-                self._send_error(
-                    f"Forbidden: untrusted Origin {origin!r}", status=HTTPStatus.FORBIDDEN
-                )
-                return False
-            server_port = getattr(self.server, "server_port", None)
-            if server_port and parsed.port and parsed.port != server_port:
-                self._send_error(
-                    f"Forbidden: cross-port Origin {origin!r} does not match "
-                    f"server port {server_port}",
-                    status=HTTPStatus.FORBIDDEN,
-                )
-                return False
-
-        # 3. Sec-Fetch-Site check
-        sec_fetch_site = self.headers.get("Sec-Fetch-Site", "").lower()
-        if sec_fetch_site == "cross-site":
-            self._send_error("Forbidden: cross-site request blocked", status=HTTPStatus.FORBIDDEN)
+        workspace = getattr(self.server, "workspace_root", Path.cwd().resolve())
+        subjects = workspace / "subjects"
+        if target.is_relative_to(subjects) and any(
+            part.lower() in {"data", "backups", "backup"}
+            for part in target.relative_to(subjects).parts
+        ):
             return False
+        return not any(
+            part.startswith(".") or SECRET_PATH_PATTERN.search(part) for part in target.parts[1:]
+        )
 
-        # 4. Session Token validation
-        if not self._token_ok():
-            self._send_error(
-                "Forbidden: invalid or missing X-TestPilot-Token session credential",
-                status=HTTPStatus.FORBIDDEN,
-            )
-            return False
+    def _validate_local_materials(self, task: Task) -> None:
+        root = getattr(self.server, "workspace_root", Path.cwd())
+        if task.repository and not self._is_allowed_path((root / task.repository).resolve()):
+            raise PermissionError("Repository path is outside the permitted local sources")
+        for document in task.document_paths:
+            path = (root / document).resolve()
+            if not self._is_allowed_path(path) or not document_permitted(path):
+                raise PermissionError("Document path is outside the permitted local sources")
 
-        return True
+    def _workflow_error(self, exc: Exception) -> None:
+        if isinstance(exc, BusyTask):
+            status = HTTPStatus.CONFLICT
+        elif isinstance(exc, FileNotFoundError):
+            status = HTTPStatus.NOT_FOUND
+        elif isinstance(exc, PermissionError):
+            status = HTTPStatus.FORBIDDEN
+        elif isinstance(exc, (ValueError, OSError)):
+            status = HTTPStatus.BAD_REQUEST
+        else:
+            status = HTTPStatus.INTERNAL_SERVER_ERROR
+        self._send_error(safe_error(exc), status=status)
 
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
         # Keep console output concise and clean
@@ -165,7 +167,6 @@ class UIRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
         self.send_header("Pragma", "no-cache")
         self.send_header("Expires", "0")
-        self._apply_cors()
         self.end_headers()
         self.wfile.write(payload)
 
@@ -185,7 +186,6 @@ class UIRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Expires", "0")
         for header, value in (extra_headers or {}).items():
             self.send_header(header, value)
-        self._apply_cors()
         self.end_headers()
         self.wfile.write(payload)
 
@@ -193,8 +193,9 @@ class UIRequestHandler(BaseHTTPRequestHandler):
         self._send_json({"error": message}, status=status)
 
     def do_OPTIONS(self) -> None:
+        if not self._check_origin():
+            return
         self.send_response(HTTPStatus.NO_CONTENT)
-        self._apply_cors()
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, X-TestPilot-Token")
         self.end_headers()
@@ -205,29 +206,12 @@ class UIRequestHandler(BaseHTTPRequestHandler):
         if not path:
             path = "/"
 
-        # 0. Auth Token Endpoint
+        if not self._check_origin():
+            return
         if path == "/api/auth/token":
-            # Only a page served from this console (or a direct local tool) may read
-            # the session token; a cross-site page must not be able to lift it.
-            if self.headers.get("Sec-Fetch-Site", "").lower() == "cross-site":
-                self._send_error(
-                    "Forbidden: cross-site request blocked", status=HTTPStatus.FORBIDDEN
-                )
-                return
-            origin = self.headers.get("Origin")
-            if origin:
-                parsed_origin = urllib.parse.urlsplit(origin)
-                server_port = getattr(self.server, "server_port", None)
-                if (
-                    parsed_origin.hostname not in {"127.0.0.1", "localhost", "::1"}
-                    or not server_port
-                    or parsed_origin.port != server_port
-                ):
-                    self._send_error(
-                        "Forbidden: cross-origin token request", status=HTTPStatus.FORBIDDEN
-                    )
-                    return
             self._send_json({"token": getattr(self.server, "auth_token", "")})
+            return
+        if path.startswith("/api/") and not self._check_read_auth():
             return
 
         # 1. Static Assets
@@ -265,12 +249,17 @@ class UIRequestHandler(BaseHTTPRequestHandler):
             )
             return
 
-        # 1.5 File System Browser (token-gated, confined to allowed roots)
+        # 1.5 Local File System Browser
         if path == "/api/fs/list":
-            if not self._check_read_auth():
-                return
             query_params = urllib.parse.parse_qs(parsed.query)
             self._handle_fs_list(query_params)
+            return
+
+        if path == "/api/model/config":
+            try:
+                self._send_json(self.workflow.model_config())
+            except Exception as exc:
+                self._workflow_error(exc)
             return
 
         # 2. Registered Adapters
@@ -353,7 +342,7 @@ class UIRequestHandler(BaseHTTPRequestHandler):
                 self._send_error(f"Task '{task_id}' not found: {exc}", status=HTTPStatus.NOT_FOUND)
                 return
 
-            folder = self.store.root / task_id
+            folder = self.store.folder(task_id)
 
             # /api/tasks/<task_id>
             if len(parts) == 1:
@@ -361,6 +350,30 @@ class UIRequestHandler(BaseHTTPRequestHandler):
                 return
 
             sub = parts[1]
+
+            if sub in {"workflow", "batches"}:
+                try:
+                    if sub == "workflow" and len(parts) == 2:
+                        payload = self.workflow.overview(task_id)
+                    elif sub == "batches" and len(parts) == 2:
+                        payload = {"batches": self.workflow.batches(task_id)}
+                    elif sub == "batches" and len(parts) == 3:
+                        payload = self.workflow.batch(task_id, parts[2])
+                    elif sub == "batches" and len(parts) == 5 and parts[3] == "evidence":
+                        if not re.fullmatch(r"[0-9a-f]{32}", parts[2]) or not re.fullmatch(
+                            r"[0-9a-f]{16,64}", parts[4]
+                        ):
+                            raise FileNotFoundError("执行批次不存在")
+                        evidence = self.store.load_evidence(task_id, parts[4], parts[2])
+                        if evidence is None:
+                            raise FileNotFoundError("批次证据不存在")
+                        payload = evidence.model_dump()
+                    else:
+                        raise FileNotFoundError("Unknown workflow endpoint")
+                    self._send_json(payload)
+                except Exception as exc:
+                    self._workflow_error(exc)
+                return
 
             # /api/tasks/<task_id>/inventory
             if sub == "inventory":
@@ -400,6 +413,21 @@ class UIRequestHandler(BaseHTTPRequestHandler):
 
             # /api/tasks/<task_id>/report
             if sub == "report":
+                active_path = folder / "active-execution.json"
+                if active_path.is_file():
+                    active_id = json.loads(active_path.read_text("utf-8")).get("execution_id", "")
+                    if re.fullmatch(r"[0-9a-f]{32}", active_id):
+                        cached = folder / "executions" / active_id / "report"
+                        if (cached / "report.md").is_file() and (cached / "report.json").is_file():
+                            self._send_json(
+                                {
+                                    "markdown": (cached / "report.md").read_text("utf-8"),
+                                    "report": json.loads(
+                                        (cached / "report.json").read_text("utf-8")
+                                    ),
+                                }
+                            )
+                            return
                 report_md = ""
                 report_json: dict[str, Any] = {}
                 md_path = folder / "report.md"
@@ -417,7 +445,11 @@ class UIRequestHandler(BaseHTTPRequestHandler):
             # /api/tasks/<task_id>/evidence/<evidence_id>
             if sub == "evidence" and len(parts) >= 3:
                 evidence_id = parts[2]
-                ev = self.store.load_evidence(task_id, evidence_id)
+                ev = (
+                    self.store.load_evidence(task_id, evidence_id)
+                    if re.fullmatch(r"[0-9a-f]{16,64}", evidence_id)
+                    else None
+                )
                 if ev is None:
                     self._send_error(
                         f"Evidence '{evidence_id}' not found", status=HTTPStatus.NOT_FOUND
@@ -440,23 +472,28 @@ class UIRequestHandler(BaseHTTPRequestHandler):
 
         workspace_root = getattr(self.server, "workspace_root", Path.cwd().resolve())
         if raw_path:
-            # Accept absolute or root-relative input, then confine the result.
+            # Accept absolute or workspace-relative input.
             candidate = Path(raw_path)
             if not candidate.is_absolute():
                 candidate = workspace_root / candidate
-            target_path = candidate.resolve()
+            try:
+                target_path = candidate.resolve()
+            except (OSError, ValueError) as exc:
+                self._workflow_error(exc)
+                return
         else:
             target_path = workspace_root
 
         if not self._is_allowed_path(target_path):
             self._send_error(
-                "Forbidden: path is outside the console's allowed roots",
+                "Forbidden: path is outside the permitted local sources",
                 status=HTTPStatus.FORBIDDEN,
             )
             return
 
         if not target_path.exists() or not target_path.is_dir():
-            target_path = workspace_root
+            self._send_error("Directory does not exist", status=HTTPStatus.NOT_FOUND)
+            return
 
         parent_path = (
             str(target_path.parent).replace("\\", "/") if target_path.parent != target_path else ""
@@ -476,11 +513,13 @@ class UIRequestHandler(BaseHTTPRequestHandler):
                 "name": "基准规格 (benchmarks)",
                 "path": str((workspace_root / "benchmarks").resolve()).replace("\\", "/"),
             },
-            {
-                "name": "任务资产 (runtime/tasks)",
-                "path": str((workspace_root / "runtime" / "tasks").resolve()).replace("\\", "/"),
-            },
         ]
+        drives = os.listdrives() if hasattr(os, "listdrives") else [target_path.anchor]
+        quick_dirs.extend(
+            {"name": drive.replace("\\", "/"), "path": drive.replace("\\", "/")}
+            for drive in drives
+            if drive
+        )
         quick_dirs = [q for q in quick_dirs if Path(q["path"]).exists()]
         quick_dirs = [q for q in quick_dirs if self._is_allowed_path(Path(q["path"]))]
 
@@ -497,12 +536,19 @@ class UIRequestHandler(BaseHTTPRequestHandler):
                     except OSError, PermissionError:
                         continue
 
-                    entry_resolved = Path(entry.path).resolve()
-                    if not self._is_allowed_path(entry_resolved):
+                    try:
+                        entry_resolved = Path(entry.path).resolve()
+                    except OSError, ValueError:
+                        continue
+                    if not self._is_allowed_path(Path(entry.path)) or not self._is_allowed_path(
+                        entry_resolved
+                    ):
                         continue
                     entry_full_path = str(entry_resolved).replace("\\", "/")
                     ext = Path(name).suffix.lower()
-                    is_openapi = ext in {".json", ".yaml", ".yml"}
+                    is_openapi = ext in {".json", ".yaml", ".yml"} and document_permitted(
+                        entry_resolved
+                    )
                     is_code = ext in {".py", ".java", ".ts", ".js", ".go", ".rs"}
 
                     if filter_mode == "dir" and not is_dir:
@@ -529,14 +575,25 @@ class UIRequestHandler(BaseHTTPRequestHandler):
 
         items.sort(key=lambda x: (not x["is_dir"], x["name"].lower()))
 
+        git_metadata = {}
+        if query_params.get("git") == ["1"]:
+            try:
+                repository = git(target_path, "rev-parse", "--show-toplevel").decode().strip()
+                commit = git(target_path, "rev-parse", "HEAD").decode().strip()
+                if self._is_allowed_path(Path(repository).resolve()):
+                    git_metadata = {"repo_root": repository, "git_head": commit}
+            except OSError, ValueError, TimeoutError:
+                pass
+
         self._send_json(
             {
-                "current_path": str(target_path).replace("\\", "/"),
+                "current_path": target_path.as_posix(),
                 "parent_path": parent_path,
-                "workspace_root": str(workspace_root).replace("\\", "/"),
+                "workspace_root": workspace_root.as_posix(),
                 "filter": filter_mode,
                 "quick_dirs": quick_dirs,
                 "items": items,
+                **git_metadata,
             }
         )
 
@@ -622,37 +679,67 @@ class UIRequestHandler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path.rstrip("/")
 
-        content_len = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(content_len).decode("utf-8") if content_len > 0 else "{}"
+        if not self._check_origin() or not self._check_read_auth():
+            return
         try:
+            content_len = int(self.headers.get("Content-Length", 0))
+            if not 0 <= content_len <= 5_000_000:
+                raise ValueError("JSON body exceeds request limit")
+            body = self.rfile.read(content_len).decode("utf-8") if content_len else "{}"
             data = json.loads(body) if body.strip() else {}
-        except json.JSONDecodeError as exc:
-            self._send_error(f"Malformed JSON body: {exc}", status=HTTPStatus.BAD_REQUEST)
+            if not isinstance(data, dict):
+                raise ValueError("JSON body must be an object")
+        except (UnicodeError, ValueError) as exc:
+            self._workflow_error(exc)
             return
 
-        # 0. UI Execution Guard
-        if "execute" in path.split("/"):
-            self._send_error(
-                "UI execution guard rejected: Web UI is strictly limited to pipeline inspection. "
-                "Execute via CLI: testpilot task execute",
-                status=HTTPStatus.FORBIDDEN,
-            )
+        if path == "/api/model/config":
+            try:
+                self._send_json(self.workflow.model_config(data))
+            except Exception as exc:
+                self._workflow_error(exc)
             return
 
-        # 0.1 Strict Origin, Host & Token Authorization
-        if not self._check_mutation_auth():
+        parts = path.split("/")
+        if (
+            len(parts) in {5, 6}
+            and parts[1:3] == ["api", "tasks"]
+            and parts[4]
+            in {
+                "environment",
+                "cases",
+                "generate",
+                "review",
+                "approve",
+                "execute",
+                "recover",
+                "recover-design",
+            }
+        ):
+            task_id, action = parts[3:5]
+            try:
+                validate_task_id(task_id)
+                if len(parts) == 6 and action != "cases":
+                    raise FileNotFoundError("Unknown workflow endpoint")
+                payload = self.workflow.post(
+                    task_id, action, data, parts[5] if len(parts) == 6 else None
+                )
+                status = HTTPStatus.ACCEPTED if action in {"generate", "execute"} else HTTPStatus.OK
+                self._send_json(payload, status=status)
+            except Exception as exc:
+                self._workflow_error(exc)
             return
 
         # 1. Safe Ping (No paid model inference, zero key leak)
         if path == "/api/model/ping":
-            base_url = data.get("base_url", "").strip()
-            key_env = data.get("api_key_env", "").strip()
+            base_url = str(data.get("base_url") or "").strip()
+            key_env = str(data.get("api_key_env") or "").strip()
 
-            if not base_url:
-                self._send_error("base_url is required for ping")
+            if not re.fullmatch(r"https?://[\w.-]+(?::\d+)?(?:/[\w./-]*)?", base_url):
+                self._send_error("Enter an HTTP(S) provider URL without credentials or query")
                 return
 
-            key_found = bool(read_env(key_env)) if key_env else False
+            key_found = bool(re.fullmatch(r"[A-Z][A-Z0-9_]*", key_env) and read_env(key_env))
             ping_result = _test_url_reachability(base_url)
             self._send_json(
                 {
@@ -667,7 +754,7 @@ class UIRequestHandler(BaseHTTPRequestHandler):
 
         # 2. Create Task
         if path == "/api/tasks/create":
-            task_id = data.get("task_id", "").strip()
+            task_id = str(data.get("task_id") or "").strip() or f"task-{uuid4().hex[:12]}"
             try:
                 validate_task_id(task_id)
             except ValueError as exc:
@@ -688,10 +775,11 @@ class UIRequestHandler(BaseHTTPRequestHandler):
                     environment=data.get("environment") or None,
                     version_manifest=data.get("version_manifest") or {},
                 )
+                self._validate_local_materials(task)
                 self.store.create(task)
                 self._send_json(task.model_dump(), status=HTTPStatus.CREATED)
-            except (ValueError, ValidationError) as exc:
-                self._send_error(f"Failed to create task: {exc}", status=HTTPStatus.BAD_REQUEST)
+            except Exception as exc:
+                self._workflow_error(exc)
             return
 
         # 3. Configure Task
@@ -724,10 +812,15 @@ class UIRequestHandler(BaseHTTPRequestHandler):
                 if "document_paths" in updates and isinstance(updates["document_paths"], list):
                     updates["document_paths"] = tuple(updates["document_paths"])
 
-                updated = self.store.configure(task_id, **updates)
+                with self.workflow.mutation(task_id):
+                    previous = self.store.load(task_id)
+                    self._validate_local_materials(
+                        Task.model_validate(previous.model_dump() | updates)
+                    )
+                    updated = self.store.configure(task_id, **updates)
                 self._send_json(updated.model_dump())
             except Exception as exc:
-                self._send_error(f"Failed to configure task: {exc}", status=HTTPStatus.BAD_REQUEST)
+                self._workflow_error(exc)
             return
 
         # 4. Discover Operations
@@ -740,11 +833,13 @@ class UIRequestHandler(BaseHTTPRequestHandler):
                 return
             try:
                 materials_root = getattr(self.server, "materials_root", None) or Path.cwd()
-                inventory_path = discover(self.store, task_id, materials_root=materials_root)
+                with self.workflow.mutation(task_id):
+                    self._validate_local_materials(self.store.load(task_id))
+                    inventory_path = discover(self.store, task_id, materials_root=materials_root)
                 inv_text = inventory_path.read_text("utf-8")
                 self._send_text(inv_text, content_type="application/json; charset=utf-8")
             except Exception as exc:
-                self._send_error(f"Discovery failed: {exc}", status=HTTPStatus.BAD_REQUEST)
+                self._workflow_error(exc)
             return
 
         self._send_error(f"Unknown POST endpoint: {path}", status=HTTPStatus.NOT_FOUND)
@@ -807,24 +902,25 @@ def make_server(
     host: str = "127.0.0.1",
     port: int = 8080,
     auth_token: str | None = None,
-    allowed_roots: tuple[Path, ...] = (),
+    allowed_roots: tuple[Path, ...] = (),  # noqa: ARG001 - compatibility for older launchers
 ) -> ThreadingHTTPServer:
     """Instantiate a configured ThreadingHTTPServer bound to the given root."""
+    if host not in {"127.0.0.1", "localhost"}:
+        raise ValueError("Web console must bind to loopback (127.0.0.1 or localhost)")
     store = TaskStore(root)
     token = auth_token or secrets.token_hex(16)
     workspace_root = Path.cwd().resolve()
-    roots = tuple(dict.fromkeys([workspace_root, *(p.resolve() for p in allowed_roots)]))
 
     class CustomHandler(UIRequestHandler):
         pass
 
     CustomHandler.store = store
+    CustomHandler.workflow = WebWorkflow(store)
     CustomHandler.static_dir = STATIC_DIR
 
     server = ThreadingHTTPServer((host, port), CustomHandler)
     server.auth_token = token
     server.workspace_root = workspace_root
-    server.allowed_roots = roots
     return server
 
 
@@ -871,7 +967,7 @@ def register_ui_command(commands: argparse._SubParsersAction) -> None:
         type=Path,
         default=[],
         metavar="DIR",
-        help="额外允许文件浏览器访问的根目录（可重复）；工作目录始终允许",
+        help=argparse.SUPPRESS,
     )
     parser.set_defaults(ui_handler=execute_ui_command)
 

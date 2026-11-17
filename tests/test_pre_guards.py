@@ -17,7 +17,6 @@ from test_task_execution import approved_setup as approved_setup
 
 from api_test_agent.regression.cli import cmd_plan
 from api_test_agent.tasks.approval import ExecutionConfig, read_approval
-from api_test_agent.tasks.design_model import live_generator
 from api_test_agent.tasks.execution import execute_task
 from api_test_agent.tasks.models import Task
 from api_test_agent.tasks.store import TaskStore
@@ -88,70 +87,6 @@ def test_unsupported_execution_kind_guard(approved_setup) -> None:
 
     issues = store.issues("demo")
     assert any("Unsupported execution_kind" in i.title for i in issues)
-
-
-def test_paid_budget_guard_zero_budget_rejected(tmp_path: Path) -> None:
-    config_file = tmp_path / "model.toml"
-    config_file.write_text(
-        """
-[model]
-model_id = "deepseek-chat"
-base_url = "https://api.deepseek.com"
-api_key_env = "DUMMY_KEY"
-
-[budget]
-max_cost_usd = 0.0
-""",
-        encoding="utf-8",
-    )
-
-    with patch.dict("os.environ", {"DUMMY_KEY": "sk-dummy"}):
-        gen = live_generator(config_file)
-        with pytest.raises(ValueError, match="requires an explicit positive budget cap"):
-            gen("generate cases")
-
-
-def test_paid_budget_guard_worst_case_cost_reservation(tmp_path: Path) -> None:
-    config_file = tmp_path / "model_tight.toml"
-    config_file.write_text(
-        """
-[model]
-model_id = "deepseek-chat"
-base_url = "https://api.deepseek.com"
-api_key_env = "DUMMY_KEY"
-max_output_tokens = 4096
-
-[budget]
-max_cost_usd = 0.00001
-""",
-        encoding="utf-8",
-    )
-
-    with patch.dict("os.environ", {"DUMMY_KEY": "sk-dummy"}):
-        gen = live_generator(config_file)
-        with pytest.raises(ValueError, match="Pre-call budget reservation exceeded"):
-            gen("generate cases with very long text " * 50)
-
-
-def test_paid_budget_guard_unknown_model_pricing_rejected(tmp_path: Path) -> None:
-    config_file = tmp_path / "model_unknown.toml"
-    config_file.write_text(
-        """
-[model]
-model_id = "unknown-corporate-model-v9"
-base_url = "https://corporate.ai/api/v1"
-api_key_env = "DUMMY_KEY"
-
-[budget]
-max_cost_usd = 0.05
-""",
-        encoding="utf-8",
-    )
-
-    with patch.dict("os.environ", {"DUMMY_KEY": "sk-dummy"}):
-        gen = live_generator(config_file)
-        with pytest.raises(ValueError, match="unknown pricing for external commercial model"):
-            gen("generate cases")
 
 
 def test_paid_budget_guard_regression_cli(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -262,4 +197,4 @@ def test_ui_access_boundary_task_id_and_execution_guard(tmp_path: Path) -> None:
     assert len(errors) == 1
     msg, status = errors[0]
     assert status == HTTPStatus.FORBIDDEN
-    assert "UI execution guard rejected" in msg
+    assert "X-TestPilot-Token" in msg

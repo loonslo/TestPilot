@@ -16,6 +16,7 @@ import json
 import os
 import re
 import time
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlsplit
@@ -357,6 +358,8 @@ def execute_task(
     stop_on_failure: bool = False,
     http_client: httpx.Client | None = None,
     case_id: str | None = None,
+    case_ids: Sequence[str] | None = None,
+    execution_id: str | None = None,
 ) -> ExecutionAccounting:
     task = store.load(task_id)
 
@@ -403,12 +406,29 @@ def execute_task(
 
     # Resolve the requested scope before touching any state: an unknown case ID must not
     # leave the task in 'running'.
+    if case_id is not None and case_ids is not None:
+        raise ValueError("choose either case_id or case_ids")
+    selected_ids = (case_id,) if case_id is not None else case_ids
     target_cases = list(snapshot.cases)
-    if case_id is not None:
-        target_cases = [c for c in snapshot.cases if c.case_id == case_id]
-        if not target_cases:
-            raise ValueError(f"Case {case_id!r} not found in approved cases for task {task_id!r}")
-    case_scoped = case_id is not None
+    if selected_ids is not None:
+        if isinstance(selected_ids, str) or not selected_ids:
+            raise ValueError("execution selection must contain at least one case ID")
+        selected = set(selected_ids)
+        if len(selected) != len(selected_ids):
+            raise ValueError("execution selection contains duplicate case IDs")
+        target_cases = [case for case in snapshot.cases if case.case_id in selected]
+        missing = selected - {case.case_id for case in target_cases}
+        if missing:
+            raise ValueError(
+                f"Cases {sorted(missing)!r} not found in approved cases for task {task_id!r}"
+            )
+    case_scoped = selected_ids is not None
+    execution_id = uuid4().hex if execution_id is None else execution_id
+    if not re.fullmatch(r"[0-9a-f]{32}", execution_id):
+        raise ValueError("invalid execution ID")
+    exec_folder = store.folder(task_id) / "executions" / execution_id
+    if exec_folder.exists():
+        raise ValueError("execution ID already exists")
 
     secret_tokens = {v for v in tokens.values() if isinstance(v, str) and v}
 
@@ -418,7 +438,7 @@ def execute_task(
     # Running service version probe. It runs before the state transition so a failed probe
     # raises while the task is still in a clean state.
     is_version_verified = False
-    actual_commit = "unverified"
+    actual_commit = None
     if exec_config.version_endpoint:
         probe_url = f"{exec_config.base_url.rstrip('/')}/{exec_config.version_endpoint.lstrip('/')}"
         try:
@@ -440,8 +460,8 @@ def execute_task(
                         or probe_data.get("version")
                         or probe_data.get("sha")
                     )
-                    if probed_val:
-                        actual_commit = str(probed_val)
+                    if isinstance(probed_val, str) and re.fullmatch(r"[0-9a-f]{40}", probed_val):
+                        actual_commit = probed_val
                         if actual_commit == exec_config.target_commit:
                             is_version_verified = True
                         elif exec_config.require_version_verification:
@@ -454,12 +474,15 @@ def execute_task(
                 raise ValueError(
                     f"Version probe at {probe_url} returned HTTP {probe_resp.status_code}"
                 )
-        except Exception as probe_err:
+        except Exception:
+            if exec_config.require_version_verification:
+                if should_close_client:
+                    client.close()
+                raise
+        if exec_config.require_version_verification and not is_version_verified:
             if should_close_client:
                 client.close()
-            if exec_config.require_version_verification:
-                raise
-            actual_commit = f"probe_failed: {probe_err}"
+            raise ValueError("Version probe did not return a commit")
 
     # Read (and validate) the prior run before creating anything: a broken pointer must not
     # leave a half-built execution directory behind.
@@ -479,8 +502,6 @@ def execute_task(
             resume_from = (prev_exec_id, used)
 
     # Setup directories
-    execution_id = uuid4().hex
-    exec_folder = store.folder(task_id) / "executions" / execution_id
     exec_folder.mkdir(parents=True, exist_ok=False)
 
     events_file = exec_folder / "events.jsonl"
@@ -488,6 +509,23 @@ def execute_task(
     records_folder.mkdir(exist_ok=True)
     evidence_folder = exec_folder / "evidence"
     evidence_folder.mkdir(exist_ok=True)
+    summary_path = exec_folder / "execution.json"
+    summary = {
+        "execution_id": execution_id,
+        "task_id": task_id,
+        "approval_id": approval_id,
+        "cases_count": len(target_cases),
+        "approved_cases_count": len(snapshot.cases),
+        "scope": "case"
+        if case_id is not None
+        else ("selected_cases" if case_ids is not None else "approved_selection"),
+        "case_id": case_id,
+        "case_ids": [case.case_id for case in target_cases],
+        "declared_commit": exec_config.target_commit,
+        "actual_commit": actual_commit,
+        "version_verified": is_version_verified,
+    }
+    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
     is_resuming = False
     counts = {
@@ -1074,50 +1112,34 @@ def execute_task(
             missing_evidence_ids=tuple(missing_evidence_ids),
         )
 
-        # Save summary metadata
-        summary = {
-            "execution_id": execution_id,
-            "task_id": task_id,
-            "approval_id": approval_id,
-            "accounting": accounting.model_dump(),
-            "finished_at": datetime.now(UTC).isoformat(),
-            "cases_count": planned_total,
-            "approved_cases_count": len(snapshot.cases),
-            "scope": "case" if case_scoped else "approved_selection",
-            "case_id": case_id,
-            "requests_attempted": counter.count,
-            "declared_commit": exec_config.target_commit,
-            "actual_commit": actual_commit,
-            "version_verified": is_version_verified,
-        }
-        (exec_folder / "execution.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
-
         # Transition task state. A run that only covered part of the approved selection is not
         # a completed task: it goes back to 'ready' so the remaining cases stay executable.
         if accounting.not_run > 0 or interrupted_exc is not None or not accounting.conserved:
-            store.transition(
-                task_id,
-                "incomplete",
-                (
-                    f"Execution stopped with {accounting.not_run} "
-                    f"unexecuted cases out of {planned_total}"
-                ),
+            final_status = "incomplete"
+            final_reason = (
+                f"Execution stopped with {accounting.not_run} "
+                f"unexecuted cases out of {planned_total}"
             )
-        elif case_scoped:
-            store.transition(
-                task_id,
-                "ready",
-                (
-                    f"Case-scoped execution finished for {case_id!r} "
-                    f"({len(snapshot.cases) - 1} other approved cases remain executable)"
-                ),
+        elif case_scoped and (case_id is not None or planned_total < len(snapshot.cases)):
+            final_status = "ready"
+            final_reason = (
+                f"Scoped execution finished for {planned_total} approved cases "
+                f"({len(snapshot.cases) - planned_total} outside this run)"
             )
         else:
-            store.transition(
-                task_id,
-                "completed",
-                f"Execution completed for all {planned_total} approved cases",
-            )
+            final_status = "completed"
+            final_reason = f"Execution completed for all {planned_total} approved cases"
+
+        summary.update(
+            accounting=accounting.model_dump(),
+            finished_at=datetime.now(UTC).isoformat(),
+            requests_attempted=counter.count,
+            task_status=final_status,
+        )
+        final_path = summary_path.with_suffix(".tmp")
+        final_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        final_path.replace(summary_path)
+        store.transition(task_id, final_status, final_reason)
 
         log_event("execution_finished", accounting=accounting.model_dump())
         if should_close_client:

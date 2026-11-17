@@ -1,26 +1,19 @@
 ---
 project_id: TestPilot
-updated: 2026-11-05
+updated: 2026-11-17
 status: active
-overview: "TestPilot（测试领航员）；统一任务流、接口发现、人工审核、HTTP执行与F8回归桥接。支持多项目管理、代码仓库本地Git与接口文档（在线URL/本地文件）双模式交互配置与自动对账；非HTTP执行器与Java/TS源码兜底仍是能力边界。"
-progress: "历史记录：桥接缺陷修复后全量496项通过，文档接入改进后508项通过，多模式交互支持后510项通过。2026-11-05 Web控制台工业级样式（baoyu-design）重构、圆角极致收敛（2px）与全盘文件/目录浏览器：移除高饱和天蓝与海军暗蓝底色，深浅色全面切换为纯净碳素黑与极简浅灰设计Token并以翡翠绿作为强调色；全站圆角强制收敛为2px微圆角；服务端新增/api/fs/list安全文件系统浏览接口与no-cache防强缓存头，前端集成目录与规格文件选择器模态框并打通文档模式、代码仓库模式与顶栏目标选择，解除目标固定限制，支持自由选择磁盘任意目录与文件，支持文件夹多选与逗号拼装回填。全量512项通过（净增2项），Ruff check/format全通。2026-11-05 同日另做一轮 P0 修复与整页视觉重构（frontend-design）：修复控制台存储型XSS、/api/fs/list未授权且不限目录、界面伪造接口/用例/执行/报告数据与假审批按钮；修复 datetime 序列化导致 /api/tasks/{id} 断连、configure 缺 openapi_url/openapi_options 白名单、已发现任务无法再次解析、浏览目录覆盖项目名；新增 .gitattributes 修正 CRLF 破坏 benchmark 字节一致性；dashboard.html 按“账本/规格单/实验仪表”重写为手写CSS（移除 Tailwind CDN，兼容严格 CSP），五阶段分页与守恒对账为核心表达。全量516项通过（净增4项），Ruff check/format全通，浏览器实测通过。2026-11-05 同日再补独立浅色主题：html.light 由暗色反相改为暖纸张调色板（底色#e9e6dd、面板#fbf9f4，非纯白底、非纯黑字，状态色压深至AA），新增顶栏“深色/浅色”分段切换器与首帧前主题脚本（未选择时跟随系统、localStorage记忆），遮罩与阴影token化，抽屉打开时顶栏改为换行；全量516项通过，Ruff全通，浏览器深浅两套逐屏实测。2026-11-05 同日最后一轮修控件等高与细圆角：浏览按钮、主题切换器、文件浏览器工具栏与筛选行统一到同排控件高度，圆角统一为 --radius:3px（此前的 0/2px 说法以本轮为准，表格与阶段栏仍为直角）；并并入冒烟三条修复——document_paths 接受盘符/UNC/POSIX 绝对路径并以 external/<name> 为快照键、纯文档任务允许无声明提交、单文档读取不再受 runtime/data 目录黑名单限制且本地上限与 URL 导入统一为 20MB、start.bat 删除全部零提交占位；右栏接缝改为三列两行网格，Sources 顶栏移出抽屉并与页头同排同高（实测均144px、底边同像素，分隔线贯通全页），关栏时第三列收为0；全量518项通过，Ruff全通，浏览器深浅两套实测。真实Apple服务与非HTTP执行器仍未验收。"
-next: "使用实际测试环境文档或本地FastAPI仓库进行多微服务端到端验证；F7真实模型质量、非HTTP执行器与Java/TS源码兜底仍待做。"
+overview: "TestPilot（测试领航员）：面向初级测试工程师的接口发现、用例设计、审核、执行和批次回归工作台。"
+progress: "2026-11-17 全量 520 项通过，Edge 实测从 D 盘工作区切换到 C 盘合成仓库并保存和解析，换仓库时回填新 HEAD 并清空旧源码范围。Web 执行闭环及历史报告隔离为 2026-11-13 的验收记录。真实模型质量、真实目标服务和跨版本自动迁移未验收。"
+next: "验证真实模型生成质量与授权测试环境中的复杂业务流程；继续设计跨版本差异映射、用例迁移和非 Python 源码发现。"
 evidence:
-  - docs/openapi-import.md
-  - docs/task-assets.md
-  - README.md
   - TASKS.md
-  - docs/startup-record.md
   - docs/acceptance.md
-  - docs/rules-evidence.md
-  - benchmarks/dev/README.md
-  - docs/regression/README.md
-  - docs/regression/architecture.md
+  - docs/optimization-plan-20261112.md
+  - docs/startup-record.md
   - docs/architecture.md
-  - docs/architecture.png
-  - docs/workflow.png
-  - docs/implementation-plan-20261029.md
+  - README.md
 ---
+
 
 # TestPilot · 测试领航员 · 项目概览与进度
 
@@ -144,3 +137,6 @@ evidence:
 5. **遮罩与阴影 token 化**：新增 `--scrim`/`--shadow-lg`/`--shadow-xl`，浅色使用暖遮罩与 14%/20% 暖阴影；另修顶栏在抽屉打开时挤压左侧元信息的问题（改为整体换行）。
 
 全量 516 项测试通过（`test_ui_server.py` 的样式测试新增浅色调色板、两个切换按钮、`prefers-color-scheme` 与「主题脚本先于 `<style>`」断言），Ruff check/format 全通（113 files），浏览器实测浅色五屏 + 文件浏览器模态框、深浅切换持久且无首帧闪烁、深色回归无变化。演示数据仅在内存注入，未写盘。未提交、未推送。本轮摘要在本项目自检：frontmatter 字段无重复、`updated` 与 `status` 合规，14 条 evidence 均为项目内现存非运行目录相对路径；未通过项为零，未使用跨项目同步工具。
+
+
+2026-11-13：完成本轮 Web 操作闭环并按 TASKS、acceptance、PROJECT_STATUS 顺序同步。全量 520 项通过，浏览器通过与失败批次均使用合成服务实测；未调用真实模型、未测试真实业务服务、未提交推送。Sources 原始材料收为技术详情，用例依据和批次证据保留在日常页面。旧章节按历史保留，本轮未重新验收其中全部能力。

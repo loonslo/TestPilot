@@ -130,7 +130,7 @@
     /* A hairline of rounding so edges read as cut paper, not broken glass. */
     .btn, .chip, .pill, .icon-btn, .seg, .cmd, .note, .panel, .case, .kpis,
     .browser-list, .toast, .modal-card,
-    input[type="text"], input[type="url"], input[type="number"], input[type="search"],
+    input:not([type]), input[type="text"], input[type="url"], input[type="number"], input[type="search"],
     input[type="password"], input[type="date"], select, textarea {
       border-radius: var(--radius);
     }
@@ -451,7 +451,7 @@
       text-transform: uppercase;
       color: var(--text-3);
     }
-    .field input[type="text"], .field input[type="url"], .field input[type="number"], .field select {
+    .field input:not([type]), .field input[type="text"], .field input[type="url"], .field input[type="number"], .field select {
       width: 100%;
       height: 32px;
       padding: 0 10px;
@@ -667,6 +667,13 @@
       background: var(--scrim);
       padding: 24px;
     }
+    #modalFileBrowser { z-index: 70; }
+    .field textarea {
+      width: 100%; min-height: 90px; padding: 8px; resize: vertical;
+      color: var(--text); background: var(--bg); border: 1px solid var(--line-strong);
+      font: 400 12px var(--mono);
+    }
+    .workflow-actions { flex-wrap: wrap; }
     .modal-card {
       width: min(820px, 100%);
       max-height: min(78vh, 760px);
@@ -750,16 +757,21 @@
     .md th { background: var(--surface-2); color: var(--text-3); font-weight: 500; }
 
     @media (max-width: 980px) {
-      .app { flex-direction: column; overflow: auto; height: auto; }
-      .rail { width: 100%; flex-direction: row; align-items: center; border-right: 0; border-bottom: 1px solid var(--line); }
+      .app, .app.no-drawer { display: flex; flex-direction: column; overflow: auto; height: 100vh; }
+      .rail { width: 100%; flex: none; flex-direction: column; align-items: stretch; border-right: 0; border-bottom: 1px solid var(--line); }
       .brand { border-bottom: 0; border-right: 1px solid var(--line); }
-      .stages { display: flex; padding: 0; overflow-x: auto; }
+      .stages { display: flex; flex: none; width: 100%; padding: 0; overflow-x: auto; }
       .stages::before { display: none; }
-      .stage { width: auto; border-left: 0; border-bottom: 2px solid transparent; grid-template-columns: 20px auto; }
+      .stage { width: auto; flex: 0 0 auto; border-left: 0; border-bottom: 2px solid transparent; grid-template-columns: 20px auto; }
       .stage[aria-current="true"] { border-left: 0; border-bottom-color: var(--accent); }
       .stage-dot { display: none; }
       .stage-note { display: none; }
-      .rail-foot { border-top: 0; border-left: 1px solid var(--line); }
+      .rail-foot { display: none; }
+      .sheet { flex: none; padding: 16px; }
+      .panes { flex: none; padding: 16px; }
+      .grid2 { grid-template-columns: 1fr; }
+      .span2 { grid-column: auto; }
+      .drawer-head, .drawer { flex: none; width: 100%; }
       .main { overflow: visible; }
       .panes { overflow: visible; }
       .drawer { width: 100%; border-left: 0; border-top: 1px solid var(--line); }
@@ -767,7 +779,7 @@
   </style>
 </head>
 <body>
-<div class="app">
+<div class="app no-drawer">
 
   <!-- ============================ RAIL ============================ -->
   <aside class="rail">
@@ -787,7 +799,7 @@
       </button>
       <button class="stage" id="nav-model" data-stage="model" onclick="setTab('model')">
         <span class="stage-n">02</span>
-        <span><span class="stage-label">模型与预算</span><span class="stage-note" id="note-model">仅探测</span></span>
+        <span><span class="stage-label">模型配置</span><span class="stage-note" id="note-model">配置与生成</span></span>
         <span class="stage-dot" data-state=""></span>
       </button>
       <button class="stage" id="nav-inventory" data-stage="inventory" onclick="setTab('inventory')">
@@ -802,7 +814,7 @@
       </button>
       <button class="stage" id="nav-execution" data-stage="execution" onclick="setTab('execution')">
         <span class="stage-n">05</span>
-        <span><span class="stage-label">执行与守恒</span><span class="stage-note" id="note-execution">未执行</span></span>
+        <span><span class="stage-label">执行与报告</span><span class="stage-note" id="note-execution">未执行</span></span>
         <span class="stage-dot" data-state=""></span>
       </button>
     </nav>
@@ -840,8 +852,8 @@
         </div>
         <button class="btn btn-quiet" onclick="openFileBrowser('target')">浏览本地目录</button>
         <button class="btn" onclick="openNewTaskModal()">新建任务</button>
-        <button class="btn" id="btnSources" onclick="toggleSourcesDrawer()">
-          <span>Sources 追溯面板</span>
+        <button class="btn" id="btnSources" onclick="toggleSourcesDrawer()" aria-expanded="false" aria-controls="sourcesPanel">
+          <span>技术详情</span>
         </button>
       </div>
     </header>
@@ -895,19 +907,22 @@
             </div>
 
             <div id="form-code" class="grid2 hidden">
+              <label class="field span2"><span>目标项目</span><input type="text" id="inputRepoProject" placeholder="MyService"></label>
               <div class="span2 field">
                 <span>本地只读仓库</span>
                 <div class="with-btn">
                   <input type="text" id="inputRepoPath" placeholder="C:/path/to/repo">
                   <button class="btn btn-sm" onclick="openFileBrowser('dir_repo')">浏览</button>
                 </div>
+                <div class="field-note">可在「浏览」中切换盘符，或粘贴仓库路径后点「跳转」。</div>
               </div>
               <div class="span2 field">
                 <span>源码路径（可多选）</span>
                 <div class="with-btn">
                   <input type="text" id="inputSourcePaths" placeholder="src/api/">
-                  <button class="btn btn-sm" onclick="openFileBrowser('dir_source')">多选</button>
+                  <button class="btn btn-sm" onclick="openFileBrowser('dir_source')">选择文件或目录</button>
                 </div>
+                <div class="field-note">相对于仓库根目录，逗号分隔。</div>
               </div>
               <label class="field"><span>声明的提交（40 位）</span><input type="text" id="inputRepoCommit" placeholder="0000000000000000000000000000000000000000"></label>
               <label class="field"><span>适配器</span>
@@ -917,11 +932,13 @@
                 </select>
               </label>
             </div>
+            <label class="field" style="margin-top:12px"><span>测试环境名称</span><input type="text" id="inputTargetEnv" value="local"></label>
           </div>
 
           <div class="panel-foot">
             <span class="small dim" id="srcNote">尚未写入任何配置。</span>
             <div class="row">
+              <button class="btn btn-quiet" onclick="inspectSource('task')">任务原件</button>
               <button class="btn btn-quiet" id="btnSaveConfig" onclick="saveConfig()">保存配置</button>
               <button class="btn btn-ink" id="btnDiscover" onclick="runDiscover()">执行接口解析</button>
             </div>
@@ -942,8 +959,8 @@
         <div class="pane-head">
           <div>
             <div class="eyebrow">阶段 02 · 模型端点</div>
-            <h2>模型与预算</h2>
-            <p>这里只做端点连通性与环境变量存在性检查。真实的模型调用由 CLI 发起，凭据只从环境变量读取，绝不写入本页或任何文件。</p>
+            <h2>模型配置</h2>
+            <p>保存用例生成使用的模型配置。凭据从宿主环境变量读取，页面只显示变量名和设置状态。</p>
           </div>
         </div>
 
@@ -974,12 +991,16 @@
               <label class="field span2"><span>base_url</span><input type="text" id="modelUrl" placeholder="https://api.deepseek.com/v1"></label>
               <label class="field"><span>模型 ID</span><input type="text" id="modelName" placeholder="deepseek-chat"></label>
               <label class="field"><span>凭据环境变量名</span><input type="text" id="modelKey" placeholder="DEEPSEEK_API_KEY"><div class="field-note">只填变量名，不填密钥本身。</div></label>
-              <label class="field"><span>单次金额上限（USD）</span><input type="number" id="modelBudget" step="0.01" min="0" placeholder="1.00"><div class="field-note">付费模型在定价未知或上限为 0 时会被拒绝调用。</div></label>
+              <label class="field"><span>超时（秒）</span><input type="number" id="modelTimeout" value="90" min="1" max="300"></label>
+              <label class="field"><span>输出 Token 上限</span><input type="number" id="modelTokens" value="2048" min="1" max="16384"></label>
             </div>
           </div>
           <div class="panel-foot">
             <span class="row small"><i class="stage-dot" id="pingDot" data-state=""></i><span id="pingStatus" class="dim">尚未探测</span></span>
-            <button class="btn" id="btnPing" onclick="testPing()">连通性测试</button>
+            <div class="row workflow-actions">
+              <button class="btn" id="btnPing" onclick="testPing()">连通性测试</button>
+              <button class="btn btn-ink" onclick="saveModelConfig(this)">保存模型配置</button>
+            </div>
           </div>
         </div>
 
@@ -987,7 +1008,7 @@
           <div class="panel-head"><h3>宿主环境</h3><span class="small dim">仅返回布尔值</span></div>
           <div id="envList"></div>
           <div class="panel-body" style="border-top:1px solid var(--line)">
-            <div class="note"><span>i</span><div>控制台不保存任何配置。真实生效位置是 <b>config.local.toml</b> 与之指向的环境变量；模型无法自行批准用例。</div></div>
+            <div class="note"><span>i</span><div>模型配置由本机控制台共用。费用与供应商额度由你管理；生成的修订须经人工审核。</div></div>
           </div>
         </div>
       </section>
@@ -1012,12 +1033,25 @@
           <div>
             <div class="eyebrow">阶段 04 · 用例修订</div>
             <h2>测试集与参数依据</h2>
-            <p>每条用例都带来源规则、参数理由与断言。本页只读：批准与执行必须由人在 CLI 中完成，模型无权自行批准。</p>
+            <p>生成或导入用例后，核对规则、参数理由与断言，选择本轮批准的修订。</p>
           </div>
           <span class="pill" id="casePill"><i></i><span>0 份修订</span></span>
         </div>
 
-        <div id="caseContent"></div>
+        <div class="panel">
+          <div class="panel-head"><h3>生成与导入</h3><span class="small dim" id="generationStatus" role="status"></span></div>
+          <div class="panel-body grid2">
+            <div class="field span2"><span>本轮生成范围（勾选接口，分批生成）</span><div id="designChoices" class="grid2"></div></div><input id="designOperations" type="hidden">
+            <label class="field span2"><span>用例设计 JSON</span><textarea id="designImport" rows="4" placeholder='{"cases":[...],"assessments":[...]}'></textarea></label>
+            <label class="field span2"><span>或选择本地 JSON 文件</span><input type="file" id="designFile" accept=".json,application/json" onchange="loadDesignFile(this)"></label>
+            <div class="row workflow-actions span2">
+              <label class="row small"><input type="checkbox" id="confirmGeneration">确认使用已配置模型处理所选接口资料</label>
+              <button class="btn btn-ink" id="btnGenerate" onclick="generateCases(this)">生成用例</button>
+              <button class="btn" id="btnImport" onclick="importCases(this)">导入 JSON</button>
+            </div>
+          </div>
+        </div>
+        <div id="designRecovery"></div><div id="caseContent"></div>
       </section>
 
       <!-- ---------------------------- 05 EXECUTION ---------------------------- -->
@@ -1025,12 +1059,37 @@
         <div class="pane-head">
           <div>
             <div class="eyebrow">阶段 05 · 证据与对账</div>
-            <h2>执行记录与守恒报告</h2>
+            <h2>执行记录与测试报告</h2>
             <p>报告由确定性代码生成：计划数必须等于各终态之和，缺少证据的通过会被降级并如实记入缺口。</p>
           </div>
           <span class="pill" id="execPill"><i></i><span>未执行</span></span>
         </div>
 
+        <div class="panel">
+          <div class="panel-head"><h3>执行环境</h3><span class="small dim" id="environmentStatus"></span></div>
+          <div class="panel-body grid2">
+            <label class="field"><span>环境名称</span><input id="execEnvironment" placeholder="local"></label>
+            <label class="field"><span>本机测试服务</span><input id="execBaseUrl" placeholder="http://127.0.0.1:8765"></label>
+            <label class="field span2"><span>允许操作 ID（逗号分隔）</span><input id="execAllowedOperations"></label>
+            <label class="field"><span>版本探针路径（选填）</span><input id="execVersion" placeholder="/version"></label>
+            <label class="row small"><input type="checkbox" id="execRequireVersion">要求版本探针核验通过</label>
+            <label class="field"><span>单请求超时（秒）</span><input type="number" id="execTimeout" min="1" max="120" value="15"></label>
+            <label class="field"><span>请求数上限</span><input type="number" id="execMaxRequests" min="1" max="500" value="30"></label>
+            <details class="span2">
+              <summary>账号变量、操作确认和前置条件</summary>
+              <div class="grid2" style="margin-top:12px">
+                <label class="field"><span>账号别名与环境变量名（JSON）</span><textarea id="execAccounts" placeholder='{"test_user":"TESTPILOT_TEST_TOKEN"}'></textarea></label>
+                <label class="field"><span>操作 ID 与人工确认理由（JSON）</span><textarea id="execOperationConfirmations" placeholder='{"GET /items":"已核对"}'></textarea></label>
+                <label class="field"><span>用例 ID 与已确认前置条件（JSON）</span><textarea id="execPreconditions" placeholder='{"case_id":["已准备合成数据"]}'></textarea></label>
+              </div>
+            </details>
+          </div>
+          <div class="panel-foot">
+            <button class="btn" onclick="fillAllowedOperations()">填入清单中已确认操作</button>
+            <button class="btn btn-ink" id="btnEnvironment" onclick="saveEnvironment(this)">保存执行环境</button>
+          </div>
+        </div>
+        <div id="runControl"></div>
         <div id="execContent"></div>
       </section>
 
@@ -1038,14 +1097,14 @@
   </main>
 
   <!-- ============================ DRAWER ============================ -->
-  <div class="drawer-head" id="drawerHead">
-    <span class="eyebrow">Sources · 过程文件</span>
+  <div class="drawer-head hidden" id="drawerHead">
+    <span class="eyebrow">技术详情 · 来源与证据</span>
     <div class="row">
       <span class="chip chip-bare" id="sourceFileBadge">—</span>
       <button class="icon-btn" onclick="toggleSourcesDrawer()" aria-label="收起面板">✕</button>
     </div>
   </div>
-  <aside class="drawer" id="sourcesPanel">
+  <aside class="drawer hidden" id="sourcesPanel">
     <div class="drawer-title" id="sourceTitle">未选择文件</div>
     <div class="drawer-path" id="sourcePath">选择一个阶段或条目以查看其磁盘原件</div>
     <div class="drawer-tools">
@@ -1112,7 +1171,7 @@
     </div>
     <div class="modal-body">
       <div class="grid2">
-        <label class="field span2"><span>任务标识（task_id）</span><input type="text" id="modalTaskId" placeholder="task-my-service-01"><div class="field-note">小写字母开头，仅含小写字母、数字、下划线与连字符。</div></label>
+        <label class="field span2"><span>任务标识（task_id）</span><input type="text" id="modalTaskId" placeholder="留空自动生成"><div class="field-note">可留空自动生成；自定义时用小写字母开头。</div></label>
         <label class="field"><span>目标项目</span><input type="text" id="modalProjectName" placeholder="MyService"></label>
         <label class="field"><span>目标类型</span>
           <select id="modalTaskType">
@@ -1120,20 +1179,56 @@
             <option value="code">源码仓库</option>
           </select>
         </label>
-        <label class="field span2"><span>规格文件或仓库路径（可留空）</span>
+        <div class="field span2"><label for="modalDocInput">规格文件或仓库路径（可留空）</label>
           <div class="with-btn">
             <input type="text" id="modalDocInput" placeholder="examples/tasks/openapi-demo.json">
-            <button class="btn btn-sm" onclick="openFileBrowser('target')">浏览</button>
+            <button class="btn btn-sm" onclick="openFileBrowser(document.getElementById('modalTaskType').value === 'code' ? 'new_repo' : 'new_doc')">浏览</button>
           </div>
-        </label>
+        </div>
+        <label class="field"><span>测试环境名称</span><input id="modalTargetEnv" value="local"></label>
+        <label class="field"><span>声明的提交（40 位）</span><input id="modalTargetCommit" placeholder="选择仓库时读取 HEAD"></label>
       </div>
     </div>
     <div class="modal-foot">
       <span class="small dim">创建后仍需解析接口才能进入下一阶段。</span>
       <div class="row">
         <button class="btn btn-quiet" onclick="closeNewTaskModal()">取消</button>
-        <button class="btn btn-ink" onclick="submitNewTask()">创建任务</button>
+          <button class="btn btn-ink" onclick="submitNewTask(this)">创建任务</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal hidden" id="modalCaseEdit" role="dialog" aria-modal="true" aria-labelledby="caseEditTitle">
+  <div class="modal-card">
+    <div class="modal-head"><h3 id="caseEditTitle">编辑用例并创建新修订</h3><button class="icon-btn" onclick="closeDialog('modalCaseEdit')" aria-label="关闭">✕</button></div>
+    <div class="modal-body">
+      <div class="grid2">
+        <label class="field span2"><span>用例标题</span><input id="caseEditName"></label>
+        <label class="field span2"><span>测试目的</span><textarea id="caseEditPurpose"></textarea></label>
+        <label class="field span2"><span>本次修改说明</span><input id="caseEditReason" placeholder="说明修改原因，供下轮审核参考"></label>
+      </div><h4>请求参数</h4><div id="caseEditParameters"></div><h4>结果断言</h4><div id="caseEditAssertions"></div>
+      <details><summary>高级：编辑完整结构（步骤、依赖与规则）</summary><textarea id="caseEditJson" rows="14" spellcheck="false"></textarea><button class="btn" onclick="applyAdvancedCase()">将高级内容载入表单</button></details>
+    </div>
+    <div class="modal-foot"><span class="small dim">保存后须重新人工审核。</span><button class="btn btn-ink" onclick="saveCaseEdit(this)">保存修订</button></div>
+  </div>
+</div>
+
+<div class="modal hidden" id="modalReview" role="dialog" aria-modal="true" aria-labelledby="reviewTitle">
+  <div class="modal-card">
+    <div class="modal-head"><h3 id="reviewTitle">人工审批</h3><button class="icon-btn" onclick="closeDialog('modalReview')" aria-label="关闭">✕</button></div>
+    <div class="modal-body">
+      <div class="grid2">
+        <label class="field"><span>审核人</span><input id="reviewActor" autocomplete="name"></label>
+        <label class="field"><span>审批理由</span><input id="reviewReason"></label>
+        <div class="span2" id="reviewConfirmations"></div>
+      </div>
+      <p class="mono small" id="reviewSelected"></p>
+      <div class="md" id="reviewMarkdown"></div>
+    </div>
+    <div class="modal-foot">
+      <label class="row small"><input type="checkbox" id="reviewConfirmed">我已审阅所选修订，同意冻结并批准</label>
+      <button class="btn btn-ink" onclick="submitApproval(this)">批准所选</button>
     </div>
   </div>
 </div>
@@ -1159,6 +1254,14 @@
     env: {},
     filters: { method: 'ALL', q: '' },
     openCase: null,
+    selectedCases: new Set(),
+    selectedRunCases: new Set(),
+    workflow: {},
+    batches: [],
+    batchId: '',
+    latestExecution: null,
+    latestReport: null,
+    workflowTimer: null,
     browser: {
       target: null,
       filter: 'all',
@@ -1298,7 +1401,7 @@
   }
 
   function syncDrawerForTab(tab) {
-    if (!S.taskId) return;
+    if (!S.taskId || document.getElementById('sourcesPanel').classList.contains('hidden')) return;
     const map = { source: 'task', inventory: 'inventory', cases: 'cases', execution: 'execution' };
     if (map[tab]) inspectSource(map[tab], { silent: true });
   }
@@ -1325,12 +1428,19 @@
   }
 
   function toggleSourcesDrawer() {
+    const hide = !document.getElementById('sourcesPanel').classList.contains('hidden');
+    setSourcesDrawer(!hide);
+    if (!hide) syncDrawerForTab(S.tab);
+  }
+
+  function setSourcesDrawer(open) {
     const panel = document.getElementById('sourcesPanel');
-    const hide = !panel.classList.contains('hidden');
+    const hide = !open;
     panel.classList.toggle('hidden', hide);
     document.getElementById('drawerHead').classList.toggle('hidden', hide);
     document.querySelector('.app').classList.toggle('no-drawer', hide);
     document.getElementById('btnSources').classList.toggle('btn-ink', !hide);
+    document.getElementById('btnSources').setAttribute('aria-expanded', String(open));
   }
 
   // ====================================================================
@@ -1473,12 +1583,13 @@
 
   async function selectTask(taskId) {
     if (!taskId) return;
+    if (S.taskId !== taskId) resetWorkflowSelection();
     S.taskId = taskId;
     document.getElementById('targetSelector').value = taskId;
     await loadBundle();
   }
 
-  async function loadBundle() {
+  async function loadBundle({ fillForms = true } = {}) {
     const id = S.taskId;
     if (!id) return;
     let task;
@@ -1488,26 +1599,45 @@
       toast(`任务 ${id} 加载失败：${err.message}`, 'bad');
       return;
     }
-    S.task = task;
-
     const safe = (p) => p.catch((err) => (err instanceof ApiError && err.status === 404 ? null : Promise.reject(err)));
     const results = await Promise.allSettled([
       safe(api(`/api/tasks/${id}/inventory`)),
       safe(api(`/api/tasks/${id}/cases`)),
       safe(api(`/api/tasks/${id}/reviews`)),
       safe(api(`/api/tasks/${id}/execution`)),
-      safe(api(`/api/tasks/${id}/report`))
+      safe(api(`/api/tasks/${id}/report`)),
+      safe(api(`/api/tasks/${id}/workflow`)),
+      safe(api(`/api/tasks/${id}/batches`))
     ]);
+    if (S.taskId !== id) return;
+    S.task = task;
 
     S.inventory = results[0].status === 'fulfilled' ? results[0].value : null;
     S.cases = (results[1].status === 'fulfilled' && results[1].value && results[1].value.cases) || [];
+    S.cases = Object.values(Object.fromEntries(S.cases.map((c) => [c.case_id, c])));
     S.reviews = (results[2].status === 'fulfilled' && results[2].value && results[2].value.reviews) || [];
     S.execution = (results[3].status === 'fulfilled' && results[3].value) || { active: {}, records: [] };
     S.report = (results[4].status === 'fulfilled' && results[4].value) || { markdown: '', report: {} };
+    S.latestExecution = S.execution;
+    S.latestReport = S.report;
+    if (results[5].status === 'fulfilled') S.workflow = results[5].value || {};
+    else if (fillForms) toast('读取流程状态失败：' + results[5].reason.message, 'bad');
+    if (results[6].status === 'fulfilled') S.batches = results[6].value?.batches || [];
+    else if (fillForms) toast('读取批次列表失败：' + results[6].reason.message, 'bad');
+    if (S.batchId && S.batches.some((batch) => batch.execution_id === S.batchId)) {
+      await loadBatch(S.batchId, false);
+    } else {
+      S.batchId = '';
+    }
+    if (S.taskId !== id) return;
 
-    fillSourceForm(task);
+    if (fillForms) {
+      fillSourceForm(task);
+      fillExecutionConfig();
+    }
     renderAll();
-    syncDrawerForTab(S.tab);
+    if (fillForms) syncDrawerForTab(S.tab);
+    scheduleWorkflowPoll();
   }
 
   function renderAll() {
@@ -1516,7 +1646,276 @@
     renderSourcePane();
     renderInventoryPane();
     renderCasesPane();
+    renderDesignChoices();
+    renderWorkflowControls();
     renderExecutionPane();
+  }
+
+  function taskRoute(suffix, taskId = S.taskId) {
+    return `/api/tasks/${encodeURIComponent(taskId)}/${suffix}`;
+  }
+
+  function operationLabel(id) {
+    const operation = S.inventory?.operations?.find((item) => item.operation_id === id);
+    return operation ? `${operation.method} ${operation.path}` : id;
+  }
+  function fieldValue(id) {
+    return document.getElementById(id).value.trim();
+  }
+
+  function csvValues(id) {
+    return fieldValue(id).split(',').map((value) => value.trim()).filter(Boolean);
+  }
+
+  function post(path, payload) {
+    return api(path, { method: 'POST', body: JSON.stringify(payload) });
+  }
+
+  async function withButton(button, failure, action) {
+    button.disabled = true;
+    try {
+      await action();
+    } catch (err) {
+      toast(`${failure}：${err.message}`, 'bad');
+    } finally {
+      button.disabled = false;
+      refreshWorkflowButtons();
+    }
+  }
+
+  function closeDialog(id) {
+    document.getElementById(id).classList.add('hidden');
+  }
+
+  function resetWorkflowSelection() {
+    clearTimeout(S.workflowTimer);
+    S.selectedCases.clear();
+    S.selectedRunCases.clear();
+    S.openCase = null;
+    S.batchId = '';
+    S.batchDetails = null;
+    S.batches = [];
+    S.workflow = {};
+    S.reviewDraft = null;
+    S.caseEdit = null;
+    closeDialog('modalCaseEdit');
+    closeDialog('modalReview');
+    for (const id of ['designOperations', 'designImport', 'designFile']) document.getElementById(id).value = '';
+    document.getElementById('confirmGeneration').checked = false;
+  }
+
+  function activeJob() {
+    return (S.workflow.jobs || []).find((job) => ['queued', 'pending', 'running'].includes(job.status));
+  }
+
+  function scheduleWorkflowPoll() {
+    clearTimeout(S.workflowTimer);
+    if (activeJob()) {
+      S.workflowTimer = setTimeout(() => loadBundle({ fillForms: false }), 1000);
+    }
+  }
+
+  function refreshWorkflowButtons() {
+    for (const id of ['btnGenerate', 'btnImport']) {
+      document.getElementById(id).disabled = !S.inventory || !!activeJob();
+    }
+    document.getElementById('btnEnvironment').disabled = !S.taskId || !!activeJob();
+  }
+
+  function jobMessage(job) {
+    const labels = { interrupted: '已中断，结果待核对', queued: '已排队', pending: '已排队', running: '进行中', completed: '已完成', succeeded: '已完成', failed: '失败' };
+    return job ? [labels[job.status] || job.status, job.outcome ? `测试结果：${OUTCOME_LABEL[job.outcome] || job.outcome}` : '', job.error].filter(Boolean).join(' · ') : '';
+  }
+
+  async function startJob(endpoint, payload) {
+    const id = S.taskId;
+    const job = await post(taskRoute(endpoint), payload);
+    if (id !== S.taskId) return;
+    S.workflow.jobs = [job, ...(S.workflow.jobs || [])];
+    if (endpoint === 'execute') { S.batchId = job.execution_id; S.report = {markdown:'',report:{}}; S.execution = {active:job,records:[]}; }
+    renderAll();
+    scheduleWorkflowPoll();
+    await loadBundle({ fillForms: false });
+  }
+
+  async function recoverDesignBatch(id, button) {
+    await withButton(button, '恢复导入失败', async () => {
+      await post(taskRoute('recover-design'), {design_id:id});
+      await loadBundle({fillForms:false});
+      toast('已完成中断导入，未调用模型或发送测试请求', 'ok');
+    });
+  }
+  function renderDesignChoices() {
+    document.getElementById('designRecovery').innerHTML = (S.workflow.pending_imports || []).map((id) => `<div class="panel panel-body"><p>发现已经校验但未完成入库的用例批次 ${esc(id)}</p><button class="btn" onclick="recoverDesignBatch(${jsq(id)}, this)">恢复这批用例导入</button></div>`).join('');
+    const selected = new Set(csvValues('designOperations'));
+    document.getElementById('designChoices').innerHTML = (S.inventory?.operations || [])
+      .filter((op) => !['out_of_scope', 'unsupported'].includes(op.status))
+      .map((op) => `<label class="row small"><input type="checkbox" value="${esc(op.operation_id)}" ${selected.has(op.operation_id) ? 'checked' : ''} onchange="updateDesignSelection()">${esc(op.method)} ${esc(op.path)}</label>`).join('') || '<span class="small dim">先解析接口资料。</span>';
+  }
+  function updateDesignSelection() {
+    document.getElementById('designOperations').value = Array.from(document.querySelectorAll('#designChoices input:checked')).map((el) => el.value).join(',');
+  }
+  function designPayload() {
+    const operationIds = csvValues('designOperations');
+    if (!operationIds.length) throw new Error('请勾选本轮要生成或导入用例的接口');
+    return { operation_ids: operationIds };
+  }
+
+  async function generateCases(button) {
+    await withButton(button, '启动用例生成失败', async () => {
+      if (!document.getElementById('confirmGeneration').checked) throw new Error('请确认模型将处理所选接口资料');
+      if (!S.model) throw new Error('请先在「模型配置」保存模型配置');
+      document.getElementById('confirmGeneration').checked = false;
+      await startJob('generate', designPayload());
+    });
+  }
+
+  async function importCases(button) {
+    await withButton(button, '导入失败', async () => {
+      const id = S.taskId;
+      const response = fieldValue('designImport');
+      JSON.parse(response);
+      await post(taskRoute('cases'), { response, ...designPayload() });
+      if (id !== S.taskId) return;
+      document.getElementById('designImport').value = '';
+      document.getElementById('designFile').value = '';
+      toast('用例已导入，等待审核', 'ok');
+      await loadBundle({ fillForms: false });
+    });
+  }
+
+  async function loadDesignFile(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const taskId = S.taskId;
+    try {
+      const response = await file.text();
+      if (taskId === S.taskId && input.files[0] === file) document.getElementById('designImport').value = response;
+    } catch (err) {
+      toast('读取用例文件失败：' + err.message, 'bad');
+    }
+  }
+
+  function selectCase(id, checked) {
+    if (checked) S.selectedCases.add(id);
+    else S.selectedCases.delete(id);
+    renderCasesPane();
+    const checkbox = Array.from(document.querySelectorAll('#caseContent input[type="checkbox"]'))
+      .find((input) => input.dataset.caseId === id);
+    checkbox?.focus();
+  }
+
+  function populateCaseEditor(item) {
+    S.caseEdit.draft = structuredClone(item);
+    document.getElementById('caseEditName').value = item.title;
+    document.getElementById('caseEditPurpose').value = item.purpose;
+    document.getElementById('caseEditReason').value = '';
+    document.getElementById('caseEditJson').value = JSON.stringify(item, null, 2);
+    document.getElementById('caseEditParameters').innerHTML = item.steps.map((step, si) =>
+      (step.parameters || []).map((param, pi) => `<div class="panel panel-body grid2">
+        <span class="span2 small">${esc(step.step_id)} · ${esc(param.location)} · ${esc(param.name)}</span>
+        <label class="field"><span>取值方式</span><select data-param-mode="${si}:${pi}">${['literal','reference','generated','omitted'].map((m) => `<option ${m === param.mode ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
+        <label class="field"><span>参数值（字符串加双引号，数字/布尔/null直接填）</span><input data-param-value="${si}:${pi}" value="${esc(JSON.stringify(param.value ?? null))}"></label>
+        <label class="field span2"><span>参数理由</span><input data-param-reason="${si}:${pi}" value="${esc(param.reason)}"></label>
+      </div>`).join('')).join('') || '<p class="small dim">此用例没有参数。</p>';
+    document.getElementById('caseEditAssertions').innerHTML = item.assertions.map((assertion, i) => `<div class="panel panel-body grid2">
+      <label class="field"><span>断言表达式</span><input data-assert-expression="${i}" value="${esc(assertion.expression)}"></label>
+      <label class="field"><span>期望值（JSON）</span><input data-assert-value="${i}" value="${esc(JSON.stringify(assertion.expected))}"></label>
+    </div>`).join('');
+  }
+  function openCaseEdit(index) {
+    const item = S.cases[index];
+    S.caseEdit = { taskId: S.taskId, caseId: item.case_id, hash: S.workflow.case_hashes?.[item.case_id] };
+    populateCaseEditor(item);
+    document.getElementById('modalCaseEdit').classList.remove('hidden');
+    document.getElementById('caseEditName').focus();
+  }
+  function applyAdvancedCase() {
+    try { populateCaseEditor(JSON.parse(fieldValue('caseEditJson'))); }
+    catch (err) { toast('结构格式错误：' + err.message, 'bad'); }
+  }
+  async function saveCaseEdit(button) {
+    await withButton(button, '保存修订失败', async () => {
+      const edit = S.caseEdit;
+      if (!edit || edit.taskId !== S.taskId) throw new Error('任务已切换，请重新打开用例');
+      const next = structuredClone(edit.draft);
+      next.title = fieldValue('caseEditName'); next.purpose = fieldValue('caseEditPurpose');
+      next.change_summary = fieldValue('caseEditReason');
+      next.steps.forEach((step, si) => (step.parameters || []).forEach((p, pi) => {
+        const key = `${si}:${pi}`;
+        p.mode = document.querySelector(`[data-param-mode="${key}"]`).value;
+        p.value = p.mode === 'omitted' ? null : JSON.parse(document.querySelector(`[data-param-value="${key}"]`).value);
+        p.reason = document.querySelector(`[data-param-reason="${key}"]`).value;
+      }));
+      next.assertions.forEach((a, i) => {
+        a.expression = document.querySelector(`[data-assert-expression="${i}"]`).value;
+        a.expected = JSON.parse(document.querySelector(`[data-assert-value="${i}"]`).value);
+      });
+      const revision = await post(taskRoute(`cases/${encodeURIComponent(edit.caseId)}`), {expected_hash: edit.hash, case: next});
+      if (edit.taskId !== S.taskId) return;
+      S.selectedCases.delete(edit.caseId); S.openCase = `${edit.caseId}#${revision.revision}`;
+      closeDialog('modalCaseEdit'); toast('新修订已保存，等待重新审核', 'ok');
+      await loadBundle({ fillForms: false });
+    });
+  }
+
+  async function openReview(button) {
+    await withButton(button, '生成审核材料失败', async () => {
+      const taskId = S.taskId;
+      const selection = [...S.selectedCases].map((id) => [id, S.workflow.case_hashes[id]]);
+      const review = await post(taskRoute('review'), {});
+      if (taskId !== S.taskId) return;
+      if (selection.some(([id, hash]) => review.cases[id] !== hash)) {
+        await loadBundle({ fillForms: false });
+        throw new Error('用例修订已变化，请重新选择后审核');
+      }
+      S.reviewDraft = { taskId, review, selection };
+      document.getElementById('reviewSelected').textContent = selection.map(([id, hash]) => `${id} @ ${hash.slice(0, 12)}`).join(' · ');
+      const selectedCases = S.cases.filter((c) => selection.some(([id]) => id === c.case_id));
+      const environment = S.workflow.environment || {};
+      document.getElementById('reviewMarkdown').innerHTML = `
+        <div class="note"><span>i</span><div>本轮环境：${esc(environment.environment)} · ${esc(environment.base_url)}<br>批准仅适用于下列修订与此环境；修改后需要重新审核。</div></div>
+        ${selectedCases.map((c) => `<section class="panel panel-body"><h4>${esc(c.title)} · 修订 ${esc(c.revision)}</h4><p>${esc(c.purpose)}</p>
+          <p>前置条件：${esc((c.preconditions || []).join('；') || '无')}</p>
+          <h5>测试依据</h5>${c.rules.map((r) => `<p>${esc(r.statement)} <span class="small dim">${esc(r.basis)} · ${esc(r.sources.map((source) => source.path + ' / ' + source.locator).join('；'))}</span></p>`).join('')}
+          <h5>请求步骤与参数</h5>${c.steps.map((step) => `<p>${esc(step.phase)} · ${esc(operationLabel(step.operation_id))} · 账号 ${esc(step.account)} · ${step.side_effect ? '会改变数据' : '声明无副作用'}</p>${(step.parameters || []).map((param) => `<p>${esc(param.location)} ${esc(param.name)} = <code>${esc(JSON.stringify(param.value))}</code>（${esc(param.mode)}）<br>${esc(param.reason)}</p>`).join('')}`).join('')}
+          <h5>预期结果</h5>${c.assertions.map((a) => `<p><code>${esc(a.expression)}</code> → ${esc(JSON.stringify(a.expected))}</p>`).join('')}
+          <p class="small dim">变更说明：${esc(c.change_summary)}</p></section>`).join('')}
+        <details><summary>完整审核材料与技术快照</summary>${mdToHtml(review.markdown || '')}</details>`;
+      document.getElementById('reviewConfirmed').checked = false;
+      document.getElementById('reviewReason').value = '';
+      const confirmations = (review.rule_confirmations || []).filter((rule) => selection.some(([id]) => id === rule.case_id));
+      S.reviewDraft.confirmations = confirmations;
+      document.getElementById('reviewConfirmations').innerHTML = confirmations.map((rule, i) => `<label class="row small"><input type="checkbox" data-rule-confirm="${i}">确认业务假设：${esc(rule.statement)}（${esc(rule.case_id)}）</label>`).join('');
+      document.getElementById('modalReview').classList.remove('hidden');
+      document.getElementById('reviewActor').focus();
+    });
+  }
+
+  async function submitApproval(button) {
+    await withButton(button, '审批失败', async () => {
+      const draft = S.reviewDraft;
+      const actor = fieldValue('reviewActor');
+      const reason = fieldValue('reviewReason');
+      if (!draft || draft.taskId !== S.taskId) throw new Error('任务已切换，请重新导出审核材料');
+      if (!actor || !reason || !document.getElementById('reviewConfirmed').checked) {
+        throw new Error('请填写审核人和理由，并确认已审阅');
+      }
+      const { review_id, review_hash } = draft.review;
+      await post(taskRoute('approve'), {
+        review_id, review_hash, actor,
+        decisions: draft.selection.map(([case_id, revision_hash]) => ({
+          case_id, revision_hash, decision: 'approved', reason
+        })),
+        rule_confirmations: (draft.confirmations || []).filter((rule, i) => document.querySelector(`[data-rule-confirm="${i}"]`).checked).map(({statement, ...rule}) => ({...rule, confirmed_on: new Date().toLocaleDateString('en-CA'), reason}))
+      });
+      if (draft.taskId !== S.taskId) return;
+      S.selectedCases.clear();
+      S.selectedRunCases.clear();
+      closeDialog('modalReview');
+      toast('已冻结并批准所选修订', 'ok');
+      await loadBundle({ fillForms: false });
+    });
   }
 
   // ====================================================================
@@ -1542,31 +1941,19 @@
 
   function fillSourceForm(task) {
     if (!task) return;
-    if (task.target_project) {
-      document.getElementById('inputDocProject').value = task.target_project;
-      document.getElementById('modalProjectName').value = task.target_project;
-    }
-    if (task.target_commit) {
-      document.getElementById('inputDocCommit').value = task.target_commit;
-      document.getElementById('inputRepoCommit').value = task.target_commit;
-    }
-    if (task.openapi_url) {
-      toggleDocSourceType('url');
-      document.getElementById('inputDocUrl').value = task.openapi_url;
-      selectSourceMode('document');
-    } else if (task.document_paths && task.document_paths.length) {
-      toggleDocSourceType('file');
-      document.getElementById('inputDocPath').value = task.document_paths.join(', ');
-      selectSourceMode('document');
-    } else if (task.repository || (task.source_paths && task.source_paths.length)) {
-      document.getElementById('inputRepoPath').value = task.repository || '';
-      document.getElementById('inputSourcePaths').value = (task.source_paths || []).join(', ');
-      selectSourceMode('code');
-    }
-    if (task.adapter) {
-      const sel = document.getElementById('selectAdapter');
-      if (Array.from(sel.options).some((o) => o.value === task.adapter)) sel.value = task.adapter;
-    }
+    document.getElementById('inputDocProject').value = task.target_project || '';
+    document.getElementById('inputRepoProject').value = task.target_project || '';
+    document.getElementById('inputDocCommit').value = task.target_commit || '';
+    document.getElementById('inputRepoCommit').value = task.target_commit || '';
+    document.getElementById('inputDocUrl').value = task.openapi_url || '';
+    document.getElementById('inputDocPath').value = (task.document_paths || []).join(', ');
+    document.getElementById('inputRepoPath').value = task.repository || '';
+    document.getElementById('inputSourcePaths').value = (task.source_paths || []).join(', ');
+    document.getElementById('inputTargetEnv').value = task.environment || 'local';
+    toggleDocSourceType(task.openapi_url ? 'url' : 'file');
+    const isCode = task.repository || (!task.openapi_url && !task.document_paths?.length && task.adapter === 'python-ast');
+    document.getElementById('selectAdapter').value = isCode && task.adapter === 'openapi' ? 'openapi' : 'python-ast';
+    selectSourceMode(isCode ? 'code' : 'document');
   }
 
   function renderSourcePane() {
@@ -1583,7 +1970,9 @@
       ...(S.task.openapi_url ? [S.task.openapi_url] : []),
       ...(S.task.repository ? [S.task.repository] : [])
     ];
-    note.textContent = inputs.length
+    note.textContent = S.task.status !== 'created'
+      ? '当前任务的来源已冻结。更换仓库或源码范围时，请新建任务。'
+      : inputs.length
       ? `已登记 ${inputs.length} 项输入；${S.task.history && S.task.history.length ? `最近变更：${S.task.history[S.task.history.length - 1].reason}` : '尚无状态变更记录'}`
       : '目标尚未指向任何文档或仓库，解析会失败。';
     badge.className = 'pill ' + (inputs.length ? 's-ok' : 's-idle');
@@ -1591,7 +1980,11 @@
   }
 
   function collectConfig() {
-    const payload = { scope: ['*'] };
+    const payload = { scope: S.task?.scope?.length ? S.task.scope : ['*'], repository: null, source_paths: [], document_paths: [], openapi_url: null };
+    const prefix = S.sourceMode === 'document' ? 'inputDoc' : 'inputRepo';
+    payload.target_project = document.getElementById(prefix + 'Project').value.trim() || null;
+    payload.target_commit = document.getElementById(prefix + 'Commit').value.trim() || null;
+    payload.environment = document.getElementById('inputTargetEnv').value.trim() || null;
     if (S.sourceMode === 'document') {
       const isUrl = document.getElementById('radioDocUrl').checked;
       const url = document.getElementById('inputDocUrl').value.trim();
@@ -1607,24 +2000,18 @@
       }
     } else {
       const repo = document.getElementById('inputRepoPath').value.trim();
-      const commit = document.getElementById('inputRepoCommit').value.trim();
       const paths = document.getElementById('inputSourcePaths').value
         .split(',').map((s) => s.trim()).filter(Boolean);
       if (repo) payload.repository = repo;
-      if (commit) payload.target_commit = commit;
       if (paths.length) payload.source_paths = paths;
       payload.adapter = document.getElementById('selectAdapter').value;
     }
-    const project = document.getElementById('inputDocProject').value.trim();
-    const commit = document.getElementById('inputDocCommit').value.trim();
-    if (project) payload.target_project = project;
-    if (commit) payload.target_commit = commit;
     return payload;
   }
 
-  async function ensureTask() {
+  async function ensureTask(config) {
     if (S.taskId) return S.taskId;
-    const project = document.getElementById('inputDocProject').value.trim();
+    const project = config.target_project;
     if (!project) {
       toast('请先填写目标项目名称', 'bad');
       return null;
@@ -1639,17 +2026,20 @@
     const btn = document.getElementById('btnSaveConfig');
     btn.disabled = true;
     try {
-      const taskId = await ensureTask();
+      const config = collectConfig();
+      const taskId = await ensureTask(config);
       if (!taskId) return;
       const updated = await api(`/api/tasks/${encodeURIComponent(taskId)}/configure`, {
         method: 'POST',
-        body: JSON.stringify(collectConfig())
+        body: JSON.stringify(config)
       });
       S.task = updated;
       toast('配置已写入 task.json', 'ok');
       await loadTaskList();
     } catch (err) {
-      toast('保存失败：' + err.message, 'bad');
+      toast(err.message.includes('target is locked after assets or discovery')
+        ? '当前任务的来源已冻结。请新建任务后选择新仓库。'
+        : '保存失败：' + err.message, 'bad');
     } finally {
       btn.disabled = false;
     }
@@ -1661,17 +2051,14 @@
     const original = btn.textContent;
     btn.textContent = '解析中…';
     try {
-      const taskId = await ensureTask();
+      const config = collectConfig();
+      const taskId = await ensureTask(config);
       if (!taskId) return;
-      try {
+      if (S.task?.status === 'created' && !S.inventory) {
         await api(`/api/tasks/${encodeURIComponent(taskId)}/configure`, {
           method: 'POST',
-          body: JSON.stringify(collectConfig())
+          body: JSON.stringify(config)
         });
-      } catch (err) {
-        // The target is locked once assets exist; discovery still uses the
-        // stored task.json, so only a genuinely different failure stops us.
-        if (!/locked/i.test(err.message)) throw err;
       }
       const inventory = await api(`/api/tasks/${encodeURIComponent(taskId)}/discover`, { method: 'POST' });
       S.inventory = inventory;
@@ -1700,18 +2087,45 @@
       document.getElementById('modelUrl').value = 'https://api.deepseek.com/v1';
       document.getElementById('modelName').value = 'deepseek-chat';
       document.getElementById('modelKey').value = 'DEEPSEEK_API_KEY';
-      document.getElementById('modelBudget').value = '1.00';
     } else if (preset === 'openrouter') {
       document.getElementById('modelUrl').value = 'https://openrouter.ai/api/v1';
       document.getElementById('modelName').value = 'openrouter/free';
       document.getElementById('modelKey').value = 'API_TEST_AGENT_MODEL_API_KEY';
-      document.getElementById('modelBudget').value = '0.00';
     } else if (preset === 'ollama') {
       document.getElementById('modelUrl').value = 'http://127.0.0.1:11434/v1';
       document.getElementById('modelName').value = 'qwen2.5-coder:32b';
-      document.getElementById('modelKey').value = '';
-      document.getElementById('modelBudget').value = '0.00';
+      document.getElementById('modelKey').value = 'API_TEST_AGENT_MODEL_API_KEY';
     }
+  }
+
+  function modelConfigValues() {
+    return {
+      base_url: fieldValue('modelUrl'), model_id: fieldValue('modelName'),
+      api_key_env: fieldValue('modelKey'),
+      timeout_seconds: Number(fieldValue('modelTimeout')),
+      max_output_tokens: Number(fieldValue('modelTokens'))
+    };
+  }
+
+  function showModelConfig(data) {
+    S.model = data.model || null;
+    if (!S.model) return;
+    const fields = {
+      modelUrl: 'base_url', modelName: 'model_id', modelKey: 'api_key_env',
+      modelTimeout: 'timeout_seconds', modelTokens: 'max_output_tokens'
+    };
+    for (const [field, key] of Object.entries(fields)) {
+      document.getElementById(field).value = S.model[key] ?? '';
+    }
+    document.getElementById('pingStatus').textContent =
+      data.key_configured ? '配置已保存，凭据已设置' : '配置已保存，宿主凭据尚未设置';
+  }
+
+  async function saveModelConfig(button) {
+    await withButton(button, '保存模型配置失败', async () => {
+      showModelConfig(await post('/api/model/config', modelConfigValues()));
+      toast('模型配置已保存', 'ok');
+    });
   }
 
   async function testPing() {
@@ -1901,12 +2315,7 @@
     if (!S.cases.length) {
       badge.className = 'pill';
       badge.innerHTML = '<i></i><span>0 份修订</span>';
-      host.innerHTML = emptyState(
-        '还没有用例修订',
-        '用例由设计阶段生成或由人导入，每条都必须引用来源规则。设计调用会读取模型配置，因此只从 CLI 发起。',
-        S.taskId ? `uv run testpilot task design ${S.taskId} --model-config <config.local.toml>` : '',
-        '付费模型会在调用前按最坏情况预留费用；定价未知时直接拒绝。'
-      );
+      host.innerHTML = emptyState('还没有用例修订', '解析接口后，可使用上方表单生成或导入用例。');
       return;
     }
 
@@ -1923,14 +2332,15 @@
             ${pill('s-idle', `${S.cases.filter((c) => c.origin === 'human').length} 人工编写`)}
             ${pill('s-idle', `${approvedCount} 次审核通过`)}
           </div>
-          <div class="row">
+          <div class="row workflow-actions">
             <button class="btn btn-sm btn-quiet" onclick="inspectSource('cases')">cases 原件</button>
+            <button class="btn btn-sm btn-ink" onclick="openReview(this)" ${S.selectedCases.size && S.workflow.environment && !activeJob() ? '' : 'disabled'}>
+              审核所选（${S.selectedCases.size}）
+            </button>
           </div>
         </div>
         <div class="panel-body" style="padding-bottom:0">
-          <div class="note"><span>i</span><div>
-            本页严格只读。冻结批准需要人在宿主上显式记录决定，模型无法自行批准；执行也被 Web 界面守卫拒绝。
-          </div></div>
+          <div class="note"><span>i</span><div>${S.workflow.environment ? '勾选要进入本轮审批的当前修订。' : '先在「执行与报告」保存执行环境，再审批所选修订。'}</div></div>
         </div>
         <div class="panel-body" style="padding-top:12px">
           ${S.cases.map((c, idx) => renderCaseCard(c, idx)).join('')}
@@ -1956,17 +2366,24 @@
               </tr>`).join('')}
           </tbody>
         </table>` : '<div class="empty" style="padding:20px"><p style="margin:0">还没有任何审核决定。</p></div>'}
-        <div class="panel-body" style="border-top:1px solid var(--line)">
-          ${cmdBlock(`uv run testpilot task review ${S.taskId} --execution-config <execution.toml>`, '导出完整待审核材料；随后由人决定每一条修订。')}
-        </div>
       </div>`;
   }
 
   function renderCaseCard(c, idx) {
     const open = S.openCase === c.case_id + '#' + c.revision;
+    const latest = !S.cases.some((other) => other.case_id === c.case_id && other.revision > c.revision);
+    const currentHash = latest && S.workflow.case_hashes?.[c.case_id];
+    const reviewState = currentHash ? S.workflow.review_states?.[c.case_id] : '';
     const basisList = (c.rules || []).map((r) => BASIS[r.basis] || { label: r.basis, cls: 's-idle' });
     return `
       <div class="case">
+        ${currentHash ? `
+          <div class="row workflow-actions" style="padding:8px 12px;border-bottom:1px solid var(--line)">
+            <label class="row small"><input type="checkbox" data-case-id="${esc(c.case_id)}" onchange="selectCase(${jsq(c.case_id)}, this.checked)"
+                ${S.selectedCases.has(c.case_id) ? 'checked' : ''}> 选入审批</label>
+            ${reviewState ? pill(reviewState === 'approved' ? 's-ok' : 's-idle', reviewState) : ''}
+            <button class="btn btn-sm btn-quiet" onclick="openCaseEdit(${idx})" ${activeJob() ? 'disabled' : ''}>编辑用例</button>
+          </div>` : ''}
         <button class="case-head" onclick="toggleCase(${jsq(c.case_id + '#' + c.revision)})">
           <div>
             <div class="case-id">${esc(c.case_id)}</div>
@@ -2011,7 +2428,11 @@
                       <span class="mono" style="font-size:11px">${esc(s.operation_id)}</span>
                       ${s.side_effect ? '<span class="chip s-err">有副作用</span>' : ''}
                     </div>
-                    ${(s.parameters || []).length ? `<div class="dim small" style="margin-top:3px">${(s.parameters || []).map((p) => `${esc(p.name)}=${esc(typeof p.value === 'string' ? p.value : JSON.stringify(p.value))}`).join('  ·  ')}</div>` : ''}
+                    ${(s.parameters || []).map((p) => `
+                      <div class="small" style="margin-top:4px">
+                        <code>${esc(p.location)}.${esc(p.name)} = ${esc(JSON.stringify(p.value))}</code>
+                        <div class="dim">${esc(p.reason)} · 来源 ${esc((p.source_ids || []).join('、'))}</div>
+                      </div>`).join('')}
                   </div>
                 </div>`).join('')}
             </div>
@@ -2023,9 +2444,6 @@
                 <code class="mono" style="font-size:11.5px;color:var(--accent)">${esc(a.expression)}</code>
                 <p>期望 <span class="mono">${esc(JSON.stringify(a.expected))}</span> · 规则 ${esc((a.rule_ids || []).join(', '))}</p>
               </div>`).join('')}
-          </div>
-          <div style="margin-top:12px">
-            ${cmdBlock(`uv run testpilot task review-state ${S.taskId} --hash <revision-hash> --decision pending_review --actor <你> --reason "<理由>"`, '把这份修订提交审核；批准需要另一次显式的 approve。')}
           </div>
         </div>` : ''}
       </div>`;
@@ -2039,6 +2457,170 @@
   // ====================================================================
   // Pane 05 — execution
   // ====================================================================
+  function fillExecutionConfig() {
+    const cfg = S.workflow.environment || {};
+    const defaults = {
+      execEnvironment: cfg.environment || S.task?.environment || '',
+      execBaseUrl: cfg.base_url || '',
+      execAllowedOperations: (cfg.allowed_operations || (S.inventory?.operations || []).filter((op) => op.status === 'confirmed').map((op) => op.operation_id)).join(', '),
+      execVersion: cfg.version_endpoint || '',
+      execTimeout: cfg.timeout_seconds ?? 15,
+      execMaxRequests: cfg.max_requests ?? 30,
+      execAccounts: cfg.accounts ? JSON.stringify(cfg.accounts, null, 2) : '',
+      execOperationConfirmations: cfg.operation_confirmations ? JSON.stringify(cfg.operation_confirmations, null, 2) : '',
+      execPreconditions: cfg.confirmed_preconditions ? JSON.stringify(cfg.confirmed_preconditions, null, 2) : ''
+    };
+    for (const [field, value] of Object.entries(defaults)) {
+      document.getElementById(field).value = value;
+    }
+    document.getElementById('execRequireVersion').checked = !!cfg.require_version_verification;
+  }
+
+  function fillAllowedOperations() {
+    document.getElementById('execAllowedOperations').value = (S.inventory?.operations || [])
+      .filter((op) => op.status === 'confirmed').map((op) => op.operation_id).join(', ');
+  }
+
+  async function saveEnvironment(button) {
+    await withButton(button, '保存执行环境失败', async () => {
+      const id = S.taskId;
+      await post(taskRoute('environment'), {
+        environment: fieldValue('execEnvironment'), base_url: fieldValue('execBaseUrl'),
+        allowed_operations: csvValues('execAllowedOperations'),
+        version_endpoint: fieldValue('execVersion') || null,
+        require_version_verification: document.getElementById('execRequireVersion').checked,
+        timeout_seconds: Number(fieldValue('execTimeout')),
+        max_requests: Number(fieldValue('execMaxRequests')),
+        accounts: JSON.parse(fieldValue('execAccounts') || '{}'),
+        operation_confirmations: JSON.parse(fieldValue('execOperationConfirmations') || '{}'),
+        confirmed_preconditions: JSON.parse(fieldValue('execPreconditions') || '{}')
+      });
+      if (id !== S.taskId) return;
+      toast('执行环境已保存', 'ok');
+      await loadBundle({ fillForms: false });
+      fillExecutionConfig();
+    });
+  }
+
+  function renderWorkflowControls() {
+    refreshWorkflowButtons();
+    const jobs = S.workflow.jobs || [];
+    document.getElementById('generationStatus').textContent = jobMessage(jobs.find((job) => ['generate', 'generation'].includes(job.kind)));
+    document.getElementById('environmentStatus').textContent = S.workflow.environment
+      ? `已保存 · ${S.workflow.environment.environment}`
+      : '尚未保存';
+    const approval = S.workflow.approval;
+    const runJob = jobs.find((job) => ['execute', 'execution'].includes(job.kind));
+    const selectedBatch = S.batches.find((batch) => batch.execution_id === S.batchId);
+    const approvalCases = Object.keys(approval?.cases || {});
+    const source = S.batchId ? S.batchDetails : null;
+    const batchCaseIds = source?.batch?.case_ids
+      || (source?.records || []).map((record) => approvalCases.find((id) => approval.cases[id] === record.revision_hash)).filter(Boolean);
+    const canRerun = selectedBatch?.approval_id === approval?.approval_id && !!source;
+    const canRun = approval && !approval.stale && !activeJob() && S.task.status !== 'running';
+    const choices = (canRerun ? batchCaseIds : approvalCases).filter((id) => approvalCases.includes(id));
+    document.getElementById('runControl').innerHTML = S.taskId ? `
+      <div class="panel">
+        <div class="panel-head"><h3>执行批次</h3><span class="small muted" role="status">${esc(jobMessage(runJob))}</span></div>
+        <div class="panel-body grid2">
+          <label class="field"><span>查看批次</span>
+            <select onchange="selectBatch(this.value)">
+              <option value="">最新任务记录</option>
+              ${S.batches.map((batch) => `<option value="${esc(batch.execution_id)}" ${S.batchId === batch.execution_id ? 'selected' : ''}>${esc(batch.execution_id)} · ${esc(STATUS_LABEL[batch.status] || batch.status)}</option>`).join('')}
+            </select>
+          </label>
+          <div class="field"><span>当前审批</span>
+            <div class="small mono">${approval ? esc(approval.approval_id) : '尚未批准'}${approval?.stale ? ' · 已失效，请重新审批' : ''}</div>
+          </div>
+          ${selectedBatch?.previous_execution_id ? `<div class="span2 small">关联上一批次：<button class="btn btn-sm" onclick="selectBatch(${jsq(selectedBatch.previous_execution_id)})">${esc(selectedBatch.previous_execution_id)}</button></div>` : ''}
+          ${choices.length ? `
+            <div class="span2">
+              <div class="small dim" style="margin-bottom:6px">${canRerun ? '选择本批次中要重跑的用例' : '选择要单独执行的已批准用例'}</div>
+              <div class="row workflow-actions">${choices.map((id) => `
+                <label class="row small"><input type="checkbox" value="${esc(id)}" ${S.selectedRunCases.has(id) ? 'checked' : ''}
+                  onchange="selectRunCase(this.value, this.checked)"> ${esc(id)}</label>`).join('')}</div>
+            </div>` : ''}
+        </div>
+        <div class="panel-foot">
+          <button class="btn" onclick="inspectSource('execution')">执行原件</button>
+          ${S.task.status === 'running' && !activeJob() ? `<label class="row small"><input type="checkbox" id="recoverAcknowledged">我已检查中断批次，了解请求可能已发送</label><button class="btn" onclick="recoverInterrupted(this)">标记中断并解锁任务</button>` : ''}
+          <div class="row workflow-actions">
+            <button class="btn" id="btnRerun" onclick="executeCases(this, true)" ${canRun && S.selectedRunCases.size ? '' : 'disabled'}>${canRerun ? '重跑所选' : '执行所选'}</button>
+            <button class="btn btn-ink" onclick="executeCases(this, false)" ${canRun ? '' : 'disabled'}>执行全部已批准用例</button>
+          </div>
+        </div>
+      </div>` : '';
+  }
+
+  async function recoverInterrupted(button) {
+    await withButton(button, '恢复失败', async () => {
+      if (!document.getElementById('recoverAcknowledged').checked) throw new Error('请先确认中断请求的风险');
+      await post(taskRoute('recover'), {acknowledge: true});
+      await loadBundle({fillForms:false});
+      toast('已保留中断证据，没有重发请求。核对数据后可开始新批次。', 'ok');
+    });
+  }
+  function selectRunCase(id, checked) {
+    if (checked) S.selectedRunCases.add(id);
+    else S.selectedRunCases.delete(id);
+    const button = document.getElementById('btnRerun');
+    button.disabled = !S.selectedRunCases.size || !S.workflow.approval || S.workflow.approval.stale || !!activeJob();
+  }
+
+  async function executeCases(button, selectedOnly) {
+    await withButton(button, '启动执行失败', async () => {
+      const approval = S.workflow.approval;
+      if (!approval || approval.stale) throw new Error('当前审批已失效，请重新审核');
+      const payload = { approval_id: approval.approval_id };
+      const previousId = S.batchId || S.batches[0]?.execution_id;
+      if (previousId) payload.previous_execution_id = previousId;
+      if (selectedOnly) {
+        payload.case_ids = [...S.selectedRunCases];
+        const previous = S.batches.find((batch) => batch.execution_id === S.batchId);
+        if (previous) payload.previous_execution_id = previous.execution_id;
+      }
+      await startJob('execute', payload);
+    });
+  }
+
+  async function selectBatch(id) {
+    S.selectedRunCases.clear();
+    await loadBatch(id);
+  }
+
+  async function loadBatch(id, render = true) {
+    const taskId = S.taskId;
+    try {
+      S.batchId = id;
+      S.batchDetails = null;
+      if (id) {
+        const detail = await api(taskRoute(`batches/${encodeURIComponent(id)}`));
+        if (taskId !== S.taskId || id !== S.batchId) return;
+        S.batchDetails = detail;
+        S.execution = { active: detail.batch || {}, records: detail.records || [] };
+        S.report = { markdown: detail.markdown || '', report: detail.report || {} };
+      } else {
+        S.execution = S.latestExecution;
+        S.report = S.latestReport;
+      }
+      if (render) {
+        renderWorkflowControls();
+        renderExecutionPane();
+      }
+    } catch (err) {
+      if (taskId === S.taskId && id === S.batchId) {
+        S.batchId = '';
+        S.execution = S.latestExecution;
+        S.report = S.latestReport;
+        if (render) {
+          renderWorkflowControls();
+          renderExecutionPane();
+        }
+        toast('读取批次失败：' + err.message, 'bad');
+      }
+    }
+  }
+
   function renderExecutionPane() {
     const host = document.getElementById('execContent');
     const badge = document.getElementById('execPill');
@@ -2049,12 +2631,7 @@
     if (!acct && !records.length) {
       badge.className = 'pill';
       badge.innerHTML = '<i></i><span>未执行</span>';
-      host.innerHTML = emptyState(
-        '还没有执行记录',
-        '执行只发生在已批准的冻结快照上，且目标必须是本机回环地址。Web 界面按设计拒绝一切执行请求。',
-        S.taskId ? `uv run testpilot task execute ${S.taskId}` : '',
-        '执行前会校验版本、执行类型、预算与环境身份；任一不满足就整轮阻塞。'
-      );
+      host.innerHTML = emptyState('还没有执行记录', '保存本机执行环境并完成人工审批后，可启动执行。');
       return;
     }
 
@@ -2132,7 +2709,7 @@
       <div class="panel">
         <div class="panel-head">
           <h3>执行记录</h3>
-          <span class="small dim">点击行查看该次尝试的证据</span>
+          <span class="small dim">选择证据查看请求与响应</span>
         </div>
         ${records.length ? `
         <table class="tbl">
@@ -2142,12 +2719,11 @@
           </tr></thead>
           <tbody>
             ${records.slice().reverse().map((r) => `
-              <tr ${(r.evidence_ids || []).length ? 'data-click tabindex="0"' : ''}
-                  ${(r.evidence_ids || []).length ? `onclick="inspectEvidence(${jsq(r.evidence_ids[0])})" onkeydown="if(event.key==='Enter'){inspectEvidence(${jsq(r.evidence_ids[0])})}"` : ''}>
-                <td class="mono dim">${esc(String(r.revision_hash || '').slice(0, 16))}</td>
+              <tr>
+                <td class="mono dim">${esc(r.case_id || S.cases.find((c) => S.workflow.case_hashes?.[c.case_id] === r.revision_hash)?.title || String(r.revision_hash || '').slice(0, 16))}</td>
                 <td>${pill(OUTCOME_CLASS[r.outcome] || 's-idle', OUTCOME_LABEL[r.outcome] || r.outcome)}</td>
                 <td class="mono">${esc(r.attempt)}</td>
-                <td class="mono">${(r.evidence_ids || []).length}</td>
+                <td><div class="row workflow-actions">${(r.evidence_ids || []).map((id, i) => `<button class="btn btn-sm btn-quiet" onclick="inspectEvidence(${jsq(id)})">证据 ${i + 1}</button>`).join('')}</div></td>
                 <td class="small muted">${esc(r.reason)}</td>
               </tr>`).join('')}
           </tbody>
@@ -2158,28 +2734,29 @@
       <div class="panel">
         <div class="panel-head">
           <h3>报告</h3>
-          <button class="btn btn-sm btn-quiet" onclick="inspectSource('report')">report.md 原件</button>
+          <div class="row"><button class="btn btn-sm" onclick="downloadReport()">下载报告</button><button class="btn btn-sm btn-quiet" onclick="inspectReport()">报告原件</button></div>
         </div>
         <div class="panel-body md">${mdToHtml(S.report.markdown)}</div>
-      </div>` : ''}
-
-      <div class="panel">
-        <div class="panel-head"><h3>后续</h3></div>
-        <div class="panel-body">
-          ${cmdBlock(`uv run testpilot task report ${S.taskId}`, '重新生成确定性的守恒报告。')}
-          <div style="height:8px"></div>
-          ${cmdBlock(`uv run testpilot task export-regression ${S.taskId}`, '把已批准用例导出为回归用例，保留任务绑定。')}
-        </div>
-      </div>`;
+      </div>` : ''}`;
   }
 
+  function downloadReport() {
+    const url = URL.createObjectURL(new Blob([S.report.markdown || ''], {type:'text/markdown;charset=utf-8'}));
+    const link = document.createElement('a'); link.href = url;
+    link.download = `${S.taskId}-${S.batchId || S.execution.active?.execution_id || 'report'}.md`;
+    link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
   async function inspectEvidence(evidenceId) {
     if (!evidenceId || !S.taskId) return;
+    const taskId = S.taskId;
+    const batchId = S.batchId;
     try {
-      const ev = await api(`/api/tasks/${encodeURIComponent(S.taskId)}/evidence/${encodeURIComponent(evidenceId)}`);
+      const prefix = batchId ? `batches/${encodeURIComponent(batchId)}/` : '';
+      const ev = await api(taskRoute(`${prefix}evidence/${encodeURIComponent(evidenceId)}`));
+      if (taskId !== S.taskId || batchId !== S.batchId) return;
       showSource(
         `Evidence · ${ev.step_id || evidenceId}`,
-        `runtime/tasks/${S.taskId}/evidence/${evidenceId}.json`,
+        batchId ? `执行批次 ${batchId}` : `runtime/tasks/${S.taskId}/evidence/${evidenceId}.json`,
         evidenceId,
         JSON.stringify(ev, null, 2)
       );
@@ -2192,6 +2769,7 @@
   // Sources drawer
   // ====================================================================
   function showSource(title, path, badge, content) {
+    setSourcesDrawer(true);
     document.getElementById('sourceTitle').textContent = title;
     document.getElementById('sourcePath').textContent = path;
     document.getElementById('sourceFileBadge').textContent = badge;
@@ -2203,11 +2781,21 @@
       if (!opts.silent) toast('请先选择一个任务', 'bad');
       return;
     }
+    const taskId = S.taskId;
     try {
-      const data = await api(`/api/tasks/${encodeURIComponent(S.taskId)}/source/${type}`);
+      const data = await api(taskRoute(`source/${type}`));
+      if (taskId !== S.taskId || (opts.silent && document.getElementById('sourcesPanel').classList.contains('hidden'))) return;
       showSource(data.title, data.path, data.badge, data.content);
     } catch (err) {
       if (!opts.silent) toast('读取失败：' + err.message, 'bad');
+    }
+  }
+
+  function inspectReport() {
+    if (S.batchId) {
+      showSource('report.md', `执行批次 ${S.batchId}`, 'Markdown', S.report.markdown);
+    } else {
+      inspectSource('report');
     }
   }
 
@@ -2289,24 +2877,29 @@
   }
 
   async function createTask(payload) {
-    const created = await api('/api/tasks/create', { method: 'POST', body: JSON.stringify(payload) });
+    const created = await post('/api/tasks/create', payload);
+    resetWorkflowSelection();
     S.taskId = created.task_id;
     await loadTaskList();
     return created;
   }
 
-  async function submitNewTask() {
+  async function submitNewTask(button) {
     const taskId = document.getElementById('modalTaskId').value.trim();
-    const project = document.getElementById('modalProjectName').value.trim() || taskId;
+    const project = document.getElementById('modalProjectName').value.trim() || taskId || '新测试项目';
     const type = document.getElementById('modalTaskType').value;
-    const input = document.getElementById('modalDocInput').value.trim();
+    const input = fieldValue('modalDocInput');
 
-    if (!/^[a-z][a-z0-9_-]{0,63}$/.test(taskId)) {
+    if (taskId && !/^[a-z][a-z0-9_-]{0,63}$/.test(taskId)) {
       toast('任务标识需小写字母开头，仅含小写字母、数字、下划线与连字符', 'bad');
       return;
     }
 
-    const payload = { task_id: taskId, target_project: project, scope: ['*'] };
+    const payload = {
+      task_id: taskId, target_project: project, scope: ['*'],
+      environment: fieldValue('modalTargetEnv') || null,
+      target_commit: fieldValue('modalTargetCommit') || null
+    };
     if (type === 'code') {
       payload.adapter = 'python-ast';
       if (input) payload.repository = input;
@@ -2314,19 +2907,21 @@
       payload.adapter = 'openapi';
       if (input) {
         if (/^https?:\/\//i.test(input)) payload.openapi_url = input;
-        else payload.document_paths = [input];
+        else payload.document_paths = csvValues('modalDocInput');
       }
     }
 
-    try {
+    await withButton(button, '创建失败', async () => {
       await createTask(payload);
       closeNewTaskModal();
-      fillSourceForm(S.task);
+      for (const id of ['modalTaskId', 'modalProjectName', 'modalDocInput', 'modalTargetCommit']) {
+        document.getElementById(id).value = '';
+      }
+      document.getElementById('modalTaskType').value = 'doc';
+      document.getElementById('modalTargetEnv').value = 'local';
       toast('任务已创建，下一步执行接口解析', 'ok');
       setTab('source');
-    } catch (err) {
-      toast('创建失败：' + err.message, 'bad');
-    }
+    });
   }
 
   async function onTargetChange() {
@@ -2339,22 +2934,27 @@
   // File browser
   // ====================================================================
   function openFileBrowser(target) {
+    if (target === 'dir_source' && !fieldValue('inputRepoPath')) {
+      toast('请先选择 Git 仓库根目录', 'bad');
+      return;
+    }
     S.browser.target = target;
+    S.browser.selected = [];
     const title = document.getElementById('browserTitle');
     const chk = document.getElementById('chkMultiSelect');
     const confirmDir = document.getElementById('btnConfirmDir');
 
     if (target === 'dir_source') {
-      title.textContent = '选择源码扫描目录（可多选）';
-      S.browser.filter = 'dir';
+      title.textContent = '选择仓库内的源码文件或目录（可多选）';
+      S.browser.filter = 'all';
       S.browser.multi = true;
-      confirmDir.classList.remove('hidden');
-    } else if (target === 'doc') {
+      confirmDir.classList.add('hidden');
+    } else if (target === 'doc' || target === 'new_doc') {
       title.textContent = '选择 OpenAPI / Swagger 规格文件';
       S.browser.filter = 'doc';
-      S.browser.multi = false;
+      S.browser.multi = true;
       confirmDir.classList.add('hidden');
-    } else if (target === 'dir_repo') {
+    } else if (target === 'dir_repo' || target === 'new_repo') {
       title.textContent = '选择 Git 仓库根目录';
       S.browser.filter = 'dir';
       S.browser.multi = false;
@@ -2370,11 +2970,20 @@
     toggleMultiSelectMode(S.browser.multi, false);
     setBrowserFilter(S.browser.filter, false);
     document.getElementById('modalFileBrowser').classList.remove('hidden');
-    loadBrowserPath(S.browser.currentPath || '');
+    S.browser.returnFocus = document.activeElement;
+    const taskModal = document.getElementById('modalNewTask');
+    if (!taskModal.classList.contains('hidden')) taskModal.inert = true;
+    const initialPath = ['dir_source', 'dir_repo'].includes(target) ? fieldValue('inputRepoPath') : S.browser.currentPath;
+    document.getElementById('browserCurrentPathInput').value = initialPath || '';
+    document.getElementById('browserCurrentPathInput').focus();
+    loadBrowserPath(initialPath || '');
   }
 
   function closeFileBrowser() {
+    S.browser.requestId++;
     document.getElementById('modalFileBrowser').classList.add('hidden');
+    document.getElementById('modalNewTask').inert = false;
+    S.browser.returnFocus?.focus();
   }
 
   function toggleMultiSelectMode(enabled, reload = true) {
@@ -2397,26 +3006,50 @@
 
   async function loadBrowserPath(dirPath) {
     const container = document.getElementById('browserItemsList');
+    const repoPath = S.browser.target === 'dir_source' ? fieldValue('inputRepoPath') : '';
+    const inRepository = (path) => path && (
+      browserPathKey(path) === browserPathKey(repoPath)
+      || repoRelativePaths([path], repoPath)[0]
+    );
+    if (repoPath && dirPath !== repoPath && !inRepository(dirPath)) {
+      toast('请在「本地只读仓库」旁点「浏览」更换仓库', 'bad');
+      return;
+    }
+    S.browser.currentPath = '';
+    S.browser.parentPath = '';
+    S.browser.items = [];
+    S.browser.rendered = [];
+    document.getElementById('browserCurrentPathInput').value = dirPath || '';
+    document.getElementById('btnBrowserUp').disabled = true;
+    document.getElementById('btnConfirmDir').disabled = true;
+    if (repoPath) document.getElementById('browserQuickDirs').replaceChildren();
     container.innerHTML = '<div class="empty" style="padding:20px"><p style="margin:0">正在读取目录…</p></div>';
     const params = new URLSearchParams();
     if (dirPath) params.set('path', dirPath);
     if (S.browser.filter) params.set('filter', S.browser.filter);
+    const requestId = (S.browser.requestId || 0) + 1;
+    S.browser.requestId = requestId;
     try {
       const data = await api(`/api/fs/list?${params.toString()}`);
+      if (requestId !== S.browser.requestId) return;
+      if (repoPath && !inRepository(data.current_path)) throw new Error('请先通过「浏览」确认 Git 仓库根目录');
       S.browser.currentPath = data.current_path;
-      S.browser.parentPath = data.parent_path;
+      S.browser.parentPath = !repoPath || inRepository(data.parent_path) ? data.parent_path : '';
       S.browser.workspaceRoot = data.workspace_root;
       S.browser.items = data.items || [];
 
       document.getElementById('browserCurrentPathInput').value = data.current_path;
-      document.getElementById('btnBrowserUp').disabled = !data.parent_path;
-      document.getElementById('browserQuickDirs').innerHTML = (data.quick_dirs || [])
+      document.getElementById('btnBrowserUp').disabled = !S.browser.parentPath;
+      document.getElementById('btnConfirmDir').disabled = false;
+      const quickDirs = repoPath ? [{ name: '仓库根目录', path: repoPath }] : (data.quick_dirs || []);
+      document.getElementById('browserQuickDirs').innerHTML = quickDirs
         .map((q) => `<button class="chip chip-bare" data-goto="${esc(q.path)}">${esc(q.name)}</button>`)
         .join('');
 
       renderBrowserItems(S.browser.items);
       updateSelectedChips();
     } catch (err) {
+      if (requestId !== S.browser.requestId) return;
       container.innerHTML = `<div class="empty" style="padding:20px"><p style="margin:0;color:var(--bad)">${esc(err.message)}</p></div>`;
     }
   }
@@ -2439,11 +3072,12 @@
     }
     container.innerHTML = items.map((item) => {
       const selected = isSelected(item.path);
+      const selectable = canSelectBrowserItem(item);
       const kind = item.is_dir ? 'DIR' : item.is_openapi ? 'OPENAPI' : (item.ext || 'FILE').replace('.', '').toUpperCase();
       return `
         <div class="browser-row" data-sel="${selected}" data-path="${esc(item.path)}">
           <div class="row grow" style="gap:8px;min-width:0">
-            <input type="checkbox" data-role="check" ${selected ? 'checked' : ''} aria-label="${esc(item.name)}">
+            <input type="checkbox" data-role="check" ${selected ? 'checked' : ''} ${selectable ? '' : 'disabled'} aria-label="${esc(item.name)}">
             <span class="mono" style="color:${item.is_dir ? 'var(--accent)' : 'var(--text-2)'}">${item.is_dir ? '▸' : '·'}</span>
             <span class="truncate">${esc(item.name)}</span>
           </div>
@@ -2478,6 +3112,10 @@
   function handleBrowserRow(path) {
     const item = browserItemByPath(path);
     if (!item) return;
+    if (!canSelectBrowserItem(item)) {
+      if (item.is_dir) loadBrowserPath(path);
+      return;
+    }
     if (S.browser.multi) { toggleItemPath(path); return; }
     S.browser.selected = [item];
     renderBrowserItems(S.browser.rendered);
@@ -2486,7 +3124,11 @@
 
   function toggleItemPath(path) {
     const item = browserItemByPath(path);
-    if (!item) return;
+    if (!item || !canSelectBrowserItem(item)) return;
+    if (!S.browser.multi) {
+      handleBrowserRow(path);
+      return;
+    }
     const at = S.browser.selected.findIndex((x) => x.path === path);
     if (at >= 0) S.browser.selected.splice(at, 1);
     else S.browser.selected.push(item);
@@ -2495,7 +3137,7 @@
   }
 
   function selectAllFolders() {
-    S.browser.items.filter((it) => it.is_dir).forEach((folder) => {
+    S.browser.rendered.filter(canSelectBrowserItem).forEach((folder) => {
       if (!isSelected(folder.path)) S.browser.selected.push(folder);
     });
     renderBrowserItems(S.browser.rendered);
@@ -2547,15 +3189,6 @@
     if (S.browser.parentPath) loadBrowserPath(S.browser.parentPath);
   }
 
-  function displayPath(fullPath) {
-    const root = S.browser.workspaceRoot;
-    if (root && fullPath.startsWith(root)) {
-      const rel = fullPath.slice(root.length).replace(/^[\\/]/, '');
-      return rel || '.';
-    }
-    return fullPath;
-  }
-
   function absolutePath(value) {
     const norm = String(value || '').replace(/\\/g, '/');
     if (/^[a-zA-Z]:\//.test(norm) || norm.startsWith('/')) return norm;
@@ -2564,82 +3197,98 @@
   }
 
   // Source paths are relative to the repository, not to the workspace.
+  function browserPathKey(value) {
+    return value ? absolutePath(value).replace(/\/+$/, '').toLowerCase() : '';
+  }
+
   function repoRelativePaths(paths, repoPath) {
+    if (!repoPath) return paths.map(() => null);
     const repo = absolutePath(repoPath).replace(/\/+$/, '');
-    if (!repo) return paths;
+    if (!repo) return paths.map(() => null);
     const lower = repo.toLowerCase();
     return paths.map((p) => {
       const norm = absolutePath(p);
       const test = norm.toLowerCase();
-      if (test === lower) return '.';
       if (test.startsWith(`${lower}/`)) return norm.slice(repo.length + 1);
-      return norm;
+      return null;
     });
   }
 
-  function confirmCurrentDirectory() {
-    if (!S.browser.currentPath) return;
-    applySelection([{ path: S.browser.currentPath, is_dir: true, name: S.browser.currentPath.split(/[\\/]/).pop() || 'repo' }]);
-    closeFileBrowser();
+  function canSelectBrowserItem(item) {
+    const target = S.browser.target;
+    if (target === 'doc' || target === 'new_doc') return !!item.is_openapi;
+    if (target === 'dir_repo' || target === 'new_repo') return item.is_dir;
+    if (target === 'dir_source') return !!repoRelativePaths([item.path], fieldValue('inputRepoPath'))[0];
+    return item.is_dir || !!item.is_openapi;
   }
 
-  function confirmBrowserSelection() {
+  async function confirmCurrentDirectory() {
+    if (!S.browser.currentPath || document.getElementById('btnConfirmDir').classList.contains('hidden')) return;
+    const path = S.browser.currentPath;
+    await commitBrowserSelection([{ path, is_dir: true, name: path.split(/[\\/]/).pop() || 'repo' }]);
+  }
+
+  async function confirmBrowserSelection() {
     if (!S.browser.selected.length) {
-      if (S.browser.currentPath) { confirmCurrentDirectory(); return; }
       toast('请先选择一个文件或目录', 'bad');
       return;
     }
-    applySelection(S.browser.selected);
-    closeFileBrowser();
+    await commitBrowserSelection([...S.browser.selected]);
   }
 
-  function applySelection(items) {
-    const paths = items.map((item) => displayPath(item.path));
+  async function commitBrowserSelection(items) {
     const target = S.browser.target;
+    const button = document.getElementById('btnConfirmSelect');
+    const directoryButton = document.getElementById('btnConfirmDir');
+    button.disabled = directoryButton.disabled = true;
+    try {
+      const paths = items.map((item) => item.path);
+      const first = items[0];
+      const repoSelection = ['dir_repo', 'new_repo'].includes(target) || (target === 'target' && first.is_dir);
+      let repository;
+      if (repoSelection) {
+        const params = new URLSearchParams({ path: first.path, git: '1' });
+        const data = await api(`/api/fs/list?${params.toString()}`);
+        if (document.getElementById('modalFileBrowser').classList.contains('hidden') || S.browser.target !== target) return;
+        if (!data.repo_root) throw new Error('此目录不属于含有提交的 Git 仓库');
+        repository = { path: data.repo_root, head: data.git_head || '', name: data.repo_root.split(/[\\/]/).filter(Boolean).at(-1) };
+      }
+      applySelection(paths, first, target, repository);
+      closeFileBrowser();
+      toast('已填入表单，保存后生效', 'ok');
+    } catch (err) {
+      toast('选择失败：' + err.message, 'bad');
+    } finally {
+      button.disabled = false;
+      directoryButton.disabled = !S.browser.currentPath;
+    }
+  }
 
+  function applySelection(paths, first, target, repository) {
     if (target === 'dir_source') {
-      const repo = document.getElementById('inputRepoPath').value;
-      const rel = repoRelativePaths(paths, repo);
-      document.getElementById('inputSourcePaths').value =
-        rel.map((p) => (p.endsWith('/') || p.endsWith('\\') ? p : p + '/')).join(', ');
+      const rel = repoRelativePaths(paths, fieldValue('inputRepoPath'));
+      if (rel.some((path) => !path)) throw new Error('请选择仓库内的文件或子目录');
+      document.getElementById('inputSourcePaths').value = rel.join(', ');
+    } else if (target === 'new_doc' || target === 'new_repo') {
+      document.getElementById('modalDocInput').value = repository?.path || paths.join(', ');
+      if (repository && !fieldValue('modalTargetCommit')) {
+        document.getElementById('modalTargetCommit').value = repository.head;
+      }
+    } else if (repository) {
+      const changedRepo = browserPathKey(fieldValue('inputRepoPath')) !== browserPathKey(repository.path);
+      document.getElementById('inputRepoPath').value = repository.path;
       selectSourceMode('code');
-    } else if (target === 'doc') {
+      if (!fieldValue('inputRepoProject')) document.getElementById('inputRepoProject').value = repository.name;
+      if (changedRepo) document.getElementById('inputSourcePaths').value = '';
+      if (changedRepo || !fieldValue('inputRepoCommit')) document.getElementById('inputRepoCommit').value = repository.head;
+    } else {
       document.getElementById('inputDocPath').value = paths.join(', ');
       toggleDocSourceType('file');
       selectSourceMode('document');
-      const project = document.getElementById('inputDocProject');
-      if (!project.value.trim()) {
-        project.value = (items[0].name || '').replace(/\.(json|ya?ml)$/i, '') || 'DocService';
+      if (!fieldValue('inputDocProject')) {
+        document.getElementById('inputDocProject').value = first.name.replace(/\.(json|ya?ml)$/i, '');
       }
-    } else if (target === 'dir_repo') {
-      document.getElementById('inputRepoPath').value = paths[0];
-      selectSourceMode('code');
-      const project = document.getElementById('inputDocProject');
-      if (!project.value.trim()) project.value = items[0].name;
-    } else {
-      const first = items[0];
-      const project = document.getElementById('inputDocProject');
-      if (first.is_dir) {
-        document.getElementById('inputRepoPath').value = paths[0];
-        selectSourceMode('code');
-        if (!project.value.trim()) project.value = first.name;
-        if (items.length > 1) {
-          const rel = repoRelativePaths(paths.slice(1), paths[0]);
-          document.getElementById('inputSourcePaths').value =
-            rel.map((p) => (p.endsWith('/') ? p : p + '/')).join(', ');
-        }
-      } else {
-        document.getElementById('inputDocPath').value = paths.join(', ');
-        toggleDocSourceType('file');
-        selectSourceMode('document');
-        if (!project.value.trim()) {
-          project.value = (first.name || '').replace(/\.(json|ya?ml)$/i, '');
-        }
-      }
-      document.getElementById('modalTaskType').value = first.is_dir ? 'code' : 'doc';
-      document.getElementById('modalDocInput').value = paths[0];
     }
-    toast('已填入表单，保存后生效', 'ok');
   }
 
   // ====================================================================
@@ -2657,6 +3306,14 @@
     });
 
     bindBrowserEvents();
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      if (!document.getElementById('modalFileBrowser').classList.contains('hidden')) {
+        closeFileBrowser();
+      } else {
+        for (const id of ['modalNewTask', 'modalReview', 'modalCaseEdit']) closeDialog(id);
+      }
+    });
 
     const meta = document.querySelector('meta[name="testpilot-token"]');
     if (meta && meta.content) S.token = meta.content;
@@ -2668,6 +3325,11 @@
     }
 
     await loadEnv();
+    try {
+      showModelConfig(await api('/api/model/config'));
+    } catch (err) {
+      document.getElementById('pingStatus').textContent = `读取模型配置失败：${err.message}`;
+    }
 
     try {
       await loadTaskList();
@@ -2685,6 +3347,7 @@
     }
 
     renderStages();
+    refreshWorkflowButtons();
   }
 
   window.addEventListener('DOMContentLoaded', boot);

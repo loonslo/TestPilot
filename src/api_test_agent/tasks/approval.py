@@ -49,7 +49,7 @@ def executor_fingerprint() -> str:
 class ExecutionConfig(Contract):
     engine: Literal["structured-http-v1"] = "structured-http-v1"
     environment: str = Field(min_length=1)
-    target_commit: str = Field(pattern=r"^[0-9a-f]{40}$")
+    target_commit: str | None = Field(default=None, pattern=r"^[0-9a-f]{40}$")
     base_url: str
     synthetic_only: Literal[True] = True
     # External endpoint identity cannot be proven by a user-written version label.
@@ -95,6 +95,8 @@ class ExecutionConfig(Contract):
 
     @model_validator(mode="after")
     def account_names(self) -> ExecutionConfig:
+        if self.require_version_verification and not (self.target_commit and self.version_endpoint):
+            raise ValueError("version verification requires a target commit and probe endpoint")
         if len(set(self.allowed_operations)) != len(self.allowed_operations):
             raise ValueError("duplicate allowed operations")
         for alias, env_name in self.accounts.items():
