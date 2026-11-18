@@ -15,7 +15,7 @@ uv pip install --python .venv/Scripts/python.exe --no-deps $testPilotWheel
 .venv/Scripts/testpilot.exe ui
 ```
 
-更新安装包后，先关闭旧控制台服务，再启动新版。TestPilot 0.1.3 简化资料入口，并让历史任务只在选中后加载。
+更新安装包后，先关闭旧控制台服务，再启动新版。TestPilot 0.1.4 跳过常见三方依赖和打包运行时，单个文件超限会记入解析结果。
 
 网页打开后，选择本地文件、目录，或填写文档地址。压缩源码先解压。能读取 Git 根目录的 HEAD 时，工作台使用提交快照。没有 Git 或可读 HEAD 时，使用目录中的本地文件。发布差异 CLI 仍需要相应 Git 权限。
 

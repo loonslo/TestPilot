@@ -1,6 +1,6 @@
 [project]
 name = "testpilot"
-version = "0.1.3"
+version = "0.1.4"
 description = "TestPilot: REST API exploration and release regression planning with replayable test evidence."
 readme = "README.md"
 requires-python = ">=3.14"

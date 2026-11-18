@@ -421,6 +421,46 @@ def test_local_scan_counts_candidates_and_prunes_build_output(tmp_path, monkeypa
         list(discovery.local_source_files(tmp_path, ()))
 
 
+def test_local_discovery_skips_bundles_and_oversized_source(tmp_path):
+    from api_test_agent.tasks.discovery import MAX_LOCAL_SOURCE_FILE_BYTES
+
+    root = tmp_path / "delivery"
+    root.mkdir()
+    oversized = b"#" * (MAX_LOCAL_SOURCE_FILE_BYTES + 1)
+    embedded = root / "LibreOfficePortable/App/libreoffice/share/extensions/dict-pt-BR/pythonpath"
+    embedded.mkdir(parents=True)
+    (embedded / "lightproof_pt_BR.py").write_bytes(oversized)
+    vendor = root / "third_party"
+    vendor.mkdir()
+    route = 'from fastapi import FastAPI\napp = FastAPI()\n@app.get("/{}")\ndef read(): pass\n'
+    (vendor / "lib.py").write_text(route.format("dependency"), "utf-8")
+    (root / "main.py").write_text(route.format("project"), "utf-8")
+    (root / "huge.py").write_bytes(oversized)
+    document(root, "openapi.json")
+    store = TaskStore(tmp_path / "tasks")
+    store.create(
+        Task(task_id="bundle", target_project="synthetic", scope=["*"], source_directory=str(root))
+    )
+
+    inventory = Inventory.model_validate_json(discover(store, "bundle").read_text("utf-8"))
+    assert {source.path for source in inventory.materials} == {"main.py", "openapi.json"}
+    assert any(operation.path == "/project" for operation in inventory.operations)
+    assert "huge.py 超过单文件大小上限，已跳过。" in inventory.limitations
+
+    store.create(
+        Task(
+            task_id="oversized-only",
+            target_project="synthetic",
+            scope=["*"],
+            source_directory=str(root),
+            source_paths=["huge.py"],
+        )
+    )
+    with pytest.raises(ValueError, match="已跳过 1 个超限文件"):
+        discover(store, "oversized-only")
+    assert store.load("oversized-only").status == "created"
+
+
 def test_local_document_limit_matches_url_import(tmp_path, monkeypatch):
     import api_test_agent.tasks.discovery as discovery_module
 

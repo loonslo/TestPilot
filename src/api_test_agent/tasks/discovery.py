@@ -58,7 +58,23 @@ MAX_LOCAL_SOURCE_ENTRIES = 10_000
 MAX_LOCAL_WALK_ENTRIES = 250_000
 MAX_LOCAL_SOURCE_FILE_BYTES = 1_000_000
 MAX_LOCAL_SOURCE_BYTES = 20_000_000
-GENERATED_DIRECTORIES = {"build", "coverage", "dist", "out", "site-packages", "target", "vendor"}
+DEFAULT_SKIPPED_DIRECTORIES = {
+    "bower_components",
+    "build",
+    "coverage",
+    "dependencies",
+    "deps",
+    "dist",
+    "libreofficeportable",
+    "out",
+    "site-packages",
+    "target",
+    "third-party",
+    "third_party",
+    "thirdparty",
+    "vendor",
+    "vendors",
+}
 SPEC_SUFFIXES = {".json", ".yaml", ".yml"}
 SPEC_FILENAME = re.compile(r"(?:^|[-_.])(openapi|swagger|api[-_.]?docs)(?:$|[-_.0-9v])", re.I)
 SPEC_HEADER = re.compile(r"""(?:^|[\n{,])\s*["']?(?:openapi|swagger)["']?\s*:""")
@@ -215,7 +231,7 @@ def local_source_files(root: Path, selections: tuple[str, ...]) -> Iterator[Path
                         continue
                     candidate = Path(child.path)
                     if child.is_dir(follow_symlinks=False):
-                        if name.lower() not in GENERATED_DIRECTORIES:
+                        if name.lower() not in DEFAULT_SKIPPED_DIRECTORIES:
                             pending.append(candidate)
                     elif is_source_candidate(candidate):
                         pending.append(candidate)
@@ -249,12 +265,19 @@ def _discover(
         if ".." in root.parts or root.drive.startswith(("\\", "//")):
             raise ValueError("source directory must be local and must not contain parent traversal")
         total_bytes = 0
+        skipped_oversized = 0
         for candidate in local_source_files(root, task.source_paths):
             path = candidate.relative_to(root).as_posix()
             with candidate.open("rb") as stream:
-                payload = stream.read(MAX_LOCAL_SOURCE_FILE_BYTES + 1)
-            if len(payload) > MAX_LOCAL_SOURCE_FILE_BYTES:
-                raise ValueError(f"{path} 超过单文件大小上限。请缩小分析范围。")
+                payload = (
+                    stream.read(MAX_LOCAL_SOURCE_FILE_BYTES + 1)
+                    if os.fstat(stream.fileno()).st_size <= MAX_LOCAL_SOURCE_FILE_BYTES
+                    else None
+                )
+            if payload is None or len(payload) > MAX_LOCAL_SOURCE_FILE_BYTES:
+                warnings.append(f"{path} 超过单文件大小上限，已跳过。")
+                skipped_oversized += 1
+                continue
             total_bytes += len(payload)
             if total_bytes > MAX_LOCAL_SOURCE_BYTES:
                 raise ValueError("源码和规格文件的总大小超过上限。请在「分析范围」中缩小范围。")
@@ -264,9 +287,8 @@ def _discover(
                 checkpoint(path, content, LOCAL_SOURCE_VERSION)
         if not snapshots:
             if not (task.document_paths or task.openapi_url):
-                raise ValueError(
-                    "no supported Python source or OpenAPI/Swagger specification in scope"
-                )
+                detail = f"已跳过 {skipped_oversized} 个超限文件。" if skipped_oversized else ""
+                raise ValueError(f"未找到可解析的 Python 源码或 OpenAPI/Swagger 规格。{detail}")
             warnings.append("No supported Python source in the selected directory")
     elif task.source_paths:
         if not task.repository:
@@ -293,8 +315,16 @@ def _discover(
                 continue
             for selection in selected:
                 matches[selection] += 1
-            if task.local_only_source and not is_source_candidate(Path(path)):
-                continue
+            if task.local_only_source:
+                candidate = Path(path)
+                if not is_source_candidate(candidate) or all(
+                    any(
+                        part.lower() in DEFAULT_SKIPPED_DIRECTORIES
+                        for part in candidate.relative_to(selection).parts[:-1]
+                    )
+                    for selection in selected
+                ):
+                    continue
             if not permitted(path) or not metadata.startswith(b"100"):
                 warnings.append(f"{path}: excluded or non-regular Git entry")
                 continue

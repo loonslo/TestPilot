@@ -398,6 +398,8 @@ def test_ui_auto_uses_exact_git_root_and_freezes_committed_inputs(test_server, t
     source = service / "main.py"
     python = 'from fastapi import FastAPI\napp = FastAPI()\n@app.get("/{}")\ndef read(): pass\n'
     source.write_text(python.format("committed"), "utf-8")
+    (repo / "vendor").mkdir()
+    (repo / "vendor" / "library.py").write_text(python.format("vendor-route"), "utf-8")
     (repo / "swagger.json").write_text(
         Path("examples/tasks/openapi-demo.json").read_text("utf-8"), "utf-8"
     )

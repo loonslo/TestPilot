@@ -1113,3 +1113,14 @@ UI 的“直接导入服务/完整清单”和“文档路径或 URL”文案已
 - 网页只在资料面板提供「选择本地资料」「填写在线地址」，移除重复单选、浏览按钮和底部任务表。顶部下拉保留历史，启动时只查询列表，选中后才请求对应任务。取消选择清空当前视图，历史数据仍在。
 - Windows、Python 3.14.4 和 Edge，在独立安装的 0.1.3 wheel 上验证：历史任务首屏没有详情请求，手动打开和取消选择有效，资料入口各出现一次；含 10,050 个无关 SVG 的普通目录成功解析 FastAPI 接口并跳过构建产物；更改在线规格地址生成独立任务，合成文档正常导入。
 - `uv run --locked python -m pytest -q --tb=short -p no:cacheprovider --basetemp=<全新临时目录>` → **525 passed in 71.27s**。Ruff、JavaScript 语法、`git diff --check` 和安装包 ZIP 完整性通过。未验证截图中的真实 AppleRecruit 目录，未调用真实模型或测试服务。
+
+### 英文扫描报错复核
+
+- Windows、Python 3.14，直接从两版 Windows 安装包的 wheel 加载扫描器，对同一个含 10,050 个无关文件的合成目录运行。0.1.2 抛出 `source directory scan limit exceeded; select a narrower scope`，0.1.3 正确收集 `main.py`；当前工作区用同一目录完成接口发现，得到 `GET /delivery`。
+- 验证当前工作区 Python 加载 0.1.3，在 `http://127.0.0.1:8080/` 启动控制台，HTTP 200 且页面包含新版历史任务入口。用户遇到报错的服务进程及其项目目录在当前环境不可见，未验证和替换该进程。此次只复核发行包和本机启动，未更改扫描代码或重跑全量测试。
+
+## 2026-11-18：排除打包依赖与单文件超限（0.1.4）
+
+- 用合成 LibreOfficePortable 拼写检查器复现 0.1.3 在单文件 1,000,001 字节时中止目录解析。0.1.4 在普通目录与自动识别的 Git 快照默认过滤常见构建、第三方依赖和 LibreOfficePortable。普通目录中超过 1,000,000 字节的候选文件单独跳过，路径写入接口清单的限制列表；只选超限文件时保留任务草稿并说明跳过数量。显式导入 OpenAPI/Swagger 的 20 MB 默认限制沿用。
+- Windows、Python 3.14.4 和 Edge，从独立安装的 0.1.4 选择合成项目根目录，验证同一清单保留项目 FastAPI 路由及 OpenAPI 规格，跳过打包拼写检查器和三方库，列出另一个超限文件。
+- `uv run --locked python -m pytest -q --tb=short -p no:cacheprovider --basetemp=<全新临时目录>` → **526 passed in 73.25s**。Ruff、`git diff --check` 和安装包 ZIP 完整性通过。未读取用户真实 AppleRecruit 目录，未调用真实模型或测试服务。
