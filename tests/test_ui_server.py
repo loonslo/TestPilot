@@ -400,9 +400,12 @@ def test_ui_auto_uses_exact_git_root_and_freezes_committed_inputs(test_server, t
     source.write_text(python.format("committed"), "utf-8")
     (repo / "vendor").mkdir()
     (repo / "vendor" / "library.py").write_text(python.format("vendor-route"), "utf-8")
-    (repo / "swagger.json").write_text(
+    (repo / "docs").mkdir()
+    (repo / "docs" / "api.yaml").write_text(
         Path("examples/tasks/openapi-demo.json").read_text("utf-8"), "utf-8"
     )
+    (repo / "backend").mkdir()
+    (repo / "backend" / "UsersController.java").write_text("class UsersController {}", "utf-8")
     run_git("init")
     run_git("add", ".")
     run_git(
@@ -438,6 +441,40 @@ def test_ui_auto_uses_exact_git_root_and_freezes_committed_inputs(test_server, t
     task, inventory = discover_directory("ordinary-subfolder", service)
     assert task["repository"] is None and task["target_commit"] is None
     assert {op.path for op in inventory.operations} == {"/working-copy"}
+
+    task_url = f"{base_url}/api/tasks/java-only"
+    status, _ = _request_json(
+        f"{base_url}/api/tasks/create",
+        "POST",
+        {
+            "task_id": "java-only",
+            "target_project": "Delivery",
+            "scope": ["*"],
+            "source_directory": str(repo),
+            "source_paths": ["backend"],
+            "detect_repository": True,
+            "adapter": "python-ast",
+        },
+    )
+    assert status == 201
+    status, error = _request_json(f"{task_url}/discover", "POST")
+    assert status == 400
+    assert "检测到 Java 源码" in error["error"] and "填写在线规格地址" in error["error"]
+    assert _request_json(task_url)[1]["status"] == "created"
+    status, _ = _request_json(
+        f"{task_url}/configure",
+        "POST",
+        {
+            "repository": None,
+            "source_paths": [],
+            "target_commit": None,
+            "document_paths": [str(repo / "docs" / "api.yaml")],
+            "adapter": "openapi",
+        },
+    )
+    assert status == 200
+    status, result = _request_json(f"{task_url}/discover", "POST")
+    assert status == 200 and {operation["path"] for operation in result["operations"]} == {"/items"}
 
 
 def test_ui_fs_list_api(test_server: tuple[str, TaskStore]) -> None:

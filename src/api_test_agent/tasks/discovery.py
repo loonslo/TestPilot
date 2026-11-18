@@ -77,7 +77,9 @@ DEFAULT_SKIPPED_DIRECTORIES = {
 }
 SPEC_SUFFIXES = {".json", ".yaml", ".yml"}
 SPEC_FILENAME = re.compile(r"(?:^|[-_.])(openapi|swagger|api[-_.]?docs)(?:$|[-_.0-9v])", re.I)
+SPEC_BASENAMES = {"api", "api-spec", "api_spec", "apispec", "spec", "specification"}
 SPEC_HEADER = re.compile(r"""(?:^|[\n{,])\s*["']?(?:openapi|swagger)["']?\s*:""")
+OPENAPI_FALLBACK = "请选择 OpenAPI/Swagger 文件，或填写在线规格地址后重试。"
 MIXED_VERSION_WARNING = (
     "Document/source version correspondence unverified: local document is not "
     "bound to the selected commit"
@@ -183,9 +185,14 @@ class Inventory(Contract):
         return self
 
 
-def is_source_candidate(path: Path) -> bool:
+def is_source_candidate(path: Path, *, explicitly_selected: bool = False) -> bool:
     return path.suffix == ".py" or (
-        path.suffix.lower() in SPEC_SUFFIXES and bool(SPEC_FILENAME.search(path.stem))
+        path.suffix.lower() in SPEC_SUFFIXES
+        and (
+            explicitly_selected
+            or path.stem.lower() in SPEC_BASENAMES
+            or bool(SPEC_FILENAME.search(path.stem))
+        )
     )
 
 
@@ -204,6 +211,7 @@ def local_source_files(root: Path, selections: tuple[str, ...]) -> Iterator[Path
             "select a readable local source directory outside protected or linked paths"
         )
     pending = [root / selection for selection in selections] or [root]
+    explicit_paths = set(pending)
     for path in pending:
         if not path.exists() or not all(
             allowed(part) for part in (path, *path.parents) if part.is_relative_to(root)
@@ -235,7 +243,9 @@ def local_source_files(root: Path, selections: tuple[str, ...]) -> Iterator[Path
                             pending.append(candidate)
                     elif is_source_candidate(candidate):
                         pending.append(candidate)
-        elif is_source_candidate(path) and path.is_file(follow_symlinks=False):
+        elif is_source_candidate(path, explicitly_selected=path in explicit_paths) and path.is_file(
+            follow_symlinks=False
+        ):
             if permitted(path.relative_to(root).as_posix()):
                 candidate_count += 1
                 if candidate_count > MAX_LOCAL_SOURCE_ENTRIES:
@@ -288,7 +298,9 @@ def _discover(
         if not snapshots:
             if not (task.document_paths or task.openapi_url):
                 detail = f"已跳过 {skipped_oversized} 个超限文件。" if skipped_oversized else ""
-                raise ValueError(f"未找到可解析的 Python 源码或 OpenAPI/Swagger 规格。{detail}")
+                raise ValueError(
+                    f"所选本地范围未找到可解析的 Python 源码或接口规格。{detail}{OPENAPI_FALLBACK}"
+                )
             warnings.append("No supported Python source in the selected directory")
     elif task.source_paths:
         if not task.repository:
@@ -302,6 +314,8 @@ def _discover(
         verified = True
         listing = git(repo, "ls-tree", "-r", "-z", task.target_commit).split(b"\0")
         total_bytes = 0
+        has_java_source = False
+        skipped_oversized = 0
         matches = {selection: 0 for selection in task.source_paths}
         for entry in listing:
             if not entry:
@@ -315,9 +329,9 @@ def _discover(
                 continue
             for selection in selected:
                 matches[selection] += 1
+            candidate = Path(path)
             if task.local_only_source:
-                candidate = Path(path)
-                if not is_source_candidate(candidate) or all(
+                if all(
                     any(
                         part.lower() in DEFAULT_SKIPPED_DIRECTORIES
                         for part in candidate.relative_to(selection).parts[:-1]
@@ -325,13 +339,18 @@ def _discover(
                     for selection in selected
                 ):
                     continue
+                if candidate.suffix.lower() == ".java" and permitted(path, {".java"}):
+                    has_java_source = True
+                if not is_source_candidate(candidate, explicitly_selected=path in selected):
+                    continue
             if not permitted(path) or not metadata.startswith(b"100"):
                 warnings.append(f"{path}: excluded or non-regular Git entry")
                 continue
             blob = metadata.split()[-1].decode()
             size = int(git(repo, "cat-file", "-s", blob))
-            if size > 1_000_000:
+            if size > MAX_LOCAL_SOURCE_FILE_BYTES:
                 warnings.append(f"{path}: file exceeds snapshot limit")
+                skipped_oversized += 1
                 continue
             if task.local_only_source:
                 total_bytes += size
@@ -353,7 +372,14 @@ def _discover(
             f"{s}: no committed files matched" for s, count in matches.items() if not count
         ]
         if task.local_only_source and not (snapshots or task.document_paths or task.openapi_url):
-            raise ValueError("no supported Python source or OpenAPI/Swagger specification in scope")
+            details = ["当前 Git 提交的所选范围内没有可解析的 Python 源码或接口规格。"]
+            if has_java_source:
+                details.append("检测到 Java 源码，当前支持通过接口规格导入 Java 项目。")
+            if skipped_oversized:
+                details.append(f"已跳过 {skipped_oversized} 个超限文件。")
+            if not any(matches.values()):
+                details.append("所选路径在该提交中没有已跟踪文件。")
+            raise ValueError("".join(details) + OPENAPI_FALLBACK)
     if task.document_paths:
         if materials_root is None:
             materials_root = Path.cwd()

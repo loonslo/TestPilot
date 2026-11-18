@@ -1124,3 +1124,9 @@ UI 的“直接导入服务/完整清单”和“文档路径或 URL”文案已
 - 用合成 LibreOfficePortable 拼写检查器复现 0.1.3 在单文件 1,000,001 字节时中止目录解析。0.1.4 在普通目录与自动识别的 Git 快照默认过滤常见构建、第三方依赖和 LibreOfficePortable。普通目录中超过 1,000,000 字节的候选文件单独跳过，路径写入接口清单的限制列表；只选超限文件时保留任务草稿并说明跳过数量。显式导入 OpenAPI/Swagger 的 20 MB 默认限制沿用。
 - Windows、Python 3.14.4 和 Edge，从独立安装的 0.1.4 选择合成项目根目录，验证同一清单保留项目 FastAPI 路由及 OpenAPI 规格，跳过打包拼写检查器和三方库，列出另一个超限文件。
 - `uv run --locked python -m pytest -q --tb=short -p no:cacheprovider --basetemp=<全新临时目录>` → **526 passed in 73.25s**。Ruff、`git diff --check` 和安装包 ZIP 完整性通过。未读取用户真实 AppleRecruit 目录，未调用真实模型或测试服务。
+
+## 2026-11-18：Git 快照的规格识别与失败恢复（0.1.5）
+
+- 合成 Git 仓库提交 Java 文件和有效的 `docs/api.yaml`，在 0.1.4 复现 `no supported Python source or OpenAPI/Swagger specification in scope`。0.1.5 将 `api.yaml` 等常见规格名称纳入目录扫描，显式选择的 JSON/YAML 文件按规格内容识别。Git 快照缺少可解析资料时提供中文诊断，有 Java 文件时提示导入 OpenAPI/Swagger。错误保留在资料表单，任务仍为草稿。
+- Windows、Python 3.14.4 和 Edge，在独立安装的 0.1.5 wheel 当中实测：提交的 `docs/api.yaml` 直接解析；仅有 Java 的 Git 仓库显示诊断；同一草稿填写在线规格后成功进入接口清单。
+- `uv run --locked python -m pytest -q --tb=short -p no:cacheprovider --basetemp=<全新临时目录>` → **526 passed in 73.80s**。Ruff、内联脚本语法、`git diff --check` 与安装包 ZIP 完整性通过。未读取真实 AppleRecruit 目录，未验证用户的在线服务地址，Java 源码静态适配器仍待实现。

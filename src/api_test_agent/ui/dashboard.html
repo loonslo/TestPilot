@@ -914,6 +914,7 @@
             </div>
 
             <label class="field" style="margin-top:12px"><span>测试环境名称</span><input type="text" id="inputTargetEnv" value="local"></label>
+            <div class="note s-bad hidden" id="sourceDiscoveryError" role="alert" style="margin-top:12px"></div>
           </div>
 
           <div class="panel-foot">
@@ -1874,6 +1875,7 @@
 
   function fillSourceForm(task) {
     if (!task) return;
+    document.getElementById('sourceDiscoveryError').classList.add('hidden');
     document.getElementById('inputDocProject').value = task.target_project || '';
     document.getElementById('inputLocalProject').value = task.target_project || '';
     document.getElementById('inputDocUrl').value = task.openapi_url || '';
@@ -1976,6 +1978,8 @@
   async function runDiscover({ selectedSource = false, detectRepository = true } = {}) {
     const btn = document.getElementById('btnDiscover');
     if (btn.disabled) return;
+    const errorNotice = document.getElementById('sourceDiscoveryError');
+    errorNotice.classList.add('hidden');
     btn.disabled = true;
     const original = btn.textContent;
     btn.textContent = '解析中…';
@@ -2001,7 +2005,9 @@
       await loadBundle();
       setTab('inventory');
     } catch (err) {
-      toast('解析失败：' + err.message, 'bad');
+      errorNotice.textContent = '解析失败：' + err.message;
+      errorNotice.classList.remove('hidden');
+      toast(errorNotice.textContent, 'bad');
     } finally {
       btn.disabled = false;
       btn.textContent = original;
