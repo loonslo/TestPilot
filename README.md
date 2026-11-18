@@ -17,8 +17,8 @@
 
 `testpilot task` 是测试领航员的主入口，贯穿以下完整生命周期：
 
-1. **Init（初始化）**：`task create` 创建空草稿任务；`task configure` 登记目标仓库、提交与资料范围；`task validate-target` 校验配置。
-2. **Discover（接口发现）**：`task discover` 解析目标 Git 快照、本地文档，或通过显式 `--openapi-url` 获取服务文档后静态解析，导出 `inventory.json`。
+1. **Init（初始化）**：`task create` 创建任务或空草稿；`task configure` 登记文档、本地源码目录，或明确选择 Git 仓库和提交；`task validate-target` 校验配置。
+2. **Discover（接口发现）**：`task discover` 静态解析本地源码范围、Git 快照、接口文档或显式提供的 OpenAPI/Swagger 地址，导出 `inventory.json`。
 3. **Design（用例设计）**：`task materials` 导出字符预算材料；`task design` 构造数据化测试请求，导入或生成含参数理由的用例。
 4. **Review（材料导出）**：`task review` 导出 Markdown 格式审核文档与参数理由表，草稿置为 `awaiting_review`。
 5. **Approve（人工冻结）**：`task approve` 记录人工审核决定并冻结本轮执行快照（哈希锁定），严禁模型自我批准；`task verify-approval` 复核完整性。
@@ -52,10 +52,12 @@
 
 ### 0. 双击启动，在网页完成测试任务
 
+只有安装包、没有 TestPilot 仓库权限或 Git 时，按[安装包方式](docs/installation.md#从安装包安装windows--powershell)安装并打开网页。
+
 在 Windows 资源管理器中，**直接双击根目录下的 `start.bat`** 即可：
 - 已安装 uv 时按锁文件准备 Python 3.14 环境；离线可使用已经准备好的本项目虚拟环境。缺少依赖时会显示错误，不假报启动成功。
 - 直接打开 TestPilot 网页（`http://127.0.0.1:8080/`），不再先选择启动菜单；服务窗口关闭即停止服务。
-- 新建任务，选择本机任意盘符下的接口文档或 Git 仓库，也可输入 OpenAPI URL。仓库根目录与仓库内源码范围分开选择，HEAD 自动读取；纯文档允许不声明提交。
+- 新建任务，选择本机接口文档、OpenAPI/Swagger 地址或本地源码目录，也可以先保存草稿。开发交付压缩包时，解压后选目录即可。当前源码目录支持 Python 静态发现，可选文件和子目录；只有显式选择「高级 · Git 仓库」时才读取 HEAD。
 - 解析接口后，在“测试集与依据”勾选本轮接口，生成或导入用例。可用表单调整标题、目的、参数与断言，复杂步骤保留高级结构编辑。
 - 在“执行与报告”保存合成测试环境，返回用例列表选择修订并人工批准；随后在网页执行，无需切到 CLI。
 - 每轮执行独立保存，可查看旧批次、选择用例回归重跑、检查请求响应并下载报告。修改用例后需要重新批准；旧批次仍按当时的批准计算。
@@ -69,16 +71,23 @@
 
 ```powershell
 uv sync --locked --python 3.14
-uv run testpilot task create quickstart --project SyntheticDemo --commit 0000000000000000000000000000000000000000 --scope "*"
+uv run testpilot task create quickstart --project SyntheticDemo --scope "*"
 uv run testpilot task configure quickstart --document-paths openapi-demo.json
 uv run testpilot task discover quickstart --materials-root examples/tasks
 uv run testpilot task materials quickstart
 ```
 
 输出清单位于 `runtime/tasks/quickstart/inventory.json`，应包含 `GET /items`。
-全零提交仅用于这个合成示例。重复演练请换任务名；发现完成后的任务不能换输入。
+重复演练请换任务名；发现完成后的任务不能换输入。
 之后的用例设计、人工审核和执行见 [任务流程](docs/task-assets.md)；
 导入文档不会调用模型或执行业务用例。
+
+开发交付的源码也可直接登记和静态解析。按需要提供 `--source-paths`，各路径相对于所选目录；省略时扫描目录内允许的 Python 文件。发现记录文件内容哈希和接口来源，部署版本仍待核验。生成用例所用的模型材料默认只保留提取的接口信息与来源标识。
+
+```powershell
+uv run testpilot task create delivery --project MyService --scope "*" --source-directory "D:/delivery/service" --source-paths src
+uv run testpilot task discover delivery
+```
 
 桥接导出的每条用例带显式 `runner: task`，入口写成
 `testpilot task --root {task_root} execute <任务> --approval <批准> --case-id <用例>`。
@@ -91,7 +100,7 @@ pytest 入口不会获得这些变量。每条 `--case-id` 执行都会单独落
 服务只在运行时提供 Swagger/OpenAPI 文档时，一条命令创建任务并导入：
 
 ```powershell
-uv run testpilot task import-openapi apple-recruit --project AppleRecruit --commit "<完整40位提交ID>" --url "http://127.0.0.1:8080/v2/api-docs"
+uv run testpilot task import-openapi apple-recruit --project AppleRecruit --url "http://127.0.0.1:8080/v2/api-docs"
 ```
 
 也接受 Springfox/Knife4j 的 `/swagger-resources` 列表及带 `urls` 的 Swagger 配置。
@@ -102,7 +111,7 @@ uv run testpilot task import-openapi apple-recruit --project AppleRecruit --comm
 Copy-Item examples/tasks/openapi-import.example.toml openapi.local.toml
 # 编辑 openapi.local.toml：按需启用 header_env、allowed_origins 或增大限制。
 # 认证值由本机环境变量提供；TOML 只写变量名。
-uv run testpilot task import-openapi apple-recruit-auth --project AppleRecruit --commit "<完整40位提交ID>" --url "http://127.0.0.1:8080/v2/api-docs" --openapi-config openapi.local.toml
+uv run testpilot task import-openapi apple-recruit-auth --project AppleRecruit --url "http://127.0.0.1:8080/v2/api-docs" --openapi-config openapi.local.toml
 ```
 
 已创建的任务仍可用 `task discover <任务> --openapi-url <地址> --openapi-config <配置>`。

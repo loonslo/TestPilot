@@ -335,6 +335,50 @@ def test_ui_task_create_with_openapi_and_discover(test_server: tuple[str, TaskSt
     assert isinstance(detail["history"][0]["at"], str)
 
 
+def test_ui_source_directory_without_git(test_server, tmp_path, monkeypatch):
+    def unexpected_git(*args):
+        pytest.fail("ordinary local browsing and discovery must not call Git")
+
+    monkeypatch.setattr("api_test_agent.ui.server.git", unexpected_git)
+    monkeypatch.setattr("api_test_agent.tasks.discovery.git", unexpected_git)
+    base_url, store = test_server
+    root = tmp_path / "delivery"
+    root.mkdir()
+    (root / "main.py").write_text(
+        'from fastapi import FastAPI\napp = FastAPI()\n@app.get("/delivery")\ndef read(): pass\n',
+        "utf-8",
+    )
+    params = urllib.parse.urlencode({"path": root})
+    status, listing = _request_json(f"{base_url}/api/fs/list?{params}")
+    assert status == 200 and "repo_root" not in listing
+    status, _ = _request_json(
+        f"{base_url}/api/tasks/create",
+        "POST",
+        {
+            "task_id": "directory-task",
+            "target_project": "Delivery",
+            "scope": ["*"],
+        },
+    )
+    assert status == 201
+    task_url = f"{base_url}/api/tasks/directory-task"
+    status, configured = _request_json(
+        f"{task_url}/configure",
+        "POST",
+        {
+            "source_directory": str(root),
+            "source_paths": ["main.py"],
+            "adapter": "python-ast",
+        },
+    )
+    assert status == 200
+    assert configured["repository"] is None and configured["target_commit"] is None
+    status, inventory = _request_json(f"{task_url}/discover", "POST")
+    assert status == 200
+    assert [operation["path"] for operation in inventory["operations"]] == ["/delivery"]
+    assert store.load("directory-task").source_directory == str(root)
+
+
 def test_ui_fs_list_api(test_server: tuple[str, TaskStore]) -> None:
     base_url, _ = test_server
     # 1. Default list (workspace root)

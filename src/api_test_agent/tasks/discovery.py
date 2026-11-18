@@ -5,9 +5,10 @@ from __future__ import annotations
 import fnmatch
 import hashlib
 import json
+import os
 import re
 import subprocess
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -52,6 +53,10 @@ DEFAULT_PERMITTED_EXTENSIONS = {".py", ".json", ".yaml", ".yml", ".md", ".txt"}
 # document cannot be tied to the source revision, so it must never be reported
 # with the target commit as its version.
 UNVERIFIED_DOCUMENT_VERSION = "unverified-document"
+LOCAL_SOURCE_VERSION = "unverified-local-source"
+MAX_LOCAL_SOURCE_ENTRIES = 10_000
+MAX_LOCAL_SOURCE_FILE_BYTES = 1_000_000
+MAX_LOCAL_SOURCE_BYTES = 20_000_000
 MIXED_VERSION_WARNING = (
     "Document/source version correspondence unverified: local document is not "
     "bound to the selected commit"
@@ -156,11 +161,53 @@ class Inventory(Contract):
         return self
 
 
+def local_source_files(root: Path, selections: tuple[str, ...]) -> Iterator[Path]:
+    def allowed(path: Path) -> bool:
+        return not (
+            path.name.startswith(".")
+            or path.name.lower() in DENIED
+            or SECRET_PATH_PATTERN.search(path.name)
+            or path.is_symlink()
+            or path.is_junction()
+        )
+
+    if not root.is_dir() or not all(allowed(p) for p in (root, *root.parents)):
+        raise ValueError(
+            "select a readable local source directory outside protected or linked paths"
+        )
+    pending = [root / selection for selection in selections] or [root]
+    for path in pending:
+        if not path.exists() or not all(
+            allowed(part) for part in (path, *path.parents) if part.is_relative_to(root)
+        ):
+            raise ValueError("selected source scope is missing, protected or linked")
+
+    visited: set[Path] = set()
+    entries = len(pending)
+    while pending:
+        path = pending.pop()
+        if path in visited or not allowed(path):
+            continue
+        visited.add(path)
+        if path.is_dir(follow_symlinks=False):
+            with os.scandir(path) as children:
+                for child in children:
+                    entries += 1
+                    if entries > MAX_LOCAL_SOURCE_ENTRIES:
+                        raise ValueError(
+                            "source directory scan limit exceeded; select a narrower scope"
+                        )
+                    pending.append(Path(child.path))
+        elif path.suffix == ".py" and path.is_file(follow_symlinks=False):
+            if permitted(path.relative_to(root).as_posix()):
+                yield path
+
+
 def _discover(
     store: TaskStore,
     task_id: str,
     materials_root: Path | None,
-    checkpoint: Callable[[str, str], None],
+    checkpoint: Callable[[str, str, str], None],
 ) -> Path:
     task = store.load(task_id)
     task.require_target()
@@ -173,7 +220,31 @@ def _discover(
     document_paths: set[str] = set()
     imported_documents: dict[str, str] = {}
     external_documents: dict[str, str] = {}
-    if task.source_paths:
+    if task.source_directory:
+        root = Path(task.source_directory).absolute()
+        if ".." in root.parts or root.drive.startswith(("\\", "//")):
+            raise ValueError("source directory must be local and must not contain parent traversal")
+        total_bytes = 0
+        for candidate in local_source_files(root, task.source_paths):
+            path = candidate.relative_to(root).as_posix()
+            with candidate.open("rb") as stream:
+                payload = stream.read(MAX_LOCAL_SOURCE_FILE_BYTES + 1)
+            if len(payload) > MAX_LOCAL_SOURCE_FILE_BYTES:
+                raise ValueError(f"{path}: source file exceeds snapshot limit")
+            total_bytes += len(payload)
+            if total_bytes > MAX_LOCAL_SOURCE_BYTES:
+                raise ValueError(
+                    "source snapshot exceeds total size limit; select a narrower scope"
+                )
+            snapshots[path] = payload.decode("utf-8-sig")
+            checkpoint(path, snapshots[path], LOCAL_SOURCE_VERSION)
+        if not snapshots:
+            if not (task.document_paths or task.openapi_url):
+                raise ValueError(
+                    "no supported Python source in scope; use OpenAPI/Swagger for other languages"
+                )
+            warnings.append("No supported Python source in the selected directory")
+    elif task.source_paths:
         if not task.repository:
             raise ValueError("source selection requires repository")
         repo = Path(task.repository).resolve()
@@ -205,7 +276,7 @@ def _discover(
                 continue
             snapshots[path] = git(repo, "cat-file", "blob", blob).decode("utf-8")
             commit_paths.add(path)
-            checkpoint(path, snapshots[path])
+            checkpoint(path, snapshots[path], task.target_commit)
         warnings += [
             f"{s}: no committed files matched" for s, count in matches.items() if not count
         ]
@@ -229,14 +300,14 @@ def _discover(
                 raise ValueError("document exceeds snapshot limit")
             path = selection if not absolute else external_snapshot_path(candidate, snapshots)
             content = candidate.read_text("utf-8")
-            if path in snapshots and snapshots[path] != content:
-                raise ValueError("document and committed source share a conflicting path")
+            if path in snapshots and (task.source_directory or snapshots[path] != content):
+                raise ValueError("document and source share a conflicting path")
             snapshots[path] = content
             document_paths.add(path)
             if absolute:
                 external_documents[path] = candidate.as_posix()
                 warnings.append(f"{path}: external document read from {candidate.as_posix()}")
-            checkpoint(path, content)
+            checkpoint(path, content, UNVERIFIED_DOCUMENT_VERSION)
     if task.openapi_url:
         bundle = fetch_openapi_bundle(task.openapi_url, task.openapi_options)
         warnings.extend(bundle.warnings)
@@ -246,13 +317,15 @@ def _discover(
             snapshots[path] = content
             document_paths.add(path)
             imported_documents[path] = bundle.urls[path]
-            checkpoint(path, content)
+            checkpoint(path, content, UNVERIFIED_DOCUMENT_VERSION)
     sources = [
         ref(
             path,
             content,
             task.target_commit
             if path in commit_paths and path not in document_paths
+            else LOCAL_SOURCE_VERSION
+            if task.source_directory and path not in document_paths
             else UNVERIFIED_DOCUMENT_VERSION,
         )
         for path, content in sorted(snapshots.items())
@@ -342,7 +415,9 @@ def _discover(
             row["status"] = "out_of_scope"
             row["reason"] = "Not selected by task METHOD /path glob scope"
         operations.append(Operation(**row))
-    if not verified:
+    if task.source_directory:
+        warnings.append("Local source snapshot: source revision and runtime version are unverified")
+    elif not verified:
         warnings.append("Document-only inventory: target version and runtime are unverified")
     elif document_paths:
         # Mixed inventory: source files come from the commit, but at least one
@@ -441,16 +516,7 @@ def discover(store: TaskStore, task_id: str, materials_root: Path | None = None)
     }
     (attempt / "started.json").write_text(json.dumps(metadata, indent=2), "utf-8")
 
-    def checkpoint(path: str, content: str) -> None:
-        is_document = (
-            path.startswith("external/")
-            or path.startswith("url-import/")
-            or any(
-                path == selection or path.startswith(selection.rstrip("/") + "/")
-                for selection in task.document_paths or ()
-            )
-        )
-        version = UNVERIFIED_DOCUMENT_VERSION if is_document else task.target_commit
+    def checkpoint(path: str, content: str, version: str) -> None:
         source = ref(path, content, version)
         payload = {"source": source.model_dump(mode="json"), "content": content}
         snapshot_path = attempt / f"{source.source_id}.json"
@@ -484,6 +550,9 @@ def model_materials(inventory: Inventory, max_chars: int) -> str:
     """Bound the actual serialized payload, recording every unsent material."""
     base = {"target_commit": inventory.target_commit, "materials": [], "omitted": []}
     for source in inventory.materials:
+        if source.version == LOCAL_SOURCE_VERSION:
+            base["omitted"].append(source.source_id)
+            continue
         item = {
             "source": source.model_dump(mode="json"),
             "content": inventory.snapshots[source.path],

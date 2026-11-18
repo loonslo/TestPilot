@@ -100,6 +100,7 @@ class TaskStore:
             "target_commit",
             "scope",
             "repository",
+            "source_directory",
             "source_paths",
             "document_paths",
             "openapi_url",

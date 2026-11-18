@@ -2,6 +2,27 @@
 
 代码仓库为私有仓库 https://github.com/loonslo/TestPilot 。本次上传是源代码备份和跨环境安装入口；F7 真实项目/模型验收、F8 维护接入尚未完成。
 
+## 从安装包安装（Windows / PowerShell）
+
+测试人员可使用维护者交付的 `.whl` 和锁定的 `requirements.txt` 安装。准备 Python 3.14、uv 和能获取锁定依赖的网络或缓存。进入解压后的交付目录运行以下命令。此流程适用于没有 Git 或私有仓库权限的电脑。
+
+```powershell
+uv venv --python 3.14 .venv
+uv pip install --python .venv/Scripts/python.exe --require-hashes -r requirements.txt
+$testPilotWheel = (Get-ChildItem -Filter 'testpilot-*.whl' | Select-Object -First 1).FullName
+uv pip install --python .venv/Scripts/python.exe --no-deps $testPilotWheel
+.venv/Scripts/testpilot.exe ui
+```
+
+网页打开后，选择接口文档、在线地址或开发交付的本地源码目录。压缩源码先解压。只有发布差异和显式的仓库来源需要相应 Git 访问权限。
+
+维护者在 TestPilot 源码根目录构建 wheel、导出锁定的运行依赖，并从同一次构建交付这两个文件。
+
+```powershell
+uv build --wheel --out-dir dist/qa
+uv export --locked --no-dev --no-emit-project --output-file dist/qa/requirements.txt
+```
+
 ## 从 GitHub 安装（Windows / PowerShell）
 
 准备 Git、uv 和有该私有仓库读取权限的 GitHub 登录；不把访问令牌写进 URL 或配置文件。Python 由 uv 按项目要求准备。
@@ -17,11 +38,11 @@ uv run testpilot task --help
 
 GitHub CLI 仅用于私有仓库认证/克隆；已配置 Git 凭据管理器时也可使用 `git clone https://github.com/loonslo/TestPilot.git`。要固定复现某次版本，先 `git switch --detach <完整提交号>`，再执行 `uv sync --locked --python 3.14`。
 
-安装后先运行 [README 内置合成示例](../README.md#1-下载后先跑通内置示例)，不需要模型 Key 或目标仓库。服务文档可通过 [一步导入命令](openapi-import.md) 接入，支持大小配置、认证头、重定向和聚合目录。
+安装后先运行 [README 内置合成示例](../README.md#1-命令行运行方式-cli)，无需模型 Key 或目标仓库。服务文档可通过 [一步导入命令](openapi-import.md) 接入，支持大小配置、认证头、重定向和聚合目录。
 
 ## 目标项目与本机配置
 
-任务的项目路径、固定提交、允许读取的源码/文档范围、执行环境及账号映射需要在使用机器重新配置，流程见 [统一任务说明](task-assets.md)。仓库不带目标项目源码、运行证据或本机配置，不会自动迁移原机器的任务。需要迁移历史证据时应另行确定脱敏范围，不上传整个 runtime。
+任务的资料范围、执行环境及账号映射需要在使用机器重新配置，流程见 [统一任务说明](task-assets.md)。使用 Git 仓库作为来源时再填写固定提交。安装包只含 TestPilot 本身；异机使用时按任务重新选择授权资料。
 
 旧探索模块的本机配置由 `config.example.toml` 复制为被忽略的 `config.local.toml`；回归配置由 `examples/regression/finunity/testagent.example.toml` 复制为同目录被忽略的 `testagent.toml`。示例中的目标克隆需另行按授权获取。模型和业务账号凭据只从环境变量/本机安全存储提供，不写进共享文件；环境变量名见各模板。
 
@@ -45,7 +66,7 @@ $env:API_TEST_AGENT_MODEL_API_KEY = "sk-or-v1-xxxx"
 ### 2. 配置执行环境
 从 `examples/tasks/execution.example.toml` 复制为 `execution.local.toml`：
 - 填写被测服务在本地监听的环回地址（如 `http://127.0.0.1:8000`）；
-- 填写被测项目的 40 位 Git Commit SHA（测试期间可填具体 commit，需满足 40 位十六进制字符）；
+- 文档或本地源码目录的合成演练可省略 `target_commit`。核验运行服务的提交时再填实际提交并配置探针；
 - 填写允许执行的 `allowed_operations` 列表。
 
 ### 3. 运行完整闭环命令
@@ -53,7 +74,6 @@ $env:API_TEST_AGENT_MODEL_API_KEY = "sk-or-v1-xxxx"
 # 1. 登记任务（指定被测项目文档或源码）
 uv run testpilot task create real-test `
   --project "TargetProject" `
-  --commit "0000000000000000000000000000000000000000" `
   --scope "GET /api/*" "POST /api/*"
 uv run testpilot task configure real-test --document-paths "path/to/openapi.json"
 

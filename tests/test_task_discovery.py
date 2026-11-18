@@ -5,7 +5,13 @@ import subprocess
 import pytest
 
 from api_test_agent.cli import main
-from api_test_agent.tasks.discovery import Inventory, discover, model_materials
+from api_test_agent.tasks.design import DesignOutput, design_request, validate_output
+from api_test_agent.tasks.discovery import (
+    LOCAL_SOURCE_VERSION,
+    Inventory,
+    discover,
+    model_materials,
+)
 from api_test_agent.tasks.models import Task
 from api_test_agent.tasks.store import TaskStore
 
@@ -303,6 +309,90 @@ def test_document_under_runtime_directory_is_allowed(tmp_path):
     inv = Inventory.model_validate_json(discover(store, "runtime-doc", tmp_path).read_text("utf-8"))
     assert "runtime/demo/openapi.json" in inv.snapshots
     assert inv.materials[0].version == "unverified-document"
+
+
+def test_local_source_snapshot_without_git_and_without_sending_code(tmp_path, monkeypatch):
+    def unexpected_git(*args):
+        pytest.fail("local source discovery must not call Git")
+
+    monkeypatch.setattr("api_test_agent.tasks.discovery.git", unexpected_git)
+    root = tmp_path / "delivery"
+    source = root / "service"
+    source.mkdir(parents=True)
+    content = (
+        "from fastapi import FastAPI\napp = FastAPI()\n"
+        '@app.get("/items")\ndef items(name: str = "SYNTHETIC_EXPRESSION"): pass\n'
+    )
+    (source / "main.py").write_bytes(content.encode())
+    (source / "credential.py").write_text(content, "utf-8")
+    (source / ".hidden").mkdir()
+    (source / ".hidden" / "excluded.py").write_text(content, "utf-8")
+    (root / "out_of_scope.py").write_text(content, "utf-8")
+    store = TaskStore(tmp_path / "tasks")
+    store.create(Task(task_id="delivery", target_project="synthetic", scope=["*"]))
+    store.configure("delivery", source_directory=str(root), source_paths=("service",))
+    inventory_path = discover(store, "delivery")
+    inventory = Inventory.model_validate_json(inventory_path.read_text("utf-8"))
+    assert inventory.target_commit is None and not inventory.version_verified
+    (material,) = inventory.materials
+    assert material.path == "service/main.py" and material.version == LOCAL_SOURCE_VERSION
+    assert material.content_hash == hashlib.sha256(content.encode()).hexdigest()
+    (operation,) = inventory.operations
+    assert (operation.method, operation.path) == ("GET", "/items")
+    assert "SYNTHETIC_EXPRESSION" in json.dumps(operation.declarations)
+    request = design_request(inventory)
+    assert "SYNTHETIC_EXPRESSION" not in request
+    assert json.loads(request)["materials"]["omitted"] == [material.source_id]
+    output = DesignOutput.model_validate(
+        {
+            "assessments": [
+                {
+                    "operation_id": operation.operation_id,
+                    "scenario": scenario,
+                    "status": "pending",
+                    "reason": "Requires a confirmed rule",
+                }
+                for scenario in (
+                    "normal",
+                    "validation",
+                    "boundary",
+                    "combination",
+                    "auth",
+                    "state",
+                    "repeat",
+                )
+            ],
+        }
+    )
+    validate_output(output, inventory, request)
+    (source / "main.py").write_text("# changed after discovery", "utf-8")
+    assert Inventory.model_validate_json(inventory_path.read_text("utf-8")).snapshots == {
+        "service/main.py": content,
+    }
+
+
+def test_source_directory_skips_linked_files_and_rejects_linked_scope(tmp_path):
+    from api_test_agent.tasks.discovery import local_source_files
+
+    external = tmp_path / "external"
+    external.mkdir()
+    (external / "outside.py").touch()
+    root = tmp_path / "delivery"
+    root.mkdir()
+    (root / "main.py").touch()
+    link = root / "outside"
+    try:
+        if hasattr(subprocess, "CREATE_NO_WINDOW"):
+            from _winapi import CreateJunction
+
+            CreateJunction(str(external), str(link))
+        else:
+            link.symlink_to(external, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"cannot create a test directory link: {exc}")
+    assert list(local_source_files(root, ())) == [root / "main.py"]
+    with pytest.raises(ValueError, match="protected or linked"):
+        list(local_source_files(root, ("outside/outside.py",)))
 
 
 def test_local_document_limit_matches_url_import(tmp_path, monkeypatch):

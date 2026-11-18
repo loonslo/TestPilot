@@ -19,8 +19,13 @@ from pydantic import Field
 
 from api_test_agent import expr
 from api_test_agent.tasks.design_model import GeneratedText, GenerationRefused
-from api_test_agent.tasks.discovery import Inventory, model_materials, task_binding
-from api_test_agent.tasks.models import CaseRevision, Contract, ReviewDecision
+from api_test_agent.tasks.discovery import (
+    LOCAL_SOURCE_VERSION,
+    Inventory,
+    model_materials,
+    task_binding,
+)
+from api_test_agent.tasks.models import CaseRevision, Contract, Operation, ReviewDecision
 from api_test_agent.tasks.store import TaskStore, _write_new
 
 if TYPE_CHECKING:
@@ -72,6 +77,22 @@ def load_inventory(store: TaskStore, task_id: str) -> Inventory:
     return inventory
 
 
+def design_operation(operation: Operation) -> dict:
+    payload = operation.model_dump(mode="json")
+    local_sources = {s.source_id for s in operation.sources if s.version == LOCAL_SOURCE_VERSION}
+    if local_sources:
+        payload["declarations"] = [
+            {
+                "kind": declaration.get("kind", "implementation"),
+                "source_ids": declaration["source_ids"],
+            }
+            if local_sources.intersection(declaration.get("source_ids", ()))
+            else declaration
+            for declaration in payload["declarations"]
+        ]
+    return payload
+
+
 def design_request(
     inventory: Inventory, max_chars: int = 60000, operation_ids: set[str] | None = None
 ) -> str:
@@ -81,9 +102,7 @@ def design_request(
     selected = operation_ids if operation_ids is not None else set(list(available_operations)[:10])
     if not selected or not selected <= available_operations.keys():
         raise ValueError("select existing in-scope operation IDs for the design batch")
-    operations = [
-        o.model_dump(mode="json") for key, o in available_operations.items() if key in selected
-    ]
+    operations = [design_operation(o) for key, o in available_operations.items() if key in selected]
     # Both schemas and operation declarations count against the actual serialized request.
     request = {
         "instructions": INSTRUCTION,
@@ -235,7 +254,7 @@ def validate_cases(
 
 def validate_output(output: DesignOutput, inventory: Inventory, request: str) -> None:
     payload = json.loads(request)
-    known = {o.operation_id: o.model_dump(mode="json") for o in inventory.operations}
+    known = {o.operation_id: design_operation(o) for o in inventory.operations}
     if any(known.get(o["operation_id"]) != o for o in payload["operations"]):
         raise ValueError("request interface declaration differs from inventory")
     delivery = delivery_manifest(payload, inventory)

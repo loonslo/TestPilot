@@ -34,7 +34,10 @@ def register_commands(commands: argparse._SubParsersAction) -> None:
     create.add_argument("--scope", nargs="+", default=[])
     create.add_argument("--environment")
     create.add_argument("--repository", help="本地只读 Git 仓库路径")
-    create.add_argument("--source-paths", nargs="+", default=[], help="仓库内源码目录/文件相对路径")
+    create.add_argument("--source-directory", help="本地源码目录，无需 Git 或提交")
+    create.add_argument(
+        "--source-paths", nargs="+", default=[], help="源码根内的文件或目录相对路径"
+    )
     create.add_argument("--document-paths", nargs="+", default=[], help="本地接口文档相对路径")
     create.add_argument("--openapi-url", help="服务在线 OpenAPI / Swagger 文档 URL")
     create.add_argument("--adapter", help="指定适配器 (python-ast, openapi)")
@@ -60,6 +63,7 @@ def register_commands(commands: argparse._SubParsersAction) -> None:
     )
     for flag in ("project", "commit", "repository", "environment", "openapi-url", "adapter"):
         configure.add_argument(f"--{flag}")
+    configure.add_argument("--source-directory", help="本地源码目录，无需 Git 或提交")
     for flag in ("scope", "source-paths", "document-paths"):
         configure.add_argument(f"--{flag}", nargs="+")
     validate = actions.add_parser("validate-target", help="检查目标登记完整性，不访问源码")
@@ -278,6 +282,7 @@ def execute_handler(args: argparse.Namespace) -> int:
                 scope=tuple(args.scope),
                 environment=args.environment,
                 repository=getattr(args, "repository", None),
+                source_directory=getattr(args, "source_directory", None),
                 source_paths=tuple(getattr(args, "source_paths", []) or []),
                 document_paths=tuple(getattr(args, "document_paths", []) or []),
                 openapi_url=getattr(args, "openapi_url", None),
@@ -295,6 +300,7 @@ def execute_handler(args: argparse.Namespace) -> int:
                 "project",
                 "commit",
                 "repository",
+                "source_directory",
                 "environment",
                 "scope",
                 "source_paths",
@@ -310,7 +316,7 @@ def execute_handler(args: argparse.Namespace) -> int:
             print(store.configure(args.task_id, **updates).model_dump_json(indent=2))
         elif args.task_action == "validate-target":
             store.load(args.task_id).require_target()
-            print("target registration complete; repository identity is not yet verified")
+            print("target registration complete; selected materials are not yet verified")
         elif args.task_action == "state":
             print(
                 store.transition(args.task_id, args.status, args.reason).model_dump_json(indent=2)

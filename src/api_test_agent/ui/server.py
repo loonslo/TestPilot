@@ -135,6 +135,12 @@ class UIRequestHandler(BaseHTTPRequestHandler):
         root = getattr(self.server, "workspace_root", Path.cwd())
         if task.repository and not self._is_allowed_path((root / task.repository).resolve()):
             raise PermissionError("Repository path is outside the permitted local sources")
+        if task.source_directory:
+            directory = root / task.source_directory
+            if not self._is_allowed_path(directory) or not self._is_allowed_path(
+                directory.resolve()
+            ):
+                raise PermissionError("Source directory is outside the permitted local sources")
         for document in task.document_paths:
             path = (root / document).resolve()
             if not self._is_allowed_path(path) or not document_permitted(path):
@@ -309,6 +315,7 @@ class UIRequestHandler(BaseHTTPRequestHandler):
                         "adapter": task.adapter,
                         "scope": list(task.scope),
                         "repository": task.repository,
+                        "source_directory": task.source_directory,
                         "document_paths": list(task.document_paths),
                         "openapi_url": task.openapi_url,
                         "source_paths": list(task.source_paths),
@@ -767,6 +774,7 @@ class UIRequestHandler(BaseHTTPRequestHandler):
                     target_commit=data.get("target_commit") or None,
                     scope=tuple(data.get("scope", [])),
                     repository=data.get("repository") or None,
+                    source_directory=data.get("source_directory") or None,
                     adapter=data.get("adapter") or None,
                     document_paths=tuple(data.get("document_paths", [])),
                     openapi_url=data.get("openapi_url") or None,
@@ -796,6 +804,7 @@ class UIRequestHandler(BaseHTTPRequestHandler):
                     "target_commit",
                     "scope",
                     "repository",
+                    "source_directory",
                     "source_paths",
                     "document_paths",
                     "openapi_url",

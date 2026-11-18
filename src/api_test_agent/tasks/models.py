@@ -162,6 +162,9 @@ class Task(Contract):
     target_commit: str | None = Field(default=None, pattern=r"^[0-9a-f]{40}$")
     scope: tuple[str, ...] = ()
     repository: str | None = Field(default=None, min_length=1)
+    source_directory: str | None = Field(
+        default=None, min_length=1, exclude_if=lambda value: value is None
+    )
     source_paths: tuple[str, ...] = ()
     document_paths: tuple[str, ...] = ()
     openapi_url: str | None = None
@@ -208,16 +211,20 @@ class Task(Contract):
     def require_target(self) -> None:
         if not self.target_project or not self.scope:
             raise ValueError("select project and scope for this task first")
-        binds_source = bool(self.repository or self.source_paths)
+        if self.source_directory and (self.repository or self.target_commit):
+            raise ValueError("local source directory cannot be bound to a Git repository or commit")
+        binds_source = bool(self.repository or (self.source_paths and not self.source_directory))
         if binds_source and not (self.target_commit or self.version_manifest):
             raise ValueError("source selection requires a declared commit")
         if (
             not self.document_paths
             and not self.openapi_url
+            and not self.source_directory
             and not (self.repository and self.source_paths)
         ):
             raise ValueError(
-                "select document paths, OpenAPI URL or repository with explicit source paths"
+                "select document paths, OpenAPI URL, a local source directory, "
+                "or a repository with explicit source paths"
             )
 
     status: Literal[
