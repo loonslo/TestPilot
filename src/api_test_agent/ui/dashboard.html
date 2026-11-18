@@ -835,7 +835,7 @@
         <div class="eyebrow">当前任务目标</div>
         <div class="sheet-target">
           <select id="targetSelector" onchange="onTargetChange()" aria-label="选择任务">
-            <option value="">（尚未登记任务）</option>
+            <option value="">选择历史任务</option>
           </select>
         </div>
         <div class="sheet-meta" id="sheetMeta">
@@ -851,7 +851,6 @@
             <span aria-hidden="true">◻</span>浅色
           </button>
         </div>
-        <button class="btn btn-quiet" onclick="openFileBrowser('target')">选择本地资料</button>
         <button class="btn" onclick="openNewTaskModal()">新建任务</button>
         <button class="btn" id="btnSources" onclick="toggleSourcesDrawer()" aria-expanded="false" aria-controls="sourcesPanel">
           <span>技术详情</span>
@@ -867,7 +866,7 @@
           <div>
             <div class="eyebrow">阶段 01 · 目标登记</div>
             <h2>数据源头配置</h2>
-            <p>登记被测目标并冻结输入。保存会写入 <span class="mono">task.json</span>，解析会调用真实的发现适配器；两者都不发送任何测试请求。</p>
+            <p>选择源码或接口规格，生成接口清单。</p>
           </div>
           <span class="pill" id="srcStatus"><i></i><span>未登记</span></span>
         </div>
@@ -876,25 +875,16 @@
           <div class="panel-head">
             <div class="row">
               <button class="btn" onclick="openFileBrowser('target')">选择本地资料</button>
-              <button class="btn" onclick="selectSourceMode('document'); toggleDocSourceType('url')">填写在线地址</button>
+              <button class="btn" onclick="selectSourceMode('document'); toggleDocSourceType('url'); document.getElementById('inputDocUrl').focus()">填写在线地址</button>
             </div>
             <span class="small dim">适配器 <span class="mono" id="adapterHint">openapi</span></span>
           </div>
 
           <div class="panel-body">
             <div id="form-doc" class="grid2">
-              <div class="span2 radio-row">
-                <label><input type="radio" name="docType" id="radioDocFile" checked onchange="toggleDocSourceType('file')"> 本地规格文件</label>
-                <label><input type="radio" name="docType" id="radioDocUrl" onchange="toggleDocSourceType('url')"> 在线 OpenAPI 地址</label>
-              </div>
-
-              <div class="span2 field" id="blockDocFile">
-                <span>文档路径（可多选，逗号分隔）</span>
-                <div class="with-btn">
-                  <input type="text" id="inputDocPath" placeholder="examples/tasks/openapi-demo.json">
-                  <button class="btn btn-sm" onclick="openFileBrowser('target')">浏览</button>
-                </div>
-                <div class="field-note">相对路径以控制台工作目录为基准；发现时会按内容哈希冻结快照。</div>
+              <div class="span2 field hidden" id="blockDocFile">
+                <label for="inputDocPath">已选规格文件</label>
+                <input type="text" id="inputDocPath" readonly>
               </div>
 
               <div class="span2 field hidden" id="blockDocUrl">
@@ -910,10 +900,7 @@
               <label class="field span2"><span>目标项目</span><input type="text" id="inputLocalProject" placeholder="MyService"></label>
               <div class="field span2">
                 <label for="inputLocalPath">本地资料目录</label>
-                <div class="with-btn">
-                  <input type="text" id="inputLocalPath" placeholder="C:/delivery/service">
-                  <button class="btn btn-sm" onclick="openFileBrowser('target')">浏览</button>
-                </div>
+                <input type="text" id="inputLocalPath" readonly>
                 <div class="field-note">自动识别 OpenAPI/Swagger 和 FastAPI 源码。压缩包请先解压。</div>
               </div>
               <div class="field span2">
@@ -939,13 +926,6 @@
           </div>
         </div>
 
-        <div class="panel">
-          <div class="panel-head">
-            <h3>已登记任务</h3>
-            <span class="mono dim" id="taskCount">0</span>
-          </div>
-          <div id="taskList"></div>
-        </div>
       </section>
 
       <!-- ---------------------------- 02 MODEL ---------------------------- -->
@@ -1230,6 +1210,7 @@
   const S = {
     tab: 'source',
     sourceMode: 'document',
+    docSourceType: '',
     token: window.TESTPILOT_TOKEN || '',
     taskId: '',
     tasks: [],
@@ -1481,7 +1462,7 @@
     const badge = document.getElementById('srcStatus');
 
     if (!S.task) {
-      meta.innerHTML = '<span>从左侧第 1 步登记一个被测目标</span>';
+      meta.textContent = '尚未选择任务';
       badge.className = 'pill';
       badge.innerHTML = '<i></i><span>未登记</span>';
       return;
@@ -1508,66 +1489,34 @@
     S.tasks = data.tasks || [];
 
     const sel = document.getElementById('targetSelector');
-    const previous = S.taskId;
-    sel.innerHTML = '';
-    if (!S.tasks.length) {
-      const opt = document.createElement('option');
-      opt.value = '';
-      opt.textContent = '（尚未登记任务）';
-      sel.appendChild(opt);
-    } else {
-      S.tasks.forEach((t) => {
-        const opt = document.createElement('option');
-        opt.value = t.task_id;
-        opt.textContent = `${t.task_id} · ${t.target_project || '未命名'}`;
-        sel.appendChild(opt);
-      });
+    sel.replaceChildren(new Option('选择历史任务', ''));
+    for (const task of S.tasks) {
+      sel.add(new Option(`${task.task_id} · ${task.target_project || '未命名'}`, task.task_id));
     }
-
-    document.getElementById('taskCount').textContent = String(S.tasks.length);
-    renderTaskList();
-
-    if (S.tasks.length) {
-      const keep = S.tasks.some((t) => t.task_id === previous) ? previous : S.tasks[0].task_id;
-      await selectTask(keep);
+    if (S.tasks.some(task => task.task_id === S.taskId)) {
+      await selectTask(S.taskId);
     } else {
-      S.taskId = '';
-      S.task = null;
-      S.inventory = null;
-      S.cases = [];
-      S.reviews = [];
-      S.execution = { active: {}, records: [] };
-      S.report = { markdown: '', report: {} };
-      renderAll();
+      clearTaskSelection();
     }
   }
 
-  function renderTaskList() {
-    const host = document.getElementById('taskList');
-    if (!S.tasks.length) {
-      host.innerHTML = `
-        <div class="empty" style="padding:22px">
-          <p style="margin:0">还没有任务。用上方表单填写目标后点「保存配置」即可登记第一个。</p>
-        </div>`;
-      return;
-    }
-    host.innerHTML = `
-      <table class="tbl">
-        <thead><tr>
-          <th>任务</th><th>状态</th><th>接口</th><th>用例</th><th>报告</th>
-        </tr></thead>
-        <tbody>
-          ${S.tasks.map((t) => `
-            <tr data-click onclick="selectTask(${jsq(t.task_id)})">
-              <td><span class="mono" style="color:var(--text)">${esc(t.task_id)}</span>
-                  <div class="dim small">${esc(t.target_project || '未命名')}</div></td>
-              <td>${pill('s-idle', STATUS_LABEL[t.status] || t.status)}</td>
-              <td class="mono">${Number(t.inventory_count) || 0}</td>
-              <td class="mono">${Number(t.cases_count) || 0}</td>
-              <td class="mono">${t.has_report ? '有' : '—'}</td>
-            </tr>`).join('')}
-        </tbody>
-      </table>`;
+  function clearTaskSelection() {
+    resetWorkflowSelection();
+    S.taskId = '';
+    S.task = null;
+    S.inventory = null;
+    S.cases = [];
+    S.reviews = [];
+    S.execution = { active: {}, records: [] };
+    S.report = { markdown: '', report: {} };
+    S.latestExecution = null;
+    S.latestReport = null;
+    document.getElementById('targetSelector').value = '';
+    fillSourceForm({});
+    fillExecutionConfig();
+    setSourcesDrawer(false);
+    setTab('source');
+    renderAll();
   }
 
   async function selectTask(taskId) {
@@ -1918,11 +1867,9 @@
   }
 
   function toggleDocSourceType(type) {
-    const isUrl = type === 'url';
-    document.getElementById('radioDocUrl').checked = isUrl;
-    document.getElementById('radioDocFile').checked = !isUrl;
-    document.getElementById('blockDocUrl').classList.toggle('hidden', !isUrl);
-    document.getElementById('blockDocFile').classList.toggle('hidden', isUrl);
+    S.docSourceType = type;
+    document.getElementById('blockDocUrl').classList.toggle('hidden', type !== 'url');
+    document.getElementById('blockDocFile').classList.toggle('hidden', type !== 'file');
   }
 
   function fillSourceForm(task) {
@@ -1934,7 +1881,7 @@
     document.getElementById('inputLocalPath').value = task.source_directory || task.repository || '';
     document.getElementById('inputLocalSourcePaths').value = (task.source_paths || []).filter(path => path !== '.').join(', ');
     document.getElementById('inputTargetEnv').value = task.environment || 'local';
-    toggleDocSourceType(task.openapi_url ? 'url' : 'file');
+    toggleDocSourceType(task.openapi_url ? 'url' : task.document_paths?.length ? 'file' : '');
     selectSourceMode(task.source_directory || task.repository ? 'directory' : 'document');
   }
 
@@ -1969,7 +1916,7 @@
     payload.target_commit = S.sourceMode === 'document' && !S.task?.repository ? S.task?.target_commit || null : null;
     payload.environment = document.getElementById('inputTargetEnv').value.trim() || null;
     if (S.sourceMode === 'document') {
-      const isUrl = document.getElementById('radioDocUrl').checked;
+      const isUrl = S.docSourceType === 'url';
       const url = document.getElementById('inputDocUrl').value.trim();
       const paths = document.getElementById('inputDocPath').value
         .split(',').map((s) => s.trim()).filter(Boolean);
@@ -2034,12 +1981,13 @@
     btn.textContent = '解析中…';
     try {
       const config = collectConfig(detectRepository);
-      const needsNewTask = selectedSource && S.task && (
+      const changedUrl = config.openapi_url && config.openapi_url !== S.task?.openapi_url;
+      const needsNewTask = (selectedSource || changedUrl) && S.task && (
         S.task.status !== 'created' || S.inventory || S.cases.length
       );
       const taskId = needsNewTask ? (await createTask({ ...config, scope: ['*'], target_commit: null })).task_id
         : await ensureTask(config);
-      if (!taskId) return;
+      if (!taskId || S.taskId !== taskId) return;
       if (!needsNewTask && S.task?.status === 'created' && !S.inventory) {
         await api(`/api/tasks/${encodeURIComponent(taskId)}/configure`, {
           method: 'POST',
@@ -2047,6 +1995,7 @@
         });
       }
       const inventory = await api(`/api/tasks/${encodeURIComponent(taskId)}/discover`, { method: 'POST' });
+      if (S.taskId !== taskId) return;
       S.inventory = inventory;
       toast(`发现 ${(inventory.operations || []).length} 个操作`, 'ok');
       await loadBundle();
@@ -2915,7 +2864,10 @@
 
   async function onTargetChange() {
     const value = document.getElementById('targetSelector').value;
-    if (!value) return;
+    if (!value) {
+      clearTaskSelection();
+      return;
+    }
     await selectTask(value);
   }
 

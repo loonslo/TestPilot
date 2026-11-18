@@ -395,6 +395,32 @@ def test_source_directory_skips_linked_files_and_rejects_linked_scope(tmp_path):
         list(local_source_files(root, ("outside/outside.py",)))
 
 
+def test_local_scan_counts_candidates_and_prunes_build_output(tmp_path, monkeypatch):
+    from api_test_agent.tasks import discovery
+
+    monkeypatch.setattr(discovery, "MAX_LOCAL_SOURCE_ENTRIES", 2)
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    build = tmp_path / "target"
+    build.mkdir()
+    for i in range(8):
+        (assets / f"image-{i}.svg").touch()
+        (build / f"generated_{i}.py").touch()
+    source = tmp_path / "main.py"
+    source.touch()
+    assert list(discovery.local_source_files(tmp_path, ())) == [source]
+    assert list(discovery.local_source_files(tmp_path, ("target/generated_0.py",))) == [
+        build / "generated_0.py"
+    ]
+    (tmp_path / "openapi.yaml").touch()
+    (tmp_path / "other.py").touch()
+    with pytest.raises(ValueError, match="待解析的源码或规格文件过多"):
+        list(discovery.local_source_files(tmp_path, ()))
+    monkeypatch.setattr(discovery, "MAX_LOCAL_WALK_ENTRIES", 2)
+    with pytest.raises(ValueError, match="目录条目过多"):
+        list(discovery.local_source_files(tmp_path, ()))
+
+
 def test_local_document_limit_matches_url_import(tmp_path, monkeypatch):
     import api_test_agent.tasks.discovery as discovery_module
 

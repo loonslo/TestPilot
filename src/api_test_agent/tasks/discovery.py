@@ -55,8 +55,10 @@ DEFAULT_PERMITTED_EXTENSIONS = {".py", ".json", ".yaml", ".yml", ".md", ".txt"}
 UNVERIFIED_DOCUMENT_VERSION = "unverified-document"
 LOCAL_SOURCE_VERSION = "unverified-local-source"
 MAX_LOCAL_SOURCE_ENTRIES = 10_000
+MAX_LOCAL_WALK_ENTRIES = 250_000
 MAX_LOCAL_SOURCE_FILE_BYTES = 1_000_000
 MAX_LOCAL_SOURCE_BYTES = 20_000_000
+GENERATED_DIRECTORIES = {"build", "coverage", "dist", "out", "site-packages", "target", "vendor"}
 SPEC_SUFFIXES = {".json", ".yaml", ".yml"}
 SPEC_FILENAME = re.compile(r"(?:^|[-_.])(openapi|swagger|api[-_.]?docs)(?:$|[-_.0-9v])", re.I)
 SPEC_HEADER = re.compile(r"""(?:^|[\n{,])\s*["']?(?:openapi|swagger)["']?\s*:""")
@@ -194,6 +196,7 @@ def local_source_files(root: Path, selections: tuple[str, ...]) -> Iterator[Path
 
     visited: set[Path] = set()
     entries = len(pending)
+    candidate_count = 0
     while pending:
         path = pending.pop()
         if path in visited or not allowed(path):
@@ -203,13 +206,24 @@ def local_source_files(root: Path, selections: tuple[str, ...]) -> Iterator[Path
             with os.scandir(path) as children:
                 for child in children:
                     entries += 1
-                    if entries > MAX_LOCAL_SOURCE_ENTRIES:
+                    if entries > MAX_LOCAL_WALK_ENTRIES:
                         raise ValueError(
-                            "source directory scan limit exceeded; select a narrower scope"
+                            "目录条目过多。请在「分析范围」中选择源码子目录，或直接选择接口规格文件。"
                         )
-                    pending.append(Path(child.path))
+                    name = child.name
+                    if name.startswith(".") or name.lower() in DENIED:
+                        continue
+                    candidate = Path(child.path)
+                    if child.is_dir(follow_symlinks=False):
+                        if name.lower() not in GENERATED_DIRECTORIES:
+                            pending.append(candidate)
+                    elif is_source_candidate(candidate):
+                        pending.append(candidate)
         elif is_source_candidate(path) and path.is_file(follow_symlinks=False):
             if permitted(path.relative_to(root).as_posix()):
+                candidate_count += 1
+                if candidate_count > MAX_LOCAL_SOURCE_ENTRIES:
+                    raise ValueError("待解析的源码或规格文件过多。请缩小「分析范围」。")
                 yield path
 
 
@@ -240,12 +254,10 @@ def _discover(
             with candidate.open("rb") as stream:
                 payload = stream.read(MAX_LOCAL_SOURCE_FILE_BYTES + 1)
             if len(payload) > MAX_LOCAL_SOURCE_FILE_BYTES:
-                raise ValueError(f"{path}: source file exceeds snapshot limit")
+                raise ValueError(f"{path} 超过单文件大小上限。请缩小分析范围。")
             total_bytes += len(payload)
             if total_bytes > MAX_LOCAL_SOURCE_BYTES:
-                raise ValueError(
-                    "source snapshot exceeds total size limit; select a narrower scope"
-                )
+                raise ValueError("源码和规格文件的总大小超过上限。请在「分析范围」中缩小范围。")
             content = payload.decode("utf-8-sig")
             if candidate.suffix == ".py" or SPEC_HEADER.search(content):
                 snapshots[path] = content
