@@ -16,6 +16,7 @@ import os
 import re
 import secrets
 import socket
+import subprocess
 import sys
 import time
 import urllib.error
@@ -145,6 +146,37 @@ class UIRequestHandler(BaseHTTPRequestHandler):
             path = (root / document).resolve()
             if not self._is_allowed_path(path) or not document_permitted(path):
                 raise PermissionError("Document path is outside the permitted local sources")
+
+    def _repository_head(self, directory: Path) -> str | None:
+        if not (directory / ".git").exists():
+            return None
+        try:
+            root = git(directory, "rev-parse", "--show-toplevel").decode("utf-8").strip()
+            if Path(root).resolve() != directory:
+                return None
+            commit = git(directory, "rev-parse", "--verify", "HEAD^{commit}").decode().strip()
+            return commit if re.fullmatch(r"[0-9a-f]{40}", commit) else None
+        except OSError, ValueError, subprocess.SubprocessError:
+            return None
+
+    def _resolve_source_directory(self, data: dict[str, Any]) -> dict[str, Any]:
+        if data.get("detect_repository") is not True or not data.get("source_directory"):
+            return {}
+        root = getattr(self.server, "workspace_root", Path.cwd())
+        directory = root / data["source_directory"]
+        resolved = directory.resolve()
+        if not self._is_allowed_path(directory) or not self._is_allowed_path(resolved):
+            raise PermissionError("Source directory is outside the permitted local sources")
+        commit = self._repository_head(resolved)
+        if commit is None:
+            return {"local_only_source": True}
+        return {
+            "repository": str(resolved),
+            "source_directory": None,
+            "source_paths": tuple(data.get("source_paths") or ["."]),
+            "target_commit": commit,
+            "local_only_source": True,
+        }
 
     def _workflow_error(self, exc: Exception) -> None:
         if isinstance(exc, BusyTask):
@@ -584,13 +616,9 @@ class UIRequestHandler(BaseHTTPRequestHandler):
 
         git_metadata = {}
         if query_params.get("git") == ["1"]:
-            try:
-                repository = git(target_path, "rev-parse", "--show-toplevel").decode().strip()
-                commit = git(target_path, "rev-parse", "HEAD").decode().strip()
-                if self._is_allowed_path(Path(repository).resolve()):
-                    git_metadata = {"repo_root": repository, "git_head": commit}
-            except OSError, ValueError, TimeoutError:
-                pass
+            commit = self._repository_head(target_path)
+            if commit:
+                git_metadata = {"repo_root": str(target_path), "git_head": commit}
 
         self._send_json(
             {
@@ -768,6 +796,7 @@ class UIRequestHandler(BaseHTTPRequestHandler):
                 self._send_error(str(exc), status=HTTPStatus.BAD_REQUEST)
                 return
             try:
+                data = data | self._resolve_source_directory(data)
                 task = Task(
                     task_id=task_id,
                     target_project=data.get("target_project") or None,
@@ -775,6 +804,7 @@ class UIRequestHandler(BaseHTTPRequestHandler):
                     scope=tuple(data.get("scope", [])),
                     repository=data.get("repository") or None,
                     source_directory=data.get("source_directory") or None,
+                    local_only_source=data.get("local_only_source") is True,
                     adapter=data.get("adapter") or None,
                     document_paths=tuple(data.get("document_paths", [])),
                     openapi_url=data.get("openapi_url") or None,
@@ -823,6 +853,12 @@ class UIRequestHandler(BaseHTTPRequestHandler):
 
                 with self.workflow.mutation(task_id):
                     previous = self.store.load(task_id)
+                    if previous.status == "created":
+                        updates.update(self._resolve_source_directory(data))
+                        if "repository" in updates and "local_only_source" not in updates:
+                            updates["local_only_source"] = previous.local_only_source and bool(
+                                updates["repository"]
+                            )
                     self._validate_local_materials(
                         Task.model_validate(previous.model_dump() | updates)
                     )

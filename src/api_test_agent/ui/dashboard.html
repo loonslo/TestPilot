@@ -851,7 +851,7 @@
             <span aria-hidden="true">◻</span>浅色
           </button>
         </div>
-        <button class="btn btn-quiet" onclick="openFileBrowser('target')">浏览本地目录</button>
+        <button class="btn btn-quiet" onclick="openFileBrowser('target')">选择本地资料</button>
         <button class="btn" onclick="openNewTaskModal()">新建任务</button>
         <button class="btn" id="btnSources" onclick="toggleSourcesDrawer()" aria-expanded="false" aria-controls="sourcesPanel">
           <span>技术详情</span>
@@ -874,10 +874,9 @@
 
         <div class="panel">
           <div class="panel-head">
-            <div class="seg" role="group" aria-label="目标类型">
-              <button class="seg-btn" id="segDoc" aria-pressed="true" onclick="selectSourceMode('document')">接口文档</button>
-              <button class="seg-btn" id="segLocal" aria-pressed="false" onclick="selectSourceMode('directory')">本地源码目录</button>
-              <button class="seg-btn" id="segCode" aria-pressed="false" onclick="selectSourceMode('code')">高级 · Git 仓库</button>
+            <div class="row">
+              <button class="btn" onclick="openFileBrowser('target')">选择本地资料</button>
+              <button class="btn" onclick="selectSourceMode('document'); toggleDocSourceType('url')">填写在线地址</button>
             </div>
             <span class="small dim">适配器 <span class="mono" id="adapterHint">openapi</span></span>
           </div>
@@ -893,7 +892,7 @@
                 <span>文档路径（可多选，逗号分隔）</span>
                 <div class="with-btn">
                   <input type="text" id="inputDocPath" placeholder="examples/tasks/openapi-demo.json">
-                  <button class="btn btn-sm" onclick="openFileBrowser('doc')">浏览</button>
+                  <button class="btn btn-sm" onclick="openFileBrowser('target')">浏览</button>
                 </div>
                 <div class="field-note">相对路径以控制台工作目录为基准；发现时会按内容哈希冻结快照。</div>
               </div>
@@ -910,12 +909,12 @@
             <div id="form-directory" class="grid2 hidden">
               <label class="field span2"><span>目标项目</span><input type="text" id="inputLocalProject" placeholder="MyService"></label>
               <div class="field span2">
-                <label for="inputLocalPath">本地源码目录</label>
+                <label for="inputLocalPath">本地资料目录</label>
                 <div class="with-btn">
                   <input type="text" id="inputLocalPath" placeholder="C:/delivery/service">
-                  <button class="btn btn-sm" onclick="openFileBrowser('dir_local')">浏览</button>
+                  <button class="btn btn-sm" onclick="openFileBrowser('target')">浏览</button>
                 </div>
-                <div class="field-note">压缩包请先解压。当前可静态解析 FastAPI 等受支持的 Python 路由。</div>
+                <div class="field-note">自动识别 OpenAPI/Swagger 和 FastAPI 源码。压缩包请先解压。</div>
               </div>
               <div class="field span2">
                 <label for="inputLocalSourcePaths">分析范围（可选）</label>
@@ -927,32 +926,6 @@
               </div>
             </div>
 
-            <div id="form-code" class="grid2 hidden">
-              <label class="field span2"><span>目标项目</span><input type="text" id="inputRepoProject" placeholder="MyService"></label>
-              <div class="span2 field">
-                <span>本地只读仓库</span>
-                <div class="with-btn">
-                  <input type="text" id="inputRepoPath" placeholder="C:/path/to/repo">
-                  <button class="btn btn-sm" onclick="openFileBrowser('dir_repo')">浏览</button>
-                </div>
-                <div class="field-note">可在「浏览」中切换盘符，或粘贴仓库路径后点「跳转」。</div>
-              </div>
-              <div class="span2 field">
-                <span>源码路径（可多选）</span>
-                <div class="with-btn">
-                  <input type="text" id="inputSourcePaths" placeholder="src/api/">
-                  <button class="btn btn-sm" onclick="openFileBrowser('dir_source')">选择文件或目录</button>
-                </div>
-                <div class="field-note">相对于仓库根目录，逗号分隔。</div>
-              </div>
-              <label class="field"><span>声明的提交（40 位）</span><input type="text" id="inputRepoCommit" placeholder="0000000000000000000000000000000000000000"></label>
-              <label class="field"><span>适配器</span>
-                <select id="selectAdapter">
-                  <option value="python-ast">python-ast — FastAPI 路由</option>
-                  <option value="openapi">openapi — 从文档解析</option>
-                </select>
-              </label>
-            </div>
             <label class="field" style="margin-top:12px"><span>测试环境名称</span><input type="text" id="inputTargetEnv" value="local"></label>
           </div>
 
@@ -1195,22 +1168,13 @@
       <div class="grid2">
         <label class="field span2"><span>任务标识（task_id）</span><input type="text" id="modalTaskId" placeholder="留空自动生成"><div class="field-note">可留空自动生成；自定义时用小写字母开头。</div></label>
         <label class="field"><span>目标项目</span><input type="text" id="modalProjectName" placeholder="MyService"></label>
-        <label class="field"><span>目标类型</span>
-          <select id="modalTaskType" onchange="syncNewTaskSource(true)">
-            <option value="doc">接口文档</option>
-            <option value="directory">本地源码目录</option>
-            <option value="draft">稍后补资料</option>
-            <optgroup label="高级"><option value="code">Git 仓库</option></optgroup>
-          </select>
-        </label>
-        <div class="field span2" id="modalSourceInput"><label for="modalDocInput" id="modalSourceLabel">规格文件或在线文档地址</label>
+        <div class="field span2" id="modalSourceInput"><label for="modalDocInput" id="modalSourceLabel">本地路径或在线地址（可留空）</label>
           <div class="with-btn">
-            <input type="text" id="modalDocInput" placeholder="examples/tasks/openapi-demo.json">
-            <button class="btn btn-sm" onclick="openFileBrowser({code: 'new_repo', directory: 'new_local', doc: 'new_doc'}[fieldValue('modalTaskType')])">浏览</button>
+            <input type="text" id="modalDocInput" placeholder="选择文件或目录，或填写在线地址" oninput="delete this.dataset.kind">
+            <button class="btn btn-sm" onclick="openFileBrowser('new_material')">浏览</button>
           </div>
         </div>
         <label class="field"><span>测试环境名称</span><input id="modalTargetEnv" value="local"></label>
-        <label class="field hidden" id="modalCommitField"><span>声明的提交（40 位）</span><input id="modalTargetCommit" placeholder="选择仓库时读取 HEAD"></label>
       </div>
     </div>
     <div class="modal-foot">
@@ -1950,12 +1914,7 @@
     S.sourceMode = mode;
     document.getElementById('form-doc').classList.toggle('hidden', mode !== 'document');
     document.getElementById('form-directory').classList.toggle('hidden', mode !== 'directory');
-    document.getElementById('form-code').classList.toggle('hidden', mode !== 'code');
-    document.getElementById('segDoc').setAttribute('aria-pressed', String(mode === 'document'));
-    document.getElementById('segLocal').setAttribute('aria-pressed', String(mode === 'directory'));
-    document.getElementById('segCode').setAttribute('aria-pressed', String(mode === 'code'));
-    document.getElementById('adapterHint').textContent =
-      mode === 'document' ? 'openapi' : (document.getElementById('selectAdapter').value || 'python-ast');
+    document.getElementById('adapterHint').textContent = mode === 'document' ? 'openapi' : '自动识别';
   }
 
   function toggleDocSourceType(type) {
@@ -1970,19 +1929,13 @@
     if (!task) return;
     document.getElementById('inputDocProject').value = task.target_project || '';
     document.getElementById('inputLocalProject').value = task.target_project || '';
-    document.getElementById('inputRepoProject').value = task.target_project || '';
-    document.getElementById('inputRepoCommit').value = task.target_commit || '';
     document.getElementById('inputDocUrl').value = task.openapi_url || '';
     document.getElementById('inputDocPath').value = (task.document_paths || []).join(', ');
-    document.getElementById('inputRepoPath').value = task.repository || '';
-    document.getElementById('inputLocalPath').value = task.source_directory || '';
-    document.getElementById('inputLocalSourcePaths').value = task.source_directory ? (task.source_paths || []).join(', ') : '';
-    document.getElementById('inputSourcePaths').value = task.source_directory ? '' : (task.source_paths || []).join(', ');
+    document.getElementById('inputLocalPath').value = task.source_directory || task.repository || '';
+    document.getElementById('inputLocalSourcePaths').value = (task.source_paths || []).filter(path => path !== '.').join(', ');
     document.getElementById('inputTargetEnv').value = task.environment || 'local';
     toggleDocSourceType(task.openapi_url ? 'url' : 'file');
-    const isCode = task.repository || (!task.openapi_url && !task.document_paths?.length && task.adapter === 'python-ast');
-    document.getElementById('selectAdapter').value = isCode && task.adapter === 'openapi' ? 'openapi' : 'python-ast';
-    selectSourceMode(task.source_directory ? 'directory' : isCode ? 'code' : 'document');
+    selectSourceMode(task.source_directory || task.repository ? 'directory' : 'document');
   }
 
   function renderSourcePane() {
@@ -2009,12 +1962,11 @@
     badge.innerHTML = `<i></i><span>${inputs.length ? '已登记' : '待补全'}</span>`;
   }
 
-  function collectConfig() {
+  function collectConfig(detectRepository = true) {
     const payload = { scope: S.task?.scope?.length ? S.task.scope : ['*'], repository: null, source_directory: null, source_paths: [], document_paths: [], openapi_url: null };
-    const prefix = {document: 'inputDoc', directory: 'inputLocal', code: 'inputRepo'}[S.sourceMode];
+    const prefix = S.sourceMode === 'document' ? 'inputDoc' : 'inputLocal';
     payload.target_project = document.getElementById(prefix + 'Project').value.trim() || null;
-    payload.target_commit = S.sourceMode === 'code' ? fieldValue('inputRepoCommit') || null
-      : S.sourceMode === 'document' && !S.task?.repository ? S.task?.target_commit || null : null;
+    payload.target_commit = S.sourceMode === 'document' && !S.task?.repository ? S.task?.target_commit || null : null;
     payload.environment = document.getElementById('inputTargetEnv').value.trim() || null;
     if (S.sourceMode === 'document') {
       const isUrl = document.getElementById('radioDocUrl').checked;
@@ -2029,17 +1981,11 @@
         if (paths.length) payload.document_paths = paths;
         payload.openapi_url = null;
       }
-    } else if (S.sourceMode === 'directory') {
+    } else {
       payload.source_directory = fieldValue('inputLocalPath') || null;
       payload.source_paths = csvValues('inputLocalSourcePaths');
       payload.adapter = payload.source_directory ? 'python-ast' : null;
-    } else {
-      const repo = document.getElementById('inputRepoPath').value.trim();
-      const paths = document.getElementById('inputSourcePaths').value
-        .split(',').map((s) => s.trim()).filter(Boolean);
-      if (repo) payload.repository = repo;
-      if (paths.length) payload.source_paths = paths;
-      payload.adapter = document.getElementById('selectAdapter').value;
+      payload.detect_repository = detectRepository;
     }
     return payload;
   }
@@ -2080,16 +2026,21 @@
     }
   }
 
-  async function runDiscover() {
+  async function runDiscover({ selectedSource = false, detectRepository = true } = {}) {
     const btn = document.getElementById('btnDiscover');
+    if (btn.disabled) return;
     btn.disabled = true;
     const original = btn.textContent;
     btn.textContent = '解析中…';
     try {
-      const config = collectConfig();
-      const taskId = await ensureTask(config);
+      const config = collectConfig(detectRepository);
+      const needsNewTask = selectedSource && S.task && (
+        S.task.status !== 'created' || S.inventory || S.cases.length
+      );
+      const taskId = needsNewTask ? (await createTask({ ...config, scope: ['*'], target_commit: null })).task_id
+        : await ensureTask(config);
       if (!taskId) return;
-      if (S.task?.status === 'created' && !S.inventory) {
+      if (!needsNewTask && S.task?.status === 'created' && !S.inventory) {
         await api(`/api/tasks/${encodeURIComponent(taskId)}/configure`, {
           method: 'POST',
           body: JSON.stringify(config)
@@ -2903,24 +2854,8 @@
   // New task
   // ====================================================================
   function openNewTaskModal() {
-    syncNewTaskSource();
     document.getElementById('modalNewTask').classList.remove('hidden');
     document.getElementById('modalTaskId').focus();
-  }
-
-  function syncNewTaskSource(reset = false) {
-    const type = fieldValue('modalTaskType');
-    const input = document.getElementById('modalDocInput');
-    document.getElementById('modalSourceInput').classList.toggle('hidden', type === 'draft');
-    document.getElementById('modalCommitField').classList.toggle('hidden', type !== 'code');
-    document.getElementById('modalSourceLabel').textContent = {
-      doc: '规格文件或在线文档地址', directory: '本地源码目录（压缩包请先解压）', code: 'Git 仓库路径'
-    }[type] || '';
-    input.placeholder = type === 'doc' ? 'openapi.json 或 https://example.com/openapi.json' : 'C:/path/to/project';
-    if (reset) {
-      input.value = '';
-      document.getElementById('modalTargetCommit').value = '';
-    }
   }
 
   function closeNewTaskModal() {
@@ -2938,7 +2873,7 @@
   async function submitNewTask(button) {
     const taskId = document.getElementById('modalTaskId').value.trim();
     const project = document.getElementById('modalProjectName').value.trim() || taskId || '新测试项目';
-    const type = document.getElementById('modalTaskType').value;
+    const field = document.getElementById('modalDocInput');
     const input = fieldValue('modalDocInput');
 
     if (taskId && !/^[a-z][a-z0-9_-]{0,63}$/.test(taskId)) {
@@ -2950,31 +2885,31 @@
       task_id: taskId, target_project: project, scope: ['*'],
       environment: fieldValue('modalTargetEnv') || null
     };
-    if (type === 'code') {
+    const kind = field.dataset.kind || (/^https?:\/\//i.test(input) ? 'url'
+      : /\.py$/.test(input) ? 'source' : /\.(json|ya?ml)$/i.test(input) ? 'document' : 'directory');
+    if (input && (kind === 'directory' || kind === 'source')) {
       payload.adapter = 'python-ast';
-      payload.target_commit = fieldValue('modalTargetCommit') || null;
-      if (input) payload.repository = input;
-    } else if (type === 'directory' && input) {
-      payload.adapter = 'python-ast';
-      payload.source_directory = input;
-    } else if (type === 'doc') {
+      const path = input.replace(/\\/g, '/');
+      const end = path.lastIndexOf('/') + 1;
+      payload.source_directory = kind === 'source' ? path.slice(0, end) || '.' : path;
+      if (kind === 'source') payload.source_paths = [path.slice(end)];
+    } else if (input) {
       payload.adapter = 'openapi';
-      if (input) {
-        if (/^https?:\/\//i.test(input)) payload.openapi_url = input;
-        else payload.document_paths = csvValues('modalDocInput');
-      }
+      if (kind === 'url') payload.openapi_url = input;
+      else payload.document_paths = csvValues('modalDocInput');
     }
 
     await withButton(button, '创建失败', async () => {
       await createTask(payload);
       closeNewTaskModal();
-      for (const id of ['modalTaskId', 'modalProjectName', 'modalDocInput', 'modalTargetCommit']) {
+      for (const id of ['modalTaskId', 'modalProjectName', 'modalDocInput']) {
         document.getElementById(id).value = '';
       }
-      document.getElementById('modalTaskType').value = 'doc';
+      delete field.dataset.kind;
       document.getElementById('modalTargetEnv').value = 'local';
-      toast(input ? '任务已创建，可调整范围后解析接口' : '草稿已保存，可稍后补充资料', 'ok');
       setTab('source');
+      if (input) await runDiscover({ detectRepository: kind === 'directory' });
+      else toast('草稿已保存，可稍后补充资料', 'ok');
     });
   }
 
@@ -2988,13 +2923,12 @@
   // File browser
   // ====================================================================
   function browserScopeRoot(target) {
-    if (target === 'dir_source') return fieldValue('inputRepoPath');
     if (target === 'dir_local_scope') return fieldValue('inputLocalPath');
     return '';
   }
 
   function openFileBrowser(target) {
-    const selectingScope = target === 'dir_source' || target === 'dir_local_scope';
+    const selectingScope = target === 'dir_local_scope';
     const scopeRoot = browserScopeRoot(target);
     if (selectingScope && !scopeRoot) {
       toast('请先选择源码根目录', 'bad');
@@ -3011,23 +2945,8 @@
       S.browser.filter = 'all';
       S.browser.multi = true;
       confirmDir.classList.add('hidden');
-    } else if (target === 'doc' || target === 'new_doc') {
-      title.textContent = '选择 OpenAPI / Swagger 规格文件';
-      S.browser.filter = 'doc';
-      S.browser.multi = true;
-      confirmDir.classList.add('hidden');
-    } else if (target === 'dir_repo' || target === 'new_repo') {
-      title.textContent = '选择 Git 仓库根目录';
-      S.browser.filter = 'dir';
-      S.browser.multi = false;
-      confirmDir.classList.remove('hidden');
-    } else if (target === 'dir_local' || target === 'new_local') {
-      title.textContent = '选择本地源码目录';
-      S.browser.filter = 'dir';
-      S.browser.multi = false;
-      confirmDir.classList.remove('hidden');
     } else {
-      title.textContent = '选择本地目录或规格文件';
+      title.textContent = '选择本地资料';
       S.browser.filter = 'all';
       S.browser.multi = false;
       confirmDir.classList.remove('hidden');
@@ -3040,8 +2959,7 @@
     S.browser.returnFocus = document.activeElement;
     const taskModal = document.getElementById('modalNewTask');
     if (!taskModal.classList.contains('hidden')) taskModal.inert = true;
-    const initialPath = scopeRoot || (target === 'dir_repo' ? fieldValue('inputRepoPath')
-      : target === 'dir_local' ? fieldValue('inputLocalPath') : S.browser.currentPath);
+    const initialPath = scopeRoot || S.browser.currentPath;
     document.getElementById('browserCurrentPathInput').value = initialPath || '';
     document.getElementById('browserCurrentPathInput').focus();
     loadBrowserPath(initialPath || '');
@@ -3299,12 +3217,13 @@
 
   function canSelectBrowserItem(item) {
     const target = S.browser.target;
-    if (target === 'doc' || target === 'new_doc') return !!item.is_openapi;
-    if (['dir_repo', 'new_repo', 'dir_local', 'new_local'].includes(target)) return item.is_dir;
     const root = browserScopeRoot(target);
-    if (root) return (item.is_dir || target === 'dir_source' || /\.py$/.test(item.name))
-      && !!repoRelativePaths([item.path], root)[0];
-    return item.is_dir || !!item.is_openapi;
+    const selectable = item.is_dir || isPythonSource(item) || item.is_openapi;
+    return selectable && (!root || !!repoRelativePaths([item.path], root)[0]);
+  }
+
+  function isPythonSource(item) {
+    return !item.is_dir && item.name.endsWith('.py');
   }
 
   async function confirmCurrentDirectory() {
@@ -3329,18 +3248,21 @@
     try {
       const paths = items.map((item) => item.path);
       const first = items[0];
-      const repoSelection = ['dir_repo', 'new_repo'].includes(target);
-      let repository;
-      if (repoSelection) {
-        const params = new URLSearchParams({ path: first.path, git: '1' });
-        const data = await api(`/api/fs/list?${params.toString()}`);
-        if (document.getElementById('modalFileBrowser').classList.contains('hidden') || S.browser.target !== target) return;
-        if (!data.repo_root) throw new Error('此目录不属于含有提交的 Git 仓库');
-        repository = { path: data.repo_root, head: data.git_head || '', name: data.repo_root.split(/[\\/]/).filter(Boolean).at(-1) };
+      const directSource = target === 'target';
+      if (!browserScopeRoot(target) && items.length > 1 && items.some(item => item.is_dir || isPythonSource(item))) {
+        throw new Error('请选择一个目录或源码文件。接口规格文件可多选。');
       }
-      applySelection(paths, first, target, repository);
+      if (directSource && document.getElementById('btnDiscover').disabled) {
+        throw new Error('接口解析正在进行，请稍候');
+      }
+      applySelection(paths, first, target);
       closeFileBrowser();
-      toast('已填入表单，保存后生效', 'ok');
+      if (directSource) {
+        setTab('source');
+        await runDiscover({ selectedSource: true, detectRepository: first.is_dir });
+      } else {
+        toast('已填入表单，保存后生效', 'ok');
+      }
     } catch (err) {
       toast('选择失败：' + err.message, 'bad');
     } finally {
@@ -3349,28 +3271,21 @@
     }
   }
 
-  function applySelection(paths, first, target, repository) {
+  function applySelection(paths, first, target) {
     const scopeRoot = browserScopeRoot(target);
     if (scopeRoot) {
       const rel = repoRelativePaths(paths, scopeRoot);
       if (rel.some((path) => !path)) throw new Error('请选择源码根目录内的文件或子目录');
-      document.getElementById(target === 'dir_source' ? 'inputSourcePaths' : 'inputLocalSourcePaths').value = rel.join(', ');
-    } else if (['new_doc', 'new_repo', 'new_local'].includes(target)) {
-      document.getElementById('modalDocInput').value = repository?.path || paths.join(', ');
-      if (repository && !fieldValue('modalTargetCommit')) {
-        document.getElementById('modalTargetCommit').value = repository.head;
-      }
-    } else if (repository) {
-      const changedRepo = browserPathKey(fieldValue('inputRepoPath')) !== browserPathKey(repository.path);
-      document.getElementById('inputRepoPath').value = repository.path;
-      selectSourceMode('code');
-      if (!fieldValue('inputRepoProject')) document.getElementById('inputRepoProject').value = repository.name;
-      if (changedRepo) document.getElementById('inputSourcePaths').value = '';
-      if (changedRepo || !fieldValue('inputRepoCommit')) document.getElementById('inputRepoCommit').value = repository.head;
-    } else if (first.is_dir) {
-      const changedDirectory = browserPathKey(fieldValue('inputLocalPath')) !== browserPathKey(first.path);
-      document.getElementById('inputLocalPath').value = first.path;
-      if (changedDirectory) document.getElementById('inputLocalSourcePaths').value = '';
+      document.getElementById('inputLocalSourcePaths').value = rel.join(', ');
+    } else if (target === 'new_material') {
+      const field = document.getElementById('modalDocInput');
+      field.value = paths.join(', ');
+      field.dataset.kind = first.is_dir ? 'directory' : isPythonSource(first) ? 'source' : 'document';
+    } else if (first.is_dir || isPythonSource(first)) {
+      const root = first.is_dir ? first.path : first.path.slice(0, -first.name.length);
+      const sourcePaths = document.getElementById('inputLocalSourcePaths');
+      sourcePaths.value = first.is_dir ? '' : first.name;
+      document.getElementById('inputLocalPath').value = root;
       if (!fieldValue('inputLocalProject')) document.getElementById('inputLocalProject').value = first.name;
       selectSourceMode('directory');
     } else {

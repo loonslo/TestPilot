@@ -101,6 +101,7 @@ class TaskStore:
             "scope",
             "repository",
             "source_directory",
+            "local_only_source",
             "source_paths",
             "document_paths",
             "openapi_url",

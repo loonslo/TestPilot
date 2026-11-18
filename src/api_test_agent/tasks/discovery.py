@@ -57,6 +57,9 @@ LOCAL_SOURCE_VERSION = "unverified-local-source"
 MAX_LOCAL_SOURCE_ENTRIES = 10_000
 MAX_LOCAL_SOURCE_FILE_BYTES = 1_000_000
 MAX_LOCAL_SOURCE_BYTES = 20_000_000
+SPEC_SUFFIXES = {".json", ".yaml", ".yml"}
+SPEC_FILENAME = re.compile(r"(?:^|[-_.])(openapi|swagger|api[-_.]?docs)(?:$|[-_.0-9v])", re.I)
+SPEC_HEADER = re.compile(r"""(?:^|[\n{,])\s*["']?(?:openapi|swagger)["']?\s*:""")
 MIXED_VERSION_WARNING = (
     "Document/source version correspondence unverified: local document is not "
     "bound to the selected commit"
@@ -107,7 +110,7 @@ def git(repo: Path, *args: str) -> bytes:
     return result.stdout
 
 
-def ref(path: str, content: str, version: str) -> SourceRef:
+def ref(path: str, content: str, version: str, *, local_only: bool = False) -> SourceRef:
     source_id = hashlib.sha256(path.encode()).hexdigest()[:16]
     return SourceRef(
         source_id=source_id,
@@ -116,6 +119,7 @@ def ref(path: str, content: str, version: str) -> SourceRef:
         locator="full file",
         content_hash=hashlib.sha256(content.encode()).hexdigest(),
         summary="User-selected offline material",
+        local_only=local_only,
     )
 
 
@@ -161,6 +165,12 @@ class Inventory(Contract):
         return self
 
 
+def is_source_candidate(path: Path) -> bool:
+    return path.suffix == ".py" or (
+        path.suffix.lower() in SPEC_SUFFIXES and bool(SPEC_FILENAME.search(path.stem))
+    )
+
+
 def local_source_files(root: Path, selections: tuple[str, ...]) -> Iterator[Path]:
     def allowed(path: Path) -> bool:
         return not (
@@ -198,7 +208,7 @@ def local_source_files(root: Path, selections: tuple[str, ...]) -> Iterator[Path
                             "source directory scan limit exceeded; select a narrower scope"
                         )
                     pending.append(Path(child.path))
-        elif path.suffix == ".py" and path.is_file(follow_symlinks=False):
+        elif is_source_candidate(path) and path.is_file(follow_symlinks=False):
             if permitted(path.relative_to(root).as_posix()):
                 yield path
 
@@ -236,12 +246,14 @@ def _discover(
                 raise ValueError(
                     "source snapshot exceeds total size limit; select a narrower scope"
                 )
-            snapshots[path] = payload.decode("utf-8-sig")
-            checkpoint(path, snapshots[path], LOCAL_SOURCE_VERSION)
+            content = payload.decode("utf-8-sig")
+            if candidate.suffix == ".py" or SPEC_HEADER.search(content):
+                snapshots[path] = content
+                checkpoint(path, content, LOCAL_SOURCE_VERSION)
         if not snapshots:
             if not (task.document_paths or task.openapi_url):
                 raise ValueError(
-                    "no supported Python source in scope; use OpenAPI/Swagger for other languages"
+                    "no supported Python source or OpenAPI/Swagger specification in scope"
                 )
             warnings.append("No supported Python source in the selected directory")
     elif task.source_paths:
@@ -255,17 +267,22 @@ def _discover(
             raise ValueError("selected commit does not resolve exactly")
         verified = True
         listing = git(repo, "ls-tree", "-r", "-z", task.target_commit).split(b"\0")
+        total_bytes = 0
         matches = {selection: 0 for selection in task.source_paths}
         for entry in listing:
             if not entry:
                 continue
             metadata, name = entry.split(b"\t", 1)
             path = name.decode("utf-8")
-            selected = [s for s in matches if path == s or path.startswith(s.rstrip("/") + "/")]
+            selected = [
+                s for s in matches if s == "." or path == s or path.startswith(s.rstrip("/") + "/")
+            ]
             if not selected:
                 continue
             for selection in selected:
                 matches[selection] += 1
+            if task.local_only_source and not is_source_candidate(Path(path)):
+                continue
             if not permitted(path) or not metadata.startswith(b"100"):
                 warnings.append(f"{path}: excluded or non-regular Git entry")
                 continue
@@ -274,12 +291,27 @@ def _discover(
             if size > 1_000_000:
                 warnings.append(f"{path}: file exceeds snapshot limit")
                 continue
-            snapshots[path] = git(repo, "cat-file", "blob", blob).decode("utf-8")
+            if task.local_only_source:
+                total_bytes += size
+                if total_bytes > MAX_LOCAL_SOURCE_BYTES:
+                    raise ValueError(
+                        "Git source snapshot exceeds total size limit; narrow the scope"
+                    )
+            content = git(repo, "cat-file", "blob", blob).decode("utf-8")
+            if (
+                task.local_only_source
+                and Path(path).suffix != ".py"
+                and not SPEC_HEADER.search(content)
+            ):
+                continue
+            snapshots[path] = content
             commit_paths.add(path)
             checkpoint(path, snapshots[path], task.target_commit)
         warnings += [
             f"{s}: no committed files matched" for s, count in matches.items() if not count
         ]
+        if task.local_only_source and not (snapshots or task.document_paths or task.openapi_url):
+            raise ValueError("no supported Python source or OpenAPI/Swagger specification in scope")
     if task.document_paths:
         if materials_root is None:
             materials_root = Path.cwd()
@@ -327,6 +359,7 @@ def _discover(
             else LOCAL_SOURCE_VERSION
             if task.source_directory and path not in document_paths
             else UNVERIFIED_DOCUMENT_VERSION,
+            local_only=task.local_only_source and path not in document_paths,
         )
         for path, content in sorted(snapshots.items())
     ]
@@ -517,7 +550,12 @@ def discover(store: TaskStore, task_id: str, materials_root: Path | None = None)
     (attempt / "started.json").write_text(json.dumps(metadata, indent=2), "utf-8")
 
     def checkpoint(path: str, content: str, version: str) -> None:
-        source = ref(path, content, version)
+        source = ref(
+            path,
+            content,
+            version,
+            local_only=task.local_only_source and version != UNVERIFIED_DOCUMENT_VERSION,
+        )
         payload = {"source": source.model_dump(mode="json"), "content": content}
         snapshot_path = attempt / f"{source.source_id}.json"
         if snapshot_path.exists():
@@ -550,7 +588,7 @@ def model_materials(inventory: Inventory, max_chars: int) -> str:
     """Bound the actual serialized payload, recording every unsent material."""
     base = {"target_commit": inventory.target_commit, "materials": [], "omitted": []}
     for source in inventory.materials:
-        if source.version == LOCAL_SOURCE_VERSION:
+        if source.local_only or source.version == LOCAL_SOURCE_VERSION:
             base["omitted"].append(source.source_id)
             continue
         item = {

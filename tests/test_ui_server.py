@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import threading
 import time
 import urllib.error
@@ -19,6 +20,7 @@ from test_task_design import prepared as prepared
 from test_task_execution import approved_setup as approved_setup
 
 from api_test_agent.cli import _build_parser
+from api_test_agent.tasks.discovery import Inventory, model_materials
 from api_test_agent.tasks.store import TaskStore
 from api_test_agent.ui.server import make_server
 
@@ -348,6 +350,9 @@ def test_ui_source_directory_without_git(test_server, tmp_path, monkeypatch):
         'from fastapi import FastAPI\napp = FastAPI()\n@app.get("/delivery")\ndef read(): pass\n',
         "utf-8",
     )
+    (root / "openapi.json").write_text(
+        Path("examples/tasks/openapi-demo.json").read_text("utf-8"), "utf-8"
+    )
     params = urllib.parse.urlencode({"path": root})
     status, listing = _request_json(f"{base_url}/api/fs/list?{params}")
     assert status == 200 and "repo_root" not in listing
@@ -367,16 +372,70 @@ def test_ui_source_directory_without_git(test_server, tmp_path, monkeypatch):
         "POST",
         {
             "source_directory": str(root),
-            "source_paths": ["main.py"],
             "adapter": "python-ast",
+            "detect_repository": True,
         },
     )
     assert status == 200
     assert configured["repository"] is None and configured["target_commit"] is None
     status, inventory = _request_json(f"{task_url}/discover", "POST")
     assert status == 200
-    assert [operation["path"] for operation in inventory["operations"]] == ["/delivery"]
+    assert {operation["path"] for operation in inventory["operations"]} == {"/delivery", "/items"}
     assert store.load("directory-task").source_directory == str(root)
+
+
+def test_ui_auto_uses_exact_git_root_and_freezes_committed_inputs(test_server, tmp_path):
+    base_url, _ = test_server
+    repo = tmp_path / "repository"
+    service = repo / "service"
+    service.mkdir(parents=True)
+
+    def run_git(*args):
+        return subprocess.run(
+            ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
+        ).stdout.strip()
+
+    source = service / "main.py"
+    python = 'from fastapi import FastAPI\napp = FastAPI()\n@app.get("/{}")\ndef read(): pass\n'
+    source.write_text(python.format("committed"), "utf-8")
+    (repo / "swagger.json").write_text(
+        Path("examples/tasks/openapi-demo.json").read_text("utf-8"), "utf-8"
+    )
+    run_git("init")
+    run_git("add", ".")
+    run_git(
+        "-c", "user.name=Fixture", "-c", "user.email=qa@example.invalid", "commit", "-m", "Fixture"
+    )
+    commit = run_git("rev-parse", "HEAD")
+    source.write_text(python.format("working-copy"), "utf-8")
+
+    def discover_directory(name, directory):
+        status, task = _request_json(
+            f"{base_url}/api/tasks/create",
+            "POST",
+            {
+                "task_id": name,
+                "target_project": "Delivery",
+                "scope": ["*"],
+                "source_directory": str(directory),
+                "detect_repository": True,
+                "adapter": "python-ast",
+            },
+        )
+        assert status == 201, task
+        status, result = _request_json(f"{base_url}/api/tasks/{name}/discover", "POST")
+        assert status == 200, result
+        return task, Inventory.model_validate(result)
+
+    task, inventory = discover_directory("repo-source", repo)
+    assert task["repository"] == str(repo) and task["target_commit"] == commit
+    assert task["source_paths"] == ["."] and inventory.version_verified
+    assert {op.path for op in inventory.operations} == {"/committed", "/items"}
+    assert json.loads(model_materials(inventory, 40000))["materials"] == []
+
+    task, inventory = discover_directory("ordinary-subfolder", service)
+    assert task["repository"] is None and task["target_commit"] is None
+    assert {op.path for op in inventory.operations} == {"/working-copy"}
 
 
 def test_ui_fs_list_api(test_server: tuple[str, TaskStore]) -> None:

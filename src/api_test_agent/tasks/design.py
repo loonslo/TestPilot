@@ -79,7 +79,9 @@ def load_inventory(store: TaskStore, task_id: str) -> Inventory:
 
 def design_operation(operation: Operation) -> dict:
     payload = operation.model_dump(mode="json")
-    local_sources = {s.source_id for s in operation.sources if s.version == LOCAL_SOURCE_VERSION}
+    local_sources = {
+        s.source_id for s in operation.sources if s.local_only or s.version == LOCAL_SOURCE_VERSION
+    }
     if local_sources:
         payload["declarations"] = [
             {

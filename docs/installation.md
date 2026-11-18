@@ -11,10 +11,13 @@ uv venv --python 3.14 .venv
 uv pip install --python .venv/Scripts/python.exe --require-hashes -r requirements.txt
 $testPilotWheel = (Get-ChildItem -Filter 'testpilot-*.whl' | Select-Object -First 1).FullName
 uv pip install --python .venv/Scripts/python.exe --no-deps $testPilotWheel
+.venv/Scripts/testpilot.exe --version
 .venv/Scripts/testpilot.exe ui
 ```
 
-网页打开后，选择接口文档、在线地址或开发交付的本地源码目录。压缩源码先解压。只有发布差异和显式的仓库来源需要相应 Git 访问权限。
+更新安装包后，先关闭旧控制台服务，再启动新版。TestPilot 0.1.2 通过同一个选择器接入本地资料，自动区分 Git 快照、普通目录、Python 文件和接口规格。
+
+网页打开后，选择本地文件、目录，或填写文档地址。压缩源码先解压。能读取 Git 根目录的 HEAD 时，工作台使用提交快照。没有 Git 或可读 HEAD 时，使用目录中的本地文件。发布差异 CLI 仍需要相应 Git 权限。
 
 维护者在 TestPilot 源码根目录构建 wheel、导出锁定的运行依赖，并从同一次构建交付这两个文件。
 

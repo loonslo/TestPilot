@@ -36,6 +36,7 @@ class SourceRef(Contract):
     content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     summary: str = Field(min_length=1)
     source_url: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    local_only: bool = Field(default=False, exclude_if=lambda value: not value)
 
     @field_validator("path")
     @classmethod
@@ -165,6 +166,7 @@ class Task(Contract):
     source_directory: str | None = Field(
         default=None, min_length=1, exclude_if=lambda value: value is None
     )
+    local_only_source: bool = Field(default=False, exclude_if=lambda value: not value)
     source_paths: tuple[str, ...] = ()
     document_paths: tuple[str, ...] = ()
     openapi_url: str | None = None
@@ -185,6 +187,8 @@ class Task(Contract):
     @field_validator("source_paths")
     @classmethod
     def allowed_source_paths(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        if values == (".",):
+            return values
         for value in values:
             SourceRef.relative_path(value)
             if any(part.startswith(".") for part in PurePosixPath(value).parts):
