@@ -230,6 +230,45 @@ def test_web_model_key_is_write_only_scoped_and_removable(test_server, monkeypat
     assert not vault
 
 
+def test_model_list_uses_explicit_key_without_saving_or_echoing_it(test_server):
+    base_url, store = test_server
+    key = "synthetic-model-list-key"
+    requests = []
+
+    class Provider(BaseHTTPRequestHandler):
+        def do_GET(self):
+            requests.append(self.path)
+            authorized = self.headers.get("Authorization") == f"Bearer {key}"
+            self.send_response(200 if authorized else 401)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(
+                json.dumps(
+                    {
+                        "data": [
+                            {"id": id_} for id_ in ("demo:latest", "demo:latest", "org/demo", key)
+                        ],
+                    }
+                ).encode()
+            )
+
+    with ThreadingHTTPServer(("127.0.0.1", 0), Provider) as provider:
+        thread = threading.Thread(target=provider.serve_forever, daemon=True)
+        thread.start()
+        model_url = f"http://127.0.0.1:{provider.server_port}/v1/"
+        url = f"{base_url}/api/model/models"
+        try:
+            status, payload = _request_json(url, "POST", {"base_url": model_url, "api_key": key})
+            assert status == 200 and payload == {"models": ["demo:latest", "org/demo"]}
+            status, error = _request_json(url, "POST", {"base_url": model_url})
+            assert status == 400 and "API Key" in error["error"] and key not in str(error)
+        finally:
+            provider.shutdown()
+            thread.join()
+    assert requests == ["/v1/models", "/v1/models"]
+    assert not (store.root / ".web-model.json").exists()
+
+
 def test_ui_post_without_token_rejected_403(test_server: tuple[str, TaskStore]) -> None:
     base_url, _ = test_server
     # Explicitly pass empty token

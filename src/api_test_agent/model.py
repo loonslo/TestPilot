@@ -156,13 +156,23 @@ class ModelClient:
         tool_choice: Literal["auto", "none"] = "auto",
     ) -> ModelReply:
         started = time.monotonic()
+        host = urlsplit(self._settings.base_url).hostname
+        cap_field = "max_completion_tokens" if host == "api.openai.com" else "max_tokens"
+        options: dict[str, Any] = {cap_field: max_tokens or self._settings.max_output_tokens}
+        if (
+            host == "api.deepseek.com"
+            and self.model_id in {"deepseek-flash", "deepseek-v4-pro"}
+            and not tools
+            and tool_choice == "none"
+        ):
+            options["extra_body"] = {"thinking": {"type": "disabled"}}
         try:
             response = self._client.chat.completions.create(
                 model=self._settings.model_id,
                 messages=messages,
                 tools=tools,
                 tool_choice=tool_choice,
-                max_tokens=max_tokens or self._settings.max_output_tokens,
+                **options,
             )
         except openai.APITimeoutError as exc:
             raise ModelError("timeout", str(exc)) from exc

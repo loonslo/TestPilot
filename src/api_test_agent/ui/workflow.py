@@ -15,6 +15,7 @@ from typing import Any
 from urllib.parse import urlsplit
 from uuid import uuid4
 
+import httpx2
 from pydantic import ValidationError
 
 from api_test_agent.envvars import read_env
@@ -55,6 +56,14 @@ def now() -> str:
 
 def read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text("utf-8")) if path.is_file() else {}
+
+
+def validate_model_key(key: Any) -> str | None:
+    if key is not None and (
+        not isinstance(key, str) or len(key) > MAX_KEY_LENGTH or not re.fullmatch(r"[!-~]+", key)
+    ):
+        raise ValueError("请输入不含空格的有效 API Key。")
+    return key
 
 
 def write_json(path: Path, data: dict[str, Any]) -> None:
@@ -145,16 +154,10 @@ class WebWorkflow:
         with self._model_lock:
             if data is not None:
                 fields = data.copy()
-                key = fields.pop("api_key", None)
+                key = validate_model_key(fields.pop("api_key", None))
                 remove = fields.pop("remove_api_key", False)
                 if type(remove) is not bool or (remove and key is not None):
                     raise ValueError("请单独保存或移除模型 API Key。")
-                if key is not None and (
-                    not isinstance(key, str)
-                    or not re.fullmatch(r"[!-~]+", key)
-                    or len(key) > MAX_KEY_LENGTH
-                ):
-                    raise ValueError("请输入不含空格的有效 API Key。")
                 settings = ModelSettings.model_validate(fields)
                 target = self._credential_target(settings.base_url)
                 if key is not None or remove:
@@ -189,6 +192,69 @@ class WebWorkflow:
                     settings.api_key_env,
                 ),
             }
+
+    def list_models(self, data: dict[str, Any]) -> dict[str, list[str]]:
+        key = validate_model_key(data.get("api_key"))
+        if not isinstance(data.get("base_url"), str) or not data["base_url"]:
+            raise ValueError("请先填写供应商 API 地址。")
+        settings = ModelSettings.model_validate(
+            {
+                "base_url": data["base_url"],
+                "model_id": "model-list",
+                "api_key_env": data.get("api_key_env", "API_TEST_AGENT_MODEL_API_KEY"),
+            }
+        )
+        parts = urlsplit(settings.base_url)
+        local = parts.hostname in {"127.0.0.1", "localhost"}
+        if parts.scheme != "https" and not local:
+            raise ValueError("远程模型列表地址必须使用 HTTPS。")
+        key = key or read_key(self._credential_target(settings.base_url))
+        if not key and not local:
+            saved = self._model()
+            if (
+                saved
+                and saved.base_url.rstrip("/") == settings.base_url.rstrip("/")
+                and saved.api_key_env == settings.api_key_env
+            ):
+                key = validate_model_key(read_env(saved.api_key_env))
+        headers = {"Authorization": f"Bearer {key}"} if key else {}
+        try:
+            with httpx2.Client(timeout=8, trust_env=not local, follow_redirects=False) as client:
+                with client.stream(
+                    "GET",
+                    settings.base_url.rstrip("/") + "/models",
+                    headers=headers,
+                ) as response:
+                    if response.status_code in {401, 403}:
+                        raise ValueError("供应商拒绝读取模型列表。请核对 API Key 或账号权限。")
+                    if response.status_code in {404, 405}:
+                        raise ValueError("该端点没有提供模型列表。请输入模型 ID。")
+                    if response.status_code != 200:
+                        raise ValueError(f"供应商模型列表返回 HTTP {response.status_code}。")
+                    payload = bytearray()
+                    for chunk in response.iter_bytes():
+                        payload.extend(chunk)
+                        if len(payload) > 4_000_000:
+                            raise ValueError("供应商模型列表过大。请输入模型 ID。")
+        except httpx2.HTTPError, httpx2.InvalidURL:
+            raise ValueError("无法读取供应商模型列表。请核对 API 地址或手动输入模型 ID。") from None
+        try:
+            decoded = json.loads(payload)
+        except ValueError:
+            raise ValueError("供应商未返回可识别的模型列表。请输入模型 ID。") from None
+        rows = decoded.get("data") if isinstance(decoded, dict) else None
+        if not isinstance(rows, list):
+            raise ValueError("供应商未返回可识别的模型列表。请输入模型 ID。")
+        ids = {
+            model_id
+            for row in rows
+            if isinstance(row, dict)
+            and isinstance(model_id := row.get("id"), str)
+            and len(model_id) <= 256
+            and re.fullmatch(r"[\w.:/-]+", model_id)
+            and (not key or key not in model_id)
+        }
+        return {"models": sorted(ids)[:2000]}
 
     def _job(
         self,

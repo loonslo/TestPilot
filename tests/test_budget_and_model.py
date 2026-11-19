@@ -177,6 +177,37 @@ def test_a_text_reply_has_no_tool_calls() -> None:
     assert reply.content == "done" and reply.tool_calls == () and "tool_calls" not in reply.message
 
 
+@pytest.mark.parametrize(
+    ("base_url", "model", "options"),
+    [
+        ("https://api.openai.com/v1", "gpt-5.4-mini", {"max_completion_tokens": 2048}),
+        (
+            "https://api.deepseek.com",
+            "deepseek-flash",
+            {
+                "max_tokens": 2048,
+                "thinking": {"type": "disabled"},
+            },
+        ),
+    ],
+)
+def test_provider_default_chat_options(base_url, model, options):
+    def handler(request):
+        body = json.loads(request.content)
+        assert request.url.path.endswith("/chat/completions")
+        assert body["model"] == model
+        assert {key: body[key] for key in options} == options
+        return httpx2.Response(200, json=completion({"role": "assistant", "content": "done"}))
+
+    settings = ModelSettings(base_url=base_url, model_id=model)
+    with httpx2.Client(transport=httpx2.MockTransport(handler)) as http:
+        client = ModelClient(settings, "synthetic-key", http_client=http)
+        assert (
+            client.chat([{"role": "user", "content": "x"}], [], tool_choice="none").content
+            == "done"
+        )
+
+
 def test_tool_choice_none_is_passed_for_the_final_call() -> None:
     client, seen = client_for(
         lambda r: httpx2.Response(200, json=completion({"role": "assistant", "content": "x"}))

@@ -3,7 +3,7 @@ project_id: TestPilot
 updated: 2026-11-19
 status: active
 overview: "TestPilot（测试领航员）：面向初级测试工程师的接口发现、用例设计、审核、执行和批次回归工作台。"
-progress: "2026-11-19 0.1.7 支持 Windows 网页配置模型 API Key 并修正接口清单详情布局。独立安装在 Edge 验证三种视口、Windows 凭据管理器和合成模型生成，全量 529 项通过。11-18 已验证 Python FastAPI 与 Java Spring MVC 静态发现。干净 Windows 异机、真实交付源码、真实模型与共享 QA 尚未验收。"
+progress: "2026-11-19 0.1.8 支持供应商和模型下拉、查询模型列表、手动填写模型 ID 和配置 API Key。预填配置对照供应商官方文档核验，独立安装在 Edge 用合成凭据验证配置流程，全量 532 项通过。0.1.7 已验证接口清单布局；0.1.6 已验证 Python FastAPI 与 Java Spring MVC 静态发现。干净 Windows 异机、真实交付源码、真实模型与共享 QA 尚未验收。"
 next: "实施 P1 资料、环境、账号和审批提示；另在干净 Windows 测试机验证安装包。共享 QA 执行待组织接入与授权条件明确后设计。"
 evidence:
   - TASKS.md
@@ -164,3 +164,5 @@ evidence:
 2026-11-18 P0 续做：0.1.6 接入 Java Spring MVC 静态适配器，验证 Java 仓库、Java/Python 单文件和混合输入。Windows 原子替换短暂冲突已验证恢复，最终全量 528 项通过，真实 AppleRecruit 和动态路由未核验。摘要在项目内校验。
 
 2026-11-19：0.1.7 修正接口清单详情布局，支持网页配置 Windows 凭据管理器中的 API Key。三种宽度、合成模型调用和 529 项测试通过。未调用真实供应商；摘要在项目内校验。
+
+2026-11-19：0.1.8 验证供应商和模型选择、按需获取模型列表及本机凭据管理。Windows 独立安装、Edge 合成场景和 532 项测试通过；真实供应商账号和推理未验收。

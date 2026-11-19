@@ -735,6 +735,13 @@ class UIRequestHandler(BaseHTTPRequestHandler):
                 self._workflow_error(exc)
             return
 
+        if path == "/api/model/models":
+            try:
+                self._send_json(self.workflow.list_models(data))
+            except Exception as exc:
+                self._workflow_error(exc)
+            return
+
         parts = path.split("/")
         if (
             len(parts) in {5, 6}

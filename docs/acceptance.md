@@ -1144,3 +1144,9 @@ UI 的“直接导入服务/完整清单”和“文档路径或 URL”文案已
 - Windows、Python 3.14.4，使用独立安装的 0.1.7 wheel 和当前用户 Windows 凭据管理器保存临时合成 Key。刷新后仅返回配置状态，配置 JSON 中无 Key。按任务存储根目录与供应商地址隔离。验证已保存 Key 用于本机合成模型的 Authorization 头，并完成生成任务；Key 不在提示中。也验证通过页面移除 Key，变更未触及历史探索或回归模块的密钥读取约定。
 - Windows 系统代理导致首轮合成回环请求偏离预期，修复后用显式不可用代理再次验证回环地址连通性测试及生成均可直连，远程地址保留原代理行为。连通性测试只探测端点可达性；真实供应商凭据和付费调用未验收。
 - 最终 `uv run --locked python -m pytest -q --tb=short -p no:cacheprovider --basetemp=<全新临时目录>` → **529 passed in 74.47s**。Ruff、内联脚本语法、`git diff --check` 和安装包 ZIP 完整性通过。
+
+## 2026-11-19 模型供应商和型号选择（0.1.8）
+
+- OpenAI、DeepSeek、OpenRouter 和阿里云百炼中国内地端点的预填地址与型号经官方资料核验。Gemini 预填兼容地址，Ollama 预填本机兼容地址，二者保留空的初始型号。模型列表和账号可用权限由端点返回。 [OpenAI](https://developers.openai.com/api/docs/models/gpt-5.4-mini) · [DeepSeek](https://api-docs.deepseek.com/quick_start/pricing/) · [OpenRouter](https://openrouter.ai/openrouter/free) · [阿里云百炼](https://www.alibabacloud.com/help/en/model-studio/compatibility-of-openai-with-dashscope) · [Gemini](https://ai.google.dev/gemini-api/docs/openai) · [Ollama](https://docs.ollama.com/api/openai-compatibility)
+- Windows、Python 3.14.4、Edge 使用独立安装的 0.1.8 wheel 验证全部下拉选项、合成 Key 获取模型列表、选择返回的模型、手动输入模型 ID、保存并刷新、使用已保存 Key 获取列表和移除 Key。合成端点仅收到模型列表 GET 请求，配置文件中没有凭据。另以测试替身核验 OpenAI 输出上限参数和 DeepSeek 文本生成参数。真实账号、计费和推理未验收。
+- `uv run --locked python -m pytest -q --tb=short -p no:cacheprovider --basetemp=<全新临时目录>` → **532 passed in 86.26s**。Ruff、内联脚本语法、`git diff --check` 和安装包 ZIP 完整性通过。

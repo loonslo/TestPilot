@@ -465,7 +465,7 @@
     .field input:focus, .field select:focus { outline: none; border-color: var(--accent); }
     .field input::placeholder { color: var(--text-3); }
     .field .with-btn { display: flex; gap: 6px; }
-    .field .with-btn input { flex: 1; min-width: 0; }
+    .field .with-btn :is(input, select) { flex: 1; min-width: 0; }
     .field-note { margin-top: 5px; font-size: 10.5px; color: var(--text-3); }
 
     .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 16px; }
@@ -952,36 +952,36 @@
           <div>
             <div class="eyebrow">阶段 02 · 模型端点</div>
             <h2>模型配置</h2>
-            <p>填写供应商地址、模型 ID 和 API Key，用于生成测试用例。</p>
+            <p>选择供应商和模型，再配置 API Key。</p>
           </div>
         </div>
 
         <div class="panel">
-          <div class="panel-head"><h3>预置端点</h3><span class="small dim">选择后填入下方字段</span></div>
+          <div class="panel-head"><h3>供应商与模型</h3></div>
           <div class="panel-body">
-            <div class="grid2" id="presetGrid">
-              <button class="btn btn-quiet" id="preset-deepseek" onclick="applyPreset('deepseek')" style="height:auto;padding:12px;display:block;text-align:left">
-                <div style="font-weight:600">DeepSeek</div>
-                <div class="mono dim" style="font-size:10.5px">deepseek-chat · 付费</div>
-              </button>
-              <button class="btn btn-quiet" id="preset-openrouter" onclick="applyPreset('openrouter')" style="height:auto;padding:12px;display:block;text-align:left">
-                <div style="font-weight:600">OpenRouter Free</div>
-                <div class="mono dim" style="font-size:10.5px">openrouter/free · 免费路由</div>
-              </button>
-              <button class="btn btn-quiet" id="preset-ollama" onclick="applyPreset('ollama')" style="height:auto;padding:12px;display:block;text-align:left">
-                <div style="font-weight:600">本地 Ollama</div>
-                <div class="mono dim" style="font-size:10.5px">127.0.0.1:11434 · 零费用</div>
-              </button>
-              <button class="btn btn-quiet" id="preset-custom" onclick="applyPreset('custom')" style="height:auto;padding:12px;display:block;text-align:left">
-                <div style="font-weight:600">自定义</div>
-                <div class="mono dim" style="font-size:10.5px">任意 OpenAI 兼容端点</div>
-              </button>
-            </div>
-          </div>
-          <div class="panel-body" style="border-top:1px solid var(--line)">
             <div class="grid2">
-              <label class="field span2"><span>base_url</span><input type="text" id="modelUrl" placeholder="https://api.deepseek.com/v1" oninput="renderModelKeyControls()"></label>
-              <label class="field"><span>模型 ID</span><input type="text" id="modelName" placeholder="deepseek-chat"></label>
+              <label class="field"><span>供应商</span>
+                <select id="modelProvider" onchange="selectModelProvider()">
+                  <option value="">选择供应商</option>
+                  <option value="openai">OpenAI</option>
+                  <option value="deepseek">DeepSeek</option>
+                  <option value="openrouter">OpenRouter</option>
+                  <option value="gemini">Google Gemini</option>
+                  <option value="qwen">阿里云百炼（中国内地）</option>
+                  <option value="ollama">本地 Ollama</option>
+                  <option value="custom">自定义 OpenAI 兼容端点</option>
+                </select>
+              </label>
+              <label class="field"><span>API 地址</span><input type="url" id="modelUrl" placeholder="https://provider.example/v1" oninput="onModelEndpointChange()"></label>
+              <div class="field span2">
+                <label for="modelChoice">模型</label>
+                <div class="with-btn">
+                  <select id="modelChoice" onchange="chooseProviderModel()"><option value="">选择模型</option></select>
+                  <button class="btn btn-sm" onclick="loadProviderModels(this)">获取模型列表</button>
+                </div>
+                <div id="modelListStatus" class="field-note" role="status"></div>
+              </div>
+              <label class="field span2 hidden" id="modelNameField"><span>模型 ID</span><input type="text" id="modelName" placeholder="填写供应商提供的模型 ID"></label>
               <label class="field"><span>API Key</span><input type="password" id="modelApiKey" maxlength="2560" autocomplete="off" spellcheck="false" placeholder="输入供应商发放的 API Key"><div class="field-note">保存在本机 Windows 凭据管理器。</div></label>
               <label class="field"><span>超时（秒）</span><input type="number" id="modelTimeout" value="90" min="1" max="300"></label>
               <label class="field"><span>输出 Token 上限</span><input type="number" id="modelTokens" value="2048" min="1" max="16384"></label>
@@ -2039,28 +2039,105 @@
   // ====================================================================
   // Pane 02 — model
   // ====================================================================
-  function applyPreset(preset) {
+  const MODEL_PROVIDERS = {
+    openai: { url: 'https://api.openai.com/v1', env: 'OPENAI_API_KEY', models: ['gpt-5.4-mini'] },
+    deepseek: { url: 'https://api.deepseek.com', env: 'DEEPSEEK_API_KEY', models: ['deepseek-flash', 'deepseek-v4-pro'] },
+    openrouter: { url: 'https://openrouter.ai/api/v1', env: 'OPENROUTER_API_KEY', models: ['openrouter/free'] },
+    gemini: { url: 'https://generativelanguage.googleapis.com/v1beta/openai', env: 'GEMINI_API_KEY', models: [] },
+    qwen: { url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', env: 'DASHSCOPE_API_KEY', models: ['qwen-plus'] },
+    ollama: { url: 'http://127.0.0.1:11434/v1', models: [] },
+    custom: { url: '', models: [] }
+  };
+  const MANUAL_MODEL = '@manual';
+  let modelEndpointRevision = 0;
+
+  function modelEndpoint(url) {
+    return url.replace(/\/+$/, '');
+  }
+
+  function providerForEndpoint(url) {
+    const endpoint = modelEndpoint(url);
+    if (endpoint === 'https://api.deepseek.com/v1') return 'deepseek';
+    return Object.keys(MODEL_PROVIDERS).find((id) => MODEL_PROVIDERS[id].url === endpoint) || 'custom';
+  }
+
+  function presetModels() {
+    const url = fieldValue('modelUrl');
+    const provider = fieldValue('modelProvider');
+    return url && providerForEndpoint(url) === provider ? MODEL_PROVIDERS[provider].models : [];
+  }
+
+  function renderModelChoices(models, selected = '', manual = false) {
+    const choice = document.getElementById('modelChoice');
+    const options = [...new Set([...models, selected].filter(Boolean))].map((id) => new Option(id, id));
+    choice.replaceChildren(new Option('选择模型', ''), ...options, new Option('手动填写模型 ID', MANUAL_MODEL));
+    choice.value = manual ? MANUAL_MODEL : selected;
+    document.getElementById('modelName').value = selected;
+    document.getElementById('modelNameField').classList.toggle('hidden', !manual);
+  }
+
+  function chooseProviderModel() {
+    const choice = fieldValue('modelChoice');
+    const manual = choice === MANUAL_MODEL;
+    const input = document.getElementById('modelName');
+    if (!manual) input.value = choice;
+    document.getElementById('modelNameField').classList.toggle('hidden', !manual);
+    if (manual) input.focus();
+  }
+
+  function resetModelEndpoint() {
+    modelEndpointRevision += 1;
     document.getElementById('modelApiKey').value = '';
-    ['deepseek', 'openrouter', 'ollama', 'custom'].forEach((key) => {
-      const el = document.getElementById(`preset-${key}`);
-      if (!el) return;
-      el.classList.toggle('btn-ink', key === preset);
-      el.classList.toggle('btn-quiet', key !== preset);
-    });
-    if (preset === 'deepseek') {
-      document.getElementById('modelUrl').value = 'https://api.deepseek.com/v1';
-      document.getElementById('modelName').value = 'deepseek-chat';
-      document.getElementById('modelKey').value = 'DEEPSEEK_API_KEY';
-    } else if (preset === 'openrouter') {
-      document.getElementById('modelUrl').value = 'https://openrouter.ai/api/v1';
-      document.getElementById('modelName').value = 'openrouter/free';
-      document.getElementById('modelKey').value = 'API_TEST_AGENT_MODEL_API_KEY';
-    } else if (preset === 'ollama') {
-      document.getElementById('modelUrl').value = 'http://127.0.0.1:11434/v1';
-      document.getElementById('modelName').value = 'qwen2.5-coder:32b';
-      document.getElementById('modelKey').value = 'API_TEST_AGENT_MODEL_API_KEY';
-    }
+    document.getElementById('modelListStatus').textContent = '';
+    document.getElementById('pingStatus').textContent = '尚未探测';
+    document.getElementById('pingDot').dataset.state = '';
     renderModelKeyControls();
+  }
+
+  function selectModelProvider() {
+    const id = fieldValue('modelProvider');
+    const provider = MODEL_PROVIDERS[id] || MODEL_PROVIDERS.custom;
+    document.getElementById('modelUrl').value = provider.url;
+    document.getElementById('modelKey').value = provider.env || 'API_TEST_AGENT_MODEL_API_KEY';
+    resetModelEndpoint();
+    renderModelChoices(provider.models, provider.models[0], id === 'custom');
+    if (id === 'ollama') {
+      document.getElementById('modelListStatus').textContent = '启动 Ollama 后可读取本机已安装的模型。';
+    }
+  }
+
+  function onModelEndpointChange() {
+    resetModelEndpoint();
+    const models = presetModels();
+    renderModelChoices(models, models[0], models.length === 0);
+  }
+
+  async function loadProviderModels(button) {
+    const { base_url, api_key_env } = modelConfigValues();
+    if (!base_url) {
+      toast('请先选择供应商或填写 API 地址', 'bad');
+      return;
+    }
+    const revision = modelEndpointRevision;
+    const payload = { base_url, api_key_env };
+    const key = fieldValue('modelApiKey');
+    if (key) payload.api_key = key;
+    await withButton(button, '获取模型列表失败', async () => {
+      let result;
+      try {
+        result = await post('/api/model/models', payload);
+      } catch (err) {
+        if (revision === modelEndpointRevision) throw err;
+        return;
+      }
+      if (revision !== modelEndpointRevision) return;
+      const selected = fieldValue('modelName');
+      const manual = fieldValue('modelChoice') === MANUAL_MODEL;
+      renderModelChoices([...result.models, ...presetModels()], selected, manual && (Boolean(selected) || !result.models.length));
+      document.getElementById('modelListStatus').textContent = result.models.length
+        ? `已获取 ${result.models.length} 个模型。请选择支持聊天补全的模型。`
+        : '供应商未返回模型。可手动填写模型 ID。';
+    });
   }
 
   function modelConfigValues() {
@@ -2075,17 +2152,23 @@
   function showModelConfig(data) {
     S.model = data.model || null;
     S.modelKeyStored = data.stored_key_configured;
-    document.getElementById('modelApiKey').value = '';
+    resetModelEndpoint();
     if (!S.model) {
-      renderModelKeyControls();
+      renderModelChoices([]);
       return;
     }
     const fields = {
-      modelUrl: 'base_url', modelName: 'model_id', modelKey: 'api_key_env',
+      modelUrl: 'base_url', modelKey: 'api_key_env',
       modelTimeout: 'timeout_seconds', modelTokens: 'max_output_tokens'
     };
     for (const [field, key] of Object.entries(fields)) {
       document.getElementById(field).value = S.model[key] ?? '';
+    }
+    const provider = providerForEndpoint(S.model.base_url);
+    document.getElementById('modelProvider').value = provider;
+    renderModelChoices(presetModels(), S.model.model_id);
+    if (provider === 'deepseek' && ['deepseek-chat', 'deepseek-reasoner'].includes(S.model.model_id)) {
+      document.getElementById('modelListStatus').textContent = '旧模型已退役，请选择当前模型并保存。';
     }
     renderModelKeyControls();
     document.getElementById('pingStatus').textContent =
@@ -2094,7 +2177,7 @@
   }
 
   function renderModelKeyControls() {
-    const saved = S.modelKeyStored && fieldValue('modelUrl') === S.model?.base_url;
+    const saved = S.modelKeyStored && modelEndpoint(fieldValue('modelUrl')) === modelEndpoint(S.model.base_url);
     document.getElementById('modelApiKey').placeholder = saved
       ? '已保存，留空保留当前 Key' : '输入供应商发放的 API Key';
     document.getElementById('btnRemoveModelKey').classList.toggle('hidden', !saved);
@@ -2103,6 +2186,7 @@
   async function saveModelConfig(button) {
     await withButton(button, '保存模型配置失败', async () => {
       const payload = modelConfigValues();
+      if (!payload.base_url || !payload.model_id) throw new Error('请填写 API 地址并选择或输入模型。');
       const key = fieldValue('modelApiKey');
       if (key) payload.api_key = key;
       showModelConfig(await post('/api/model/config', payload));
