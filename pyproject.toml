@@ -1,6 +1,6 @@
 [project]
 name = "testpilot"
-version = "0.1.5"
+version = "0.1.6"
 description = "TestPilot: REST API exploration and release regression planning with replayable test evidence."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -9,6 +9,8 @@ dependencies = [
     "openai>=3.31.0",
     "pydantic>=2,<3",
     "pyyaml>=6.0.3",
+    "tree-sitter>=0.26.1,<0.27",
+    "tree-sitter-java>=0.23.5,<0.24",
 ]
 
 [project.scripts]

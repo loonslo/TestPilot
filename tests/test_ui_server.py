@@ -398,6 +398,12 @@ def test_ui_auto_uses_exact_git_root_and_freezes_committed_inputs(test_server, t
     source = service / "main.py"
     python = 'from fastapi import FastAPI\napp = FastAPI()\n@app.get("/{}")\ndef read(): pass\n'
     source.write_text(python.format("committed"), "utf-8")
+    (service / "JobsController.java").write_text(
+        "import org.springframework.web.bind.annotation.*;\n"
+        '@RestController @RequestMapping("/java") class JobsController {\n'
+        '  @GetMapping("/jobs") void jobs() {}\n}\n',
+        "utf-8",
+    )
     (repo / "vendor").mkdir()
     (repo / "vendor" / "library.py").write_text(python.format("vendor-route"), "utf-8")
     (repo / "docs").mkdir()
@@ -435,12 +441,12 @@ def test_ui_auto_uses_exact_git_root_and_freezes_committed_inputs(test_server, t
     task, inventory = discover_directory("repo-source", repo)
     assert task["repository"] == str(repo) and task["target_commit"] == commit
     assert task["source_paths"] == ["."] and inventory.version_verified
-    assert {op.path for op in inventory.operations} == {"/committed", "/items"}
+    assert {op.path for op in inventory.operations} == {"/committed", "/items", "/java/jobs"}
     assert json.loads(model_materials(inventory, 40000))["materials"] == []
 
     task, inventory = discover_directory("ordinary-subfolder", service)
     assert task["repository"] is None and task["target_commit"] is None
-    assert {op.path for op in inventory.operations} == {"/working-copy"}
+    assert {op.path for op in inventory.operations} == {"/working-copy", "/java/jobs"}
 
     task_url = f"{base_url}/api/tasks/java-only"
     status, _ = _request_json(

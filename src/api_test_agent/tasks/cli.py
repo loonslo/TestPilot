@@ -40,7 +40,7 @@ def register_commands(commands: argparse._SubParsersAction) -> None:
     )
     create.add_argument("--document-paths", nargs="+", default=[], help="本地接口文档相对路径")
     create.add_argument("--openapi-url", help="服务在线 OpenAPI / Swagger 文档 URL")
-    create.add_argument("--adapter", help="指定适配器 (python-ast, openapi)")
+    create.add_argument("--adapter", help="指定适配器 (python-ast, java-spring, openapi)")
     import_cmd = actions.add_parser("import-openapi", help="一步创建任务并导入服务文档或聚合目录")
     import_cmd.add_argument("task_id")
     import_cmd.add_argument("--url", required=True)

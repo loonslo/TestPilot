@@ -58,8 +58,8 @@
 - 已安装 uv 时按锁文件准备 Python 3.14 环境；离线可使用已经准备好的本项目虚拟环境。缺少依赖时会显示错误，不假报启动成功。
 - 直接打开 TestPilot 网页（`http://127.0.0.1:8080/`），不再先选择启动菜单；服务窗口关闭即停止服务。
 - 新建任务时，选择资料文件或目录，填写在线地址，或先保存草稿。开发交付压缩包时，解压后选目录即可。
-- 「选择本地资料」按选中的实际资料解析：选中文件时识别 Python 或 OpenAPI/Swagger，选中目录时收集 FastAPI 源码和常见命名的接口规格。有可读 HEAD 的 Git 根目录使用提交快照，普通目录或仓库子目录使用本地文件。当前任务已冻结资料时，选择新资料会新建任务，保留旧记录。
-- `docs/api.yaml` 等常见名称的规格可随目录导入。文件名不符合常用命名时，可直接选择该文件。Java/Spring 等非 Python 项目可导入 OpenAPI/Swagger 文件，也可填写在线规格地址。目录发现失败后可在原草稿里更换资料并重试。
+- 「选择本地资料」识别 Python FastAPI、Java Spring MVC 和 OpenAPI/Swagger。可选择目录、单个 `.py`、`.java` 或规格文件。有可读 HEAD 的 Git 根目录使用提交快照，普通目录或仓库子目录使用本地文件。当前任务已冻结资料时，选择新资料会新建任务，保留旧记录。
+- Java 静态发现支持 Spring MVC 控制器上的字面量路径和常见映射注解。动态配置、通配路径、自定义映射注解和跨类型继承映射需要另行核对，可补充 OpenAPI/Swagger 规范。目录发现失败后可在原草稿里更换资料并重试。[Spring MVC 路由文档](https://docs.spring.io/spring-framework/reference/web/webmvc/mvc-controller/ann-requestmapping.html)
 - 数据源配置保留「选择本地资料」和「填写在线地址」两个入口。页面打开时不选中任务，已保存的任务从顶部「选择历史任务」打开。目录自动扫描默认跳过常见构建、三方依赖和打包运行时目录。普通目录扫描跳过超过 1 MB 的候选文件，并在结果中记录；较大的 OpenAPI/Swagger 规格可单独选择，默认上限为 20 MB。
 - 解析接口后，在“测试集与依据”勾选本轮接口，生成或导入用例。可用表单调整标题、目的、参数与断言，复杂步骤保留高级结构编辑。
 - 在“执行与报告”保存合成测试环境，返回用例列表选择修订并人工批准；随后在网页执行，无需切到 CLI。
@@ -85,7 +85,7 @@ uv run testpilot task materials quickstart
 之后的用例设计、人工审核和执行见 [任务流程](docs/task-assets.md)；
 导入文档不会调用模型或执行业务用例。
 
-开发交付的源码也可直接登记和静态解析。按需要提供 `--source-paths`，各路径相对于所选目录；省略时扫描目录内允许的 Python 文件。发现记录文件内容哈希和接口来源，部署版本仍待核验。生成用例所用的模型材料默认只保留提取的接口信息与来源标识。
+开发交付的源码也可直接登记和静态解析。按需要提供 `--source-paths`，各路径相对于所选目录；省略时扫描目录内允许的 FastAPI、Spring MVC 和常见规格文件。发现记录文件内容哈希和接口来源，部署版本仍待核验。生成用例所用的模型材料默认只保留提取的接口信息与来源标识。
 
 ```powershell
 uv run testpilot task create delivery --project MyService --scope "*" --source-directory "D:/delivery/service" --source-paths src

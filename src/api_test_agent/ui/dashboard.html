@@ -901,7 +901,7 @@
               <div class="field span2">
                 <label for="inputLocalPath">本地资料目录</label>
                 <input type="text" id="inputLocalPath" readonly>
-                <div class="field-note">自动识别 OpenAPI/Swagger 和 FastAPI 源码。压缩包请先解压。</div>
+                <div class="field-note">自动识别 OpenAPI/Swagger、Python FastAPI 和 Java Spring MVC。压缩包请先解压。</div>
               </div>
               <div class="field span2">
                 <label for="inputLocalSourcePaths">分析范围（可选）</label>
@@ -2841,7 +2841,7 @@
       environment: fieldValue('modalTargetEnv') || null
     };
     const kind = field.dataset.kind || (/^https?:\/\//i.test(input) ? 'url'
-      : /\.py$/.test(input) ? 'source' : /\.(json|ya?ml)$/i.test(input) ? 'document' : 'directory');
+      : /\.(py|java)$/.test(input) ? 'source' : /\.(json|ya?ml)$/i.test(input) ? 'document' : 'directory');
     if (input && (kind === 'directory' || kind === 'source')) {
       payload.adapter = 'python-ast';
       const path = input.replace(/\\/g, '/');
@@ -3176,12 +3176,12 @@
   function canSelectBrowserItem(item) {
     const target = S.browser.target;
     const root = browserScopeRoot(target);
-    const selectable = item.is_dir || isPythonSource(item) || item.is_openapi;
+    const selectable = item.is_dir || isSourceFile(item) || item.is_openapi;
     return selectable && (!root || !!repoRelativePaths([item.path], root)[0]);
   }
 
-  function isPythonSource(item) {
-    return !item.is_dir && item.name.endsWith('.py');
+  function isSourceFile(item) {
+    return !item.is_dir && /\.(py|java)$/.test(item.name);
   }
 
   async function confirmCurrentDirectory() {
@@ -3207,7 +3207,7 @@
       const paths = items.map((item) => item.path);
       const first = items[0];
       const directSource = target === 'target';
-      if (!browserScopeRoot(target) && items.length > 1 && items.some(item => item.is_dir || isPythonSource(item))) {
+      if (!browserScopeRoot(target) && items.length > 1 && items.some(item => item.is_dir || isSourceFile(item))) {
         throw new Error('请选择一个目录或源码文件。接口规格文件可多选。');
       }
       if (directSource && document.getElementById('btnDiscover').disabled) {
@@ -3238,8 +3238,8 @@
     } else if (target === 'new_material') {
       const field = document.getElementById('modalDocInput');
       field.value = paths.join(', ');
-      field.dataset.kind = first.is_dir ? 'directory' : isPythonSource(first) ? 'source' : 'document';
-    } else if (first.is_dir || isPythonSource(first)) {
+      field.dataset.kind = first.is_dir ? 'directory' : isSourceFile(first) ? 'source' : 'document';
+    } else if (first.is_dir || isSourceFile(first)) {
       const root = first.is_dir ? first.path : first.path.slice(0, -first.name.length);
       const sourcePaths = document.getElementById('inputLocalSourcePaths');
       sourcePaths.value = first.is_dir ? '' : first.name;

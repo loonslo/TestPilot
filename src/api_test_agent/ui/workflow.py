@@ -37,7 +37,7 @@ from api_test_agent.tasks.design_model import model_generator
 from api_test_agent.tasks.execution import classify_accounting, execute_task
 from api_test_agent.tasks.models import CaseRevision
 from api_test_agent.tasks.report import generate_report
-from api_test_agent.tasks.store import TaskStore
+from api_test_agent.tasks.store import TaskStore, replace_local_file
 
 
 class BusyTask(ValueError):
@@ -57,7 +57,7 @@ def write_json(path: Path, data: dict[str, Any]) -> None:
     temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
     try:
         temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2), "utf-8")
-        temporary.replace(path)
+        replace_local_file(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
 

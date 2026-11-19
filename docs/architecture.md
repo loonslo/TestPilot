@@ -43,7 +43,7 @@ flowchart TB
 | --- | --- | --- | --- | --- |
 | **Task** | `uv run testpilot task create <id>` | 登记新测试任务（空草稿） | 否 | 仅写入元数据 |
 | **Task** | `uv run testpilot task configure <id>` | 绑定目标仓库/提交/资料范围 | 否 | 离线记录，不访问网络 |
-| **Task** | `uv run testpilot task discover <id>` | 静态解析 FastAPI/OpenAPI 声明 | 否 | 静态 AST/Spec 解析，不执行被测代码 |
+| **Task** | `uv run testpilot task discover <id>` | 静态解析 FastAPI、Spring MVC 和 OpenAPI/Swagger 声明 | 否 | 静态语法树和规格解析，不执行被测代码 |
 | **Task** | `uv run testpilot task materials <id>` | 导出受字符预算限制的模型材料 | 否 | 严格按字符上限裁剪，无截断残缺 |
 | **Task** | `uv run testpilot task design <id>` | 生成数据化测试用例（或导入离线响应） | 需参数配置 | 支持网页或 CLI 发起；模型费用由用户管理，保留超时和输入输出长度控制 |
 | **Task** | `uv run testpilot task review <id>` | 导出 Markdown 审核材料与参数理由表 | 否 | 纯离线生成审核文档，草稿置为 pending_review |
@@ -82,7 +82,7 @@ flowchart TB
 |---|---|---|---|---|---|---|---|
 | **1. 定义任务** | 明确项目、范围、版本与目标环境 | `task create`<br/>`task configure`<br/>`task validate-target` | 任务标识、项目名、目标提交、测试范围、环境标识 | `task.json` (状态: `created`) | 用户 / 测试工程师 | 范围与授权明确；**拒绝**：ID 重复、绝对/隐藏路径、生产环境标识 (`prod`) | 重新配置或 `task state <id> created` |
 | **2. 固定资料** | 读取指定版本的源码、接口文档、业务规则 | `task discover` (前置采集) | 目标 Git 只读提交、指定文档目录 | 采集资料快照、`inventory.json` 来源清单与 SHA256 哈希 | 宿主系统 (只读适配器) | 资料可追溯，缺失显式记录；**拒绝**：文件超限、凭据文件混入 | 修正资料路径并重新执行 |
-| **3. 发现接口** | 提取 method、path、参数、响应、鉴权与关联信息 | `task discover` | 源码 AST (FastAPI) 与 OpenAPI/Swagger 规范 | 接口清单、冲突项与未解析声明 (`discovery/<attempt>/`) | 静态解析适配器 | 每个接口有明确状态；**拒绝**：YAML/JSON 键重复、无法解析语法 | 修正文档或代码语法后重新发现 (生成新 attempt) |
+| **3. 发现接口** | 提取 method、path、参数、响应、鉴权与关联信息 | `task discover` | FastAPI、Spring MVC 源码与 OpenAPI/Swagger 规范 | 接口清单、冲突项与未解析声明 (`discovery/<attempt>/`) | 静态解析适配器 | 静态路由按来源记录，动态配置与未解析声明需核对 | 修正选取范围、文档或源码后重新发现 |
 | **4. 确认测试依据** | 区分文档规定、业务确认、代码观察和模型推测 | `task review` (规则准备) | `inventory.json` 中的声明与规则文件 | 规则清单及其确认状态 (`rules/`) | 测试工程师 / 架构师 | 推测不能直接作为缺陷标准；**拒绝**：未标记来源的伪需求 | 明确规则类别并标注确认状态 |
 | **5. 设计场景** | 为接口选择正常、异常、边界、权限及状态关联场景 | `task design` (矩阵构建) | 接口清单、7 类场景矩阵规范 | 场景矩阵及不适用理由 (`scenarios.json`) | 测试设计员 / 宿主矩阵生成器 | 清楚哪些已设计、哪些仍缺；**拒绝**：矩阵场景与接口定义不匹配 | 补全场景映射或显式记录排除原因 |
 | **6. 生成用例** | 写明前置条件、数据、步骤、断言、清理与参数理由 | `task design`<br/>`task design-recover` | 场景矩阵、字符材料、可选模型配置 | 带修订号的结构化用例 (`cases/<id>/<rev>.json`)、调用元数据 | 生成模型 / 测试设计员 (数据化输出) | 引用、步骤和断言通过静态校验；**拒绝**：缺参数理由、非法引用、商业模型单次费用 > 0.15 USD | 离线 `--response` 导入；`task design-recover` 恢复草稿 |

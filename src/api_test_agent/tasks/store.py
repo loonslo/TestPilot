@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -42,6 +43,18 @@ def _write_new(path: Path, value: Contract) -> None:
         stream.write(value.model_dump_json(indent=2) + "\n")
 
 
+def replace_local_file(source: str | Path, destination: Path) -> None:
+    # A concurrent Windows reader can briefly prevent the atomic replacement.
+    for delay in (0.01, 0.02, 0.04, 0.08, None):
+        try:
+            os.replace(source, destination)
+            return
+        except PermissionError as exc:
+            if delay is None or getattr(exc, "winerror", None) not in {5, 32, 33}:
+                raise
+            time.sleep(delay)
+
+
 def _replace_task(path: Path, task: Task) -> None:
     # Keep the previous complete file until the new one is fully written.
     fd, name = tempfile.mkstemp(prefix="task-", suffix=".tmp", dir=path.parent)
@@ -50,7 +63,7 @@ def _replace_task(path: Path, task: Task) -> None:
             stream.write(task.model_dump_json(indent=2) + "\n")
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(name, path)
+        replace_local_file(name, path)
     finally:
         Path(name).unlink(missing_ok=True)
 

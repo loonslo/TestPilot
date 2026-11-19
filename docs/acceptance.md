@@ -1130,3 +1130,10 @@ UI 的“直接导入服务/完整清单”和“文档路径或 URL”文案已
 - 合成 Git 仓库提交 Java 文件和有效的 `docs/api.yaml`，在 0.1.4 复现 `no supported Python source or OpenAPI/Swagger specification in scope`。0.1.5 将 `api.yaml` 等常见规格名称纳入目录扫描，显式选择的 JSON/YAML 文件按规格内容识别。Git 快照缺少可解析资料时提供中文诊断，有 Java 文件时提示导入 OpenAPI/Swagger。错误保留在资料表单，任务仍为草稿。
 - Windows、Python 3.14.4 和 Edge，在独立安装的 0.1.5 wheel 当中实测：提交的 `docs/api.yaml` 直接解析；仅有 Java 的 Git 仓库显示诊断；同一草稿填写在线规格后成功进入接口清单。
 - `uv run --locked python -m pytest -q --tb=short -p no:cacheprovider --basetemp=<全新临时目录>` → **526 passed in 73.80s**。Ruff、内联脚本语法、`git diff --check` 与安装包 ZIP 完整性通过。未读取真实 AppleRecruit 目录，未验证用户的在线服务地址，Java 源码静态适配器仍待实现。
+
+## 2026-11-18：Python FastAPI 与 Java Spring MVC 源码发现（0.1.6）
+
+- Java 适配器通过 Tree-sitter 静态提取 Spring MVC 控制器的请求方法、类级与方法级字面量路径及常见请求参数；动态路径、未指定方法等记录限制。按 [Spring MVC 映射规则](https://docs.spring.io/spring-framework/reference/web/webmvc/mvc-controller/ann-requestmapping.html) 处理常用注解。Git 快照、普通目录及单文件复用原资料入口，OpenAPI 仍可独立作为来源。
+- Windows、Python 3.14.4、Edge，在独立安装的 0.1.6 上验证只含 Java 源码的合成 Git 仓库、单个 Java 文件和单个 FastAPI 文件均可进入接口清单，Git 仓库匹配已提交内容，单文件读取当前选中的本地版本。安装依赖时须先从依赖仓库取得两项新增 Tree-sitter 包。本轮未读取真实 AppleRecruit 目录或调用真实服务，未核验继承映射、运行时配置或其他 Java Web 框架。
+- 执行回归复现 Windows 页面轮询持有文件时，任务或后台作业 JSON 的原子替换出现 WinError 5。对两处文件替换添加 Windows 共享冲突的短暂重试，回归覆盖重试后状态完整及批次证据不重放。
+- 使用最终 wheel 在独立环境再次验证同一任务中扫描 Java 与 Python；ZIP 中的 wheel 与此次构建一致。最终 `uv run --locked python -m pytest -q --tb=short -p no:cacheprovider --basetemp=<全新临时目录>` → **528 passed in 73.04s**。Ruff 检查与格式检查、JavaScript 内联脚本语法、`git diff --check` 和 ZIP 完整性通过。

@@ -236,6 +236,30 @@ def test_review_bound_to_revision_and_new_revision_starts_draft(tmp_path):
         store.record_review(decision("pending_review"))
 
 
+def test_task_status_write_retries_transient_windows_file_lock(tmp_path, monkeypatch):
+    from api_test_agent.tasks import store as store_module
+
+    real_replace = store_module.os.replace
+    attempts = 0
+
+    def replace_after_transient_lock(source, destination):
+        nonlocal attempts
+        attempts += 1
+        if attempts <= 2:
+            fault = PermissionError("synthetic Windows sharing violation")
+            fault.winerror = 32
+            raise fault
+        real_replace(source, destination)
+
+    store = store_module.TaskStore(tmp_path)
+    store.create(Task(task_id="draft"))
+    monkeypatch.setattr(store_module.os, "replace", replace_after_transient_lock)
+    store.configure("draft", target_project="updated")
+    assert attempts == 3
+    assert store.load("draft").target_project == "updated"
+    assert not list(store.folder("draft").glob("task-*.tmp"))
+
+
 def test_cli_draft_then_configure_without_reading_target(tmp_path, capsys):
     args = ["task", "--root", str(tmp_path)]
     assert main([*args, "create", "draft"]) == 0

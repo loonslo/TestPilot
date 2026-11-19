@@ -18,6 +18,7 @@ import yaml
 from pydantic import ConfigDict, model_validator
 
 from api_test_agent.adapters import (
+    JavaSpringAdapter,
     get_adapter,
     get_all_supported_extensions,
     openapi,
@@ -80,6 +81,7 @@ SPEC_FILENAME = re.compile(r"(?:^|[-_.])(openapi|swagger|api[-_.]?docs)(?:$|[-_.
 SPEC_BASENAMES = {"api", "api-spec", "api_spec", "apispec", "spec", "specification"}
 SPEC_HEADER = re.compile(r"""(?:^|[\n{,])\s*["']?(?:openapi|swagger)["']?\s*:""")
 OPENAPI_FALLBACK = "请选择 OpenAPI/Swagger 文件，或填写在线规格地址后重试。"
+SOURCE_LABEL = "Python/FastAPI、Java/Spring MVC 源码或接口规格"
 MIXED_VERSION_WARNING = (
     "Document/source version correspondence unverified: local document is not "
     "bound to the selected commit"
@@ -185,8 +187,12 @@ class Inventory(Contract):
         return self
 
 
+def is_code_source(path: Path) -> bool:
+    return path.suffix == ".py" or path.suffix.lower() == ".java"
+
+
 def is_source_candidate(path: Path, *, explicitly_selected: bool = False) -> bool:
-    return path.suffix == ".py" or (
+    return is_code_source(path) or (
         path.suffix.lower() in SPEC_SUFFIXES
         and (
             explicitly_selected
@@ -292,14 +298,14 @@ def _discover(
             if total_bytes > MAX_LOCAL_SOURCE_BYTES:
                 raise ValueError("源码和规格文件的总大小超过上限。请在「分析范围」中缩小范围。")
             content = payload.decode("utf-8-sig")
-            if candidate.suffix == ".py" or SPEC_HEADER.search(content):
+            if is_code_source(candidate) or SPEC_HEADER.search(content):
                 snapshots[path] = content
                 checkpoint(path, content, LOCAL_SOURCE_VERSION)
         if not snapshots:
             if not (task.document_paths or task.openapi_url):
                 detail = f"已跳过 {skipped_oversized} 个超限文件。" if skipped_oversized else ""
                 raise ValueError(
-                    f"所选本地范围未找到可解析的 Python 源码或接口规格。{detail}{OPENAPI_FALLBACK}"
+                    f"所选本地范围未找到可解析的 {SOURCE_LABEL}。{detail}{OPENAPI_FALLBACK}"
                 )
             warnings.append("No supported Python source in the selected directory")
     elif task.source_paths:
@@ -314,7 +320,6 @@ def _discover(
         verified = True
         listing = git(repo, "ls-tree", "-r", "-z", task.target_commit).split(b"\0")
         total_bytes = 0
-        has_java_source = False
         skipped_oversized = 0
         matches = {selection: 0 for selection in task.source_paths}
         for entry in listing:
@@ -339,8 +344,6 @@ def _discover(
                     for selection in selected
                 ):
                     continue
-                if candidate.suffix.lower() == ".java" and permitted(path, {".java"}):
-                    has_java_source = True
                 if not is_source_candidate(candidate, explicitly_selected=path in selected):
                     continue
             if not permitted(path) or not metadata.startswith(b"100"):
@@ -361,7 +364,7 @@ def _discover(
             content = git(repo, "cat-file", "blob", blob).decode("utf-8")
             if (
                 task.local_only_source
-                and Path(path).suffix != ".py"
+                and not is_code_source(candidate)
                 and not SPEC_HEADER.search(content)
             ):
                 continue
@@ -372,9 +375,7 @@ def _discover(
             f"{s}: no committed files matched" for s, count in matches.items() if not count
         ]
         if task.local_only_source and not (snapshots or task.document_paths or task.openapi_url):
-            details = ["当前 Git 提交的所选范围内没有可解析的 Python 源码或接口规格。"]
-            if has_java_source:
-                details.append("检测到 Java 源码，当前支持通过接口规格导入 Java 项目。")
+            details = [f"当前 Git 提交的所选范围内没有可解析的 {SOURCE_LABEL}。"]
             if skipped_oversized:
                 details.append(f"已跳过 {skipped_oversized} 个超限文件。")
             if not any(matches.values()):
@@ -458,13 +459,18 @@ def _discover(
         adapter_extensions = {ext.lower() for ext in adapter.supported_extensions}
     else:
         code_rows, code_notes = extract(snapshots, sources_map)
+    has_java = any(Path(path).suffix.lower() == ".java" for path in snapshots)
+    if has_java and (adapter is None or adapter.name == "python-ast"):
+        java_rows, java_notes = JavaSpringAdapter().extract(snapshots, sources_map)
+        code_rows.extend(java_rows)
+        code_notes.extend(java_notes)
     warnings.extend(code_notes)
     grouped: dict[str, list[dict[str, Any]]] = {}
     for row in code_rows:
         grouped.setdefault(f"{row['method']} {row['path']}", []).append(row)
     for source in sources:
         content = snapshots[source.path]
-        if source.path.endswith(".py"):
+        if is_code_source(Path(source.path)):
             continue
         elif Path(source.path).suffix.lower() in adapter_extensions:
             # The selected adapter already parsed this document; do not parse it again.
@@ -516,6 +522,12 @@ def _discover(
             row["status"] = "out_of_scope"
             row["reason"] = "Not selected by task METHOD /path glob scope"
         operations.append(Operation(**row))
+    if has_java and not operations and (task.source_directory or task.local_only_source):
+        detail = next((note for note in code_notes if ":" in note), "")
+        raise ValueError(
+            "检测到 Java 源码，但未发现支持的 Spring MVC 静态路由。"
+            f"{OPENAPI_FALLBACK}" + (f"首项限制：{detail}" if detail else "")
+        )
     if task.source_directory:
         warnings.append("Local source snapshot: source revision and runtime version are unverified")
     elif not verified:

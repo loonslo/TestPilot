@@ -10,6 +10,7 @@ import pytest
 
 from api_test_agent.adapters import (
     DiscoveryAdapter,
+    JavaSpringAdapter,
     OpenAPIAdapter,
     PythonAstAdapter,
     get_adapter,
@@ -38,32 +39,83 @@ def test_builtin_adapters_registered():
     assert isinstance(get_adapter("fastapi"), DiscoveryAdapter)
     assert isinstance(get_adapter("openapi"), DiscoveryAdapter)
     assert isinstance(get_adapter("swagger"), DiscoveryAdapter)
+    assert isinstance(get_adapter("java-spring"), JavaSpringAdapter)
     assert "python-ast" in list_adapters()
     assert "openapi" in list_adapters()
 
 
 def test_custom_adapter_registration_and_permitted_extensions():
-    class JavaSpringAdapter:
-        name = "java-spring"
-        supported_extensions = (".java",)
+    class CustomAdapter:
+        name = "synthetic-adapter"
+        supported_extensions = (".synthetic",)
 
         def extract(
             self, snapshots: dict[str, str], sources: dict[str, SourceRef]
         ) -> tuple[list[dict], list[str]]:
             return [], []
 
-    adapter = JavaSpringAdapter()
+    adapter = CustomAdapter()
     assert isinstance(adapter, DiscoveryAdapter)
-    register_adapter(adapter, "spring", "java")
+    register_adapter(adapter, "synthetic")
 
-    assert get_adapter("java-spring") is adapter
-    assert get_adapter("spring") is adapter
+    assert get_adapter("synthetic-adapter") is adapter
+    assert get_adapter("synthetic") is adapter
+    assert ".synthetic" in get_all_supported_extensions()
     assert ".java" in get_all_supported_extensions()
     assert permitted("src/main/java/com/apple/recruit/RecruitController.java")
     # Denied or hidden files are still excluded even with allowed extensions
     assert not permitted("src/test/RecruitTest.java")
     assert not permitted("data/RecruitController.java")
     assert not permitted(".hidden/RecruitController.java")
+
+
+def test_java_spring_static_routes_and_unresolved_mappings():
+    code = """import org.springframework.web.bind.annotation.*;
+    @RestController
+    @RequestMapping(path = {"/api", "/v2"})
+    class RecruitController {
+        // @GetMapping("/comment-only")
+        @GetMapping("/jobs/{id}")
+        public void get(@PathVariable("id") Long id, @RequestParam(required=false) String filter) {}
+        @RequestMapping(value="/jobs", method={RequestMethod.POST, RequestMethod.PUT})
+        public void save(@RequestBody Job body) {}
+        @PatchMapping(path="/jobs", headers="X-Feature=enabled") public void update() {}
+        @GetMapping(DYNAMIC_PATH) public void dynamic() {}
+        @RequestMapping("/any") public void unknown() {}
+    }
+    class Unregistered {
+        @GetMapping("/not-a-controller") public void another() {}
+    }
+    """
+    source = SourceRef(
+        source_id="spring",
+        version="a" * 40,
+        path="RecruitController.java",
+        locator="full file",
+        content_hash="0" * 64,
+        summary="code",
+    )
+    rows, warnings = JavaSpringAdapter().extract({source.path: code}, {source.path: source})
+    assert {(row["method"], row["path"]) for row in rows} == {
+        (method, prefix + suffix)
+        for prefix in ("/api", "/v2")
+        for method, suffix in (
+            ("GET", "/jobs/{id}"),
+            ("POST", "/jobs"),
+            ("PUT", "/jobs"),
+            ("PATCH", "/jobs"),
+        )
+    }
+    assert all(row["status"] == "unresolved" for row in rows if row["method"] == "PATCH")
+    get = next(row for row in rows if row["method"] == "GET")
+    assert [
+        (item["name"], item["in"], item["required"]) for item in get["details"]["parameters"]
+    ] == [
+        ("id", "path", True),
+        ("filter", "query", False),
+    ]
+    assert any("dynamic mapping path" in warning for warning in warnings)
+    assert any("no specific HTTP method" in warning for warning in warnings)
 
 
 def test_python_ast_adapter_extraction():

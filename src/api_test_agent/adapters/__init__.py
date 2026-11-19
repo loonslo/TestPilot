@@ -11,6 +11,7 @@ from api_test_agent.adapters.base import (
     register_adapter,
     registry,
 )
+from api_test_agent.adapters.java_spring import JavaSpringAdapter
 from api_test_agent.adapters.openapi import (
     METHODS,
     OpenAPIAdapter,
@@ -30,12 +31,14 @@ from api_test_agent.adapters.python_ast import (
 
 # Register default discovery adapters
 register_adapter(PythonAstAdapter(), "fastapi", "python-ast", "python", "python_ast")
+register_adapter(JavaSpringAdapter(), "java", "spring-mvc")
 register_adapter(OpenAPIAdapter(), "swagger", "openapi-json", "openapi-yaml")
 
 __all__ = [
     "AdapterRegistry",
     "DiscoveryAdapter",
     "HTTP",
+    "JavaSpringAdapter",
     "METHODS",
     "OpenAPIAdapter",
     "PythonAstAdapter",

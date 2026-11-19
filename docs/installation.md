@@ -15,7 +15,7 @@ uv pip install --python .venv/Scripts/python.exe --no-deps $testPilotWheel
 .venv/Scripts/testpilot.exe ui
 ```
 
-更新安装包后，先关闭旧控制台服务，再启动新版。TestPilot 0.1.5 扩展目录规格识别，Git 快照找不到可解析资料时可在原任务中导入接口规格。
+更新安装包后，先关闭旧控制台服务，再启动新版。TestPilot 0.1.6 支持 Python FastAPI 和 Java Spring MVC 源码静态发现；Java 发现无需安装 JDK 或启动应用。
 
 网页打开后，选择本地文件、目录，或填写文档地址。压缩源码先解压。能读取 Git 根目录的 HEAD 时，工作台使用提交快照。没有 Git 或可读 HEAD 时，使用目录中的本地文件。发布差异 CLI 仍需要相应 Git 权限。
 
