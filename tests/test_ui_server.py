@@ -30,6 +30,7 @@ def test_server(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> Generator[tuple[str, TaskStore]]:
     monkeypatch.setattr("api_test_agent.ui.server.read_env", lambda _: None)
+    monkeypatch.setattr("api_test_agent.ui.workflow.read_key", lambda _: None)
     tasks_root = tmp_path / "tasks"
     tasks_root.mkdir()
     store = TaskStore(tasks_root)
@@ -187,6 +188,46 @@ def test_ui_model_ping(test_server: tuple[str, TaskStore]) -> None:
     assert res["ok"] is True
     assert res["latency_ms"] >= 0
     assert res["key_configured"] is False
+
+
+def test_web_model_key_is_write_only_scoped_and_removable(test_server, monkeypatch):
+    base_url, store = test_server
+    vault = {}
+
+    def write(target, key):
+        if key is None:
+            vault.pop(target, None)
+        else:
+            vault[target] = key
+
+    monkeypatch.setattr("api_test_agent.ui.workflow.read_key", vault.get)
+    monkeypatch.setattr("api_test_agent.ui.workflow.write_key", write)
+    monkeypatch.setattr("api_test_agent.ui.workflow.read_env", lambda _: None)
+    url = f"{base_url}/api/model/config"
+    first = {"base_url": "https://first.example.invalid/v1", "model_id": "model-a"}
+    second = {"base_url": "https://other.example.invalid/v1", "model_id": "model-a"}
+    key = "synthetic-key-for-web-configuration"
+    status, configured = _request_json(url, "POST", first | {"api_key": key})
+    assert status == 200 and configured["stored_key_configured"] is True
+    assert tuple(vault.values()) == (key,)
+    assert key not in json.dumps(configured) and key not in json.dumps(_request_json(url)[1])
+    assert key not in (store.root / ".web-model.json").read_text("utf-8")
+    assert _request_json(url, "POST", second)[1]["key_configured"] is False
+    assert _request_json(url, "POST", first)[1]["stored_key_configured"] is True
+    status, error = _request_json(
+        url,
+        "POST",
+        second
+        | {
+            "base_url": "http://other.example.invalid/v1",
+            "api_key": key,
+        },
+    )
+    assert status == 400 and key not in json.dumps(error)
+    assert (
+        _request_json(url, "POST", first | {"remove_api_key": True})[1]["key_configured"] is False
+    )
+    assert not vault
 
 
 def test_ui_post_without_token_rejected_403(test_server: tuple[str, TaskStore]) -> None:
@@ -659,27 +700,35 @@ def test_web_workflow_runs_scoped_batches_and_preserves_old_report(
         assessments = [{**row, "operation_id": operation_id} for row in template["assessments"]]
         design_output = {"cases": [case], "assessments": assessments}
 
-        def fake_generator(settings):
+        provider_key = "synthetic-key-for-generation"
+        vault = {}
+
+        def fake_generator(settings, *, api_key):
             assert settings.model_id == "unknown-model"
+            assert api_key == provider_key
 
             def generate(request):
+                assert provider_key not in request
                 assert json.loads(request)["operations"][0]["operation_id"] == operation_id
                 return json.dumps(design_output)
 
             return generate
 
         monkeypatch.setattr("api_test_agent.ui.workflow.model_generator", fake_generator)
-        monkeypatch.setattr("api_test_agent.ui.workflow.read_env", lambda _: "fake-provider-key")
+        monkeypatch.setattr("api_test_agent.ui.workflow.read_env", lambda _: None)
+        monkeypatch.setattr("api_test_agent.ui.workflow.read_key", vault.get)
+        monkeypatch.setattr("api_test_agent.ui.workflow.write_key", vault.__setitem__)
         config = post(
             "/api/model/config",
             {
                 "model_id": "unknown-model",
                 "base_url": "https://example.invalid/v1",
                 "api_key_env": "SYNTHETIC_PROVIDER_KEY",
+                "api_key": provider_key,
             },
         )
         assert config["key_configured"] is True
-        assert "fake-provider-key" not in json.dumps(get("/api/model/config"))
+        assert provider_key not in json.dumps(get("/api/model/config"))
         generated = post(f"{task_path}/generate", {"operation_ids": [operation_id]}, 202)
         assert wait_job(task_path, generated)["status"] == "completed"
         extra_case = {**case, "case_id": "additional-list-check"}

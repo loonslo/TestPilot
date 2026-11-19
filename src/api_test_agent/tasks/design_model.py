@@ -42,13 +42,13 @@ def live_generator(config_path: Path) -> Callable[[str], GeneratedText]:
 
 
 def model_generator(
-    settings: ModelSettings, *, max_tokens: int | None = None
+    settings: ModelSettings, *, max_tokens: int | None = None, api_key: str | None = None
 ) -> Callable[[str], GeneratedText]:
     def generate(request: str) -> GeneratedText:
-        key = read_env(settings.api_key_env)
+        key = api_key or read_env(settings.api_key_env)
         if not key:
             if urlsplit(settings.base_url).hostname not in {"127.0.0.1", "localhost", "::1"}:
-                raise ValueError(f"Set the {settings.api_key_env} environment variable first")
+                raise ValueError(f"请先保存模型 API Key，或设置环境变量 {settings.api_key_env}。")
             key = "local-endpoint-dummy-key"
         output_limit = settings.max_output_tokens
         if max_tokens is not None:

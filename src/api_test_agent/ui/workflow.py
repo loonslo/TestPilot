@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
+import re
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import Lock, Thread
 from typing import Any
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 from pydantic import ValidationError
@@ -38,6 +42,7 @@ from api_test_agent.tasks.execution import classify_accounting, execute_task
 from api_test_agent.tasks.models import CaseRevision
 from api_test_agent.tasks.report import generate_report
 from api_test_agent.tasks.store import TaskStore, replace_local_file
+from api_test_agent.ui.model_credentials import MAX_KEY_LENGTH, read_key, write_key
 
 
 class BusyTask(ValueError):
@@ -94,6 +99,7 @@ class WebWorkflow:
     def __init__(self, store: TaskStore):
         self.store = store
         self._lock = Lock()
+        self._model_lock = Lock()
         self._busy: set[str] = set()
         self._live_jobs: set[str] = set()
 
@@ -123,16 +129,66 @@ class WebWorkflow:
         raw = read_json(self._model_path)
         return ModelSettings.model_validate(raw) if raw else None
 
-    def model_config(self, data: dict[str, Any] | None = None) -> dict[str, Any]:
-        if data is not None:
-            settings = ModelSettings.model_validate(data)
-            write_json(self._model_path, settings.model_dump(mode="json"))
-        else:
-            settings = self._model()
+    def _credential_target(self, base_url: str) -> str:
+        scope = f"{os.path.normcase(str(self.store.root))}\0{base_url.rstrip('/')}"
+        return "TestPilot/WebModel/" + hashlib.sha256(scope.encode("utf-8")).hexdigest()
+
+    def model_key_status(self, base_url: str, key_env: str) -> dict[str, bool]:
+        stored = bool(read_key(self._credential_target(base_url)))
         return {
-            "model": settings.model_dump(mode="json") if settings else None,
-            "key_configured": bool(settings and read_env(settings.api_key_env)),
+            "stored_key_configured": stored,
+            "key_configured": stored
+            or bool(re.fullmatch(r"[A-Z][A-Z0-9_]*", key_env) and read_env(key_env)),
         }
+
+    def model_config(self, data: dict[str, Any] | None = None) -> dict[str, Any]:
+        with self._model_lock:
+            if data is not None:
+                fields = data.copy()
+                key = fields.pop("api_key", None)
+                remove = fields.pop("remove_api_key", False)
+                if type(remove) is not bool or (remove and key is not None):
+                    raise ValueError("请单独保存或移除模型 API Key。")
+                if key is not None and (
+                    not isinstance(key, str)
+                    or not re.fullmatch(r"[!-~]+", key)
+                    or len(key) > MAX_KEY_LENGTH
+                ):
+                    raise ValueError("请输入不含空格的有效 API Key。")
+                settings = ModelSettings.model_validate(fields)
+                target = self._credential_target(settings.base_url)
+                if key is not None or remove:
+                    parts = urlsplit(settings.base_url)
+                    if (
+                        key is not None
+                        and parts.scheme != "https"
+                        and parts.hostname
+                        not in {
+                            "127.0.0.1",
+                            "localhost",
+                        }
+                    ):
+                        raise ValueError("保存 API Key 的远程模型地址必须使用 HTTPS。")
+                    previous = read_key(target)
+                    write_key(target, key)
+                    try:
+                        write_json(self._model_path, settings.model_dump(mode="json"))
+                    except Exception:
+                        write_key(target, previous)
+                        raise
+                else:
+                    write_json(self._model_path, settings.model_dump(mode="json"))
+            else:
+                settings = self._model()
+            if settings is None:
+                return {"model": None, "key_configured": False, "stored_key_configured": False}
+            return {
+                "model": settings.model_dump(mode="json"),
+                **self.model_key_status(
+                    settings.base_url,
+                    settings.api_key_env,
+                ),
+            }
 
     def _job(
         self,
@@ -374,10 +430,14 @@ class WebWorkflow:
                         self.store, task_id, supplied_response=response, operation_ids=scope
                     )
                     return {"design_id": attempt.name}
-                settings = self._model()
-                if settings is None:
-                    raise ValueError("请先保存模型配置")
-                generator = model_generator(settings)
+                with self._model_lock:
+                    settings = self._model()
+                    if settings is None:
+                        raise ValueError("请先保存模型配置")
+                    key = read_key(self._credential_target(settings.base_url))
+                    generator = (
+                        model_generator(settings, api_key=key) if key else model_generator(settings)
+                    )
 
                 def generate() -> dict[str, Any]:
                     attempt = design(self.store, task_id, generator, operation_ids=scope)

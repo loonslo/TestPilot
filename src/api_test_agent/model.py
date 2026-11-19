@@ -10,6 +10,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
 import httpx2
 import openai
@@ -132,7 +133,8 @@ class ModelClient:
     ) -> None:
         self._settings = settings
         self._api_key = api_key
-        self._http = http_client or httpx2.Client()
+        local_endpoint = urlsplit(settings.base_url).hostname in {"127.0.0.1", "localhost", "::1"}
+        self._http = http_client or httpx2.Client(trust_env=not local_endpoint)
         self._client = openai.OpenAI(
             base_url=settings.base_url,
             api_key=api_key,

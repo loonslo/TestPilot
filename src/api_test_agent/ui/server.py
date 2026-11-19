@@ -774,14 +774,18 @@ class UIRequestHandler(BaseHTTPRequestHandler):
                 self._send_error("Enter an HTTP(S) provider URL without credentials or query")
                 return
 
-            key_found = bool(re.fullmatch(r"[A-Z][A-Z0-9_]*", key_env) and read_env(key_env))
+            try:
+                key_status = self.workflow.model_key_status(base_url, key_env)
+            except ValueError as exc:
+                self._workflow_error(exc)
+                return
             ping_result = _test_url_reachability(base_url)
             self._send_json(
                 {
                     "ok": ping_result["ok"],
                     "latency_ms": ping_result["latency_ms"],
                     "status_code": ping_result["status_code"],
-                    "key_configured": key_found,
+                    **key_status,
                     "message": ping_result["message"],
                 }
             )
@@ -914,8 +918,11 @@ def _test_url_reachability(url: str, timeout: float = 3.0) -> dict[str, Any]:
             headers={"User-Agent": "TestPilot-HealthCheck/1.0"},
             method="HEAD",
         )
+        opener = urllib.request.urlopen
+        if host in {"127.0.0.1", "localhost", "::1"}:
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({})).open
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+            with opener(req, timeout=timeout) as resp:
                 elapsed = (time.perf_counter() - start) * 1000
                 return {
                     "ok": True,

@@ -1137,3 +1137,10 @@ UI 的“直接导入服务/完整清单”和“文档路径或 URL”文案已
 - Windows、Python 3.14.4、Edge，在独立安装的 0.1.6 上验证只含 Java 源码的合成 Git 仓库、单个 Java 文件和单个 FastAPI 文件均可进入接口清单，Git 仓库匹配已提交内容，单文件读取当前选中的本地版本。安装依赖时须先从依赖仓库取得两项新增 Tree-sitter 包。本轮未读取真实 AppleRecruit 目录或调用真实服务，未核验继承映射、运行时配置或其他 Java Web 框架。
 - 执行回归复现 Windows 页面轮询持有文件时，任务或后台作业 JSON 的原子替换出现 WinError 5。对两处文件替换添加 Windows 共享冲突的短暂重试，回归覆盖重试后状态完整及批次证据不重放。
 - 使用最终 wheel 在独立环境再次验证同一任务中扫描 Java 与 Python；ZIP 中的 wheel 与此次构建一致。最终 `uv run --locked python -m pytest -q --tb=short -p no:cacheprovider --basetemp=<全新临时目录>` → **528 passed in 73.04s**。Ruff 检查与格式检查、JavaScript 内联脚本语法、`git diff --check` 和 ZIP 完整性通过。
+
+## 2026-11-19：API Key 与接口清单布局（0.1.7）
+
+- 接口清单独立控制横向溢出、长路径换行，窄宽度下将技术 ID 留在详情与筛选中。已在 Edge 的 1460、1100、540 px 验证长路径及详情打开时状态列完整可见。
+- Windows、Python 3.14.4，使用独立安装的 0.1.7 wheel 和当前用户 Windows 凭据管理器保存临时合成 Key。刷新后仅返回配置状态，配置 JSON 中无 Key。按任务存储根目录与供应商地址隔离。验证已保存 Key 用于本机合成模型的 Authorization 头，并完成生成任务；Key 不在提示中。也验证通过页面移除 Key，变更未触及历史探索或回归模块的密钥读取约定。
+- Windows 系统代理导致首轮合成回环请求偏离预期，修复后用显式不可用代理再次验证回环地址连通性测试及生成均可直连，远程地址保留原代理行为。连通性测试只探测端点可达性；真实供应商凭据和付费调用未验收。
+- 最终 `uv run --locked python -m pytest -q --tb=short -p no:cacheprovider --basetemp=<全新临时目录>` → **529 passed in 74.47s**。Ruff、内联脚本语法、`git diff --check` 和安装包 ZIP 完整性通过。

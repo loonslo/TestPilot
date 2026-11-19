@@ -15,7 +15,9 @@ uv pip install --python .venv/Scripts/python.exe --no-deps $testPilotWheel
 .venv/Scripts/testpilot.exe ui
 ```
 
-更新安装包后，先关闭旧控制台服务，再启动新版。TestPilot 0.1.6 支持 Python FastAPI 和 Java Spring MVC 源码静态发现；Java 发现无需安装 JDK 或启动应用。
+更新安装包后，先关闭旧控制台服务，再启动新版。TestPilot 0.1.7 支持在 Windows 网页直接保存模型 API Key。安装在新的任务存储根目录时，需要为该根目录配置模型凭据。
+
+在「模型配置」填写供应商地址、模型 ID 和 API Key，再保存。Key 保存在当前 Windows 用户的凭据管理器，刷新后页面显示就绪状态。保存时留空会保留该供应商已保存的 Key，也可通过「移除已保存 Key」清除。远程地址使用 HTTPS；本机模型可用回环 HTTP。通过环境变量配置仍可用。
 
 网页打开后，选择本地文件、目录，或填写文档地址。压缩源码先解压。能读取 Git 根目录的 HEAD 时，工作台使用提交快照。没有 Git 或可读 HEAD 时，使用目录中的本地文件。发布差异 CLI 仍需要相应 Git 权限。
 

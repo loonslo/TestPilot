@@ -451,7 +451,8 @@
       text-transform: uppercase;
       color: var(--text-3);
     }
-    .field input:not([type]), .field input[type="text"], .field input[type="url"], .field input[type="number"], .field select {
+    .field input:not([type]), .field input[type="text"], .field input[type="url"], .field input[type="number"],
+    .field input[type="password"], .field select {
       width: 100%;
       height: 32px;
       padding: 0 10px;
@@ -493,6 +494,22 @@
     .tbl tbody tr[data-click] { cursor: pointer; }
     .tbl tbody tr[data-click]:hover { background: var(--surface-2); }
     .tbl td.mono, .tbl .mono { font-family: var(--mono); font-size: 11.5px; }
+
+    .inventory-results { container-type: inline-size; min-width: 0; }
+    .inventory-scroll { overflow-x: auto; }
+    .inventory-table { table-layout: fixed; min-width: 330px; }
+    .inventory-table th, .inventory-table td { padding-inline: 9px; }
+    .inventory-table td { overflow-wrap: anywhere; }
+    .inventory-table th:nth-child(1) { width: 70px; }
+    .inventory-table th:nth-child(3) { width: 148px; }
+    .inventory-table th:nth-child(4) { width: 110px; }
+    .inventory-table th:nth-child(5) { width: 54px; }
+    .inventory-tools { flex-wrap: wrap; }
+    .inventory-search { flex: 1 1 200px; min-width: 0; justify-content: flex-end; }
+    .inventory-search input { width: min(220px, 100%); min-width: 0; }
+    @container (max-width: 560px) {
+      .inventory-table :is(th, td):nth-child(3) { display: none; }
+    }
 
     .empty {
       padding: 34px 20px;
@@ -935,7 +952,7 @@
           <div>
             <div class="eyebrow">阶段 02 · 模型端点</div>
             <h2>模型配置</h2>
-            <p>保存用例生成使用的模型配置。凭据从宿主环境变量读取，页面只显示变量名和设置状态。</p>
+            <p>填写供应商地址、模型 ID 和 API Key，用于生成测试用例。</p>
           </div>
         </div>
 
@@ -963,17 +980,22 @@
           </div>
           <div class="panel-body" style="border-top:1px solid var(--line)">
             <div class="grid2">
-              <label class="field span2"><span>base_url</span><input type="text" id="modelUrl" placeholder="https://api.deepseek.com/v1"></label>
+              <label class="field span2"><span>base_url</span><input type="text" id="modelUrl" placeholder="https://api.deepseek.com/v1" oninput="renderModelKeyControls()"></label>
               <label class="field"><span>模型 ID</span><input type="text" id="modelName" placeholder="deepseek-chat"></label>
-              <label class="field"><span>凭据环境变量名</span><input type="text" id="modelKey" placeholder="DEEPSEEK_API_KEY"><div class="field-note">只填变量名，不填密钥本身。</div></label>
+              <label class="field"><span>API Key</span><input type="password" id="modelApiKey" maxlength="2560" autocomplete="off" spellcheck="false" placeholder="输入供应商发放的 API Key"><div class="field-note">保存在本机 Windows 凭据管理器。</div></label>
               <label class="field"><span>超时（秒）</span><input type="number" id="modelTimeout" value="90" min="1" max="300"></label>
               <label class="field"><span>输出 Token 上限</span><input type="number" id="modelTokens" value="2048" min="1" max="16384"></label>
+              <details class="span2">
+                <summary>使用环境变量</summary>
+                <label class="field" style="margin-top:8px"><span>凭据环境变量名</span><input type="text" id="modelKey" placeholder="API_TEST_AGENT_MODEL_API_KEY"></label>
+              </details>
             </div>
           </div>
           <div class="panel-foot">
             <span class="row small"><i class="stage-dot" id="pingDot" data-state=""></i><span id="pingStatus" class="dim">尚未探测</span></span>
             <div class="row workflow-actions">
               <button class="btn" id="btnPing" onclick="testPing()">连通性测试</button>
+              <button class="btn hidden" id="btnRemoveModelKey" onclick="removeModelKey(this)">移除已保存 Key</button>
               <button class="btn btn-ink" onclick="saveModelConfig(this)">保存模型配置</button>
             </div>
           </div>
@@ -2018,6 +2040,7 @@
   // Pane 02 — model
   // ====================================================================
   function applyPreset(preset) {
+    document.getElementById('modelApiKey').value = '';
     ['deepseek', 'openrouter', 'ollama', 'custom'].forEach((key) => {
       const el = document.getElementById(`preset-${key}`);
       if (!el) return;
@@ -2037,12 +2060,13 @@
       document.getElementById('modelName').value = 'qwen2.5-coder:32b';
       document.getElementById('modelKey').value = 'API_TEST_AGENT_MODEL_API_KEY';
     }
+    renderModelKeyControls();
   }
 
   function modelConfigValues() {
     return {
       base_url: fieldValue('modelUrl'), model_id: fieldValue('modelName'),
-      api_key_env: fieldValue('modelKey'),
+      api_key_env: fieldValue('modelKey') || 'API_TEST_AGENT_MODEL_API_KEY',
       timeout_seconds: Number(fieldValue('modelTimeout')),
       max_output_tokens: Number(fieldValue('modelTokens'))
     };
@@ -2050,7 +2074,12 @@
 
   function showModelConfig(data) {
     S.model = data.model || null;
-    if (!S.model) return;
+    S.modelKeyStored = data.stored_key_configured;
+    document.getElementById('modelApiKey').value = '';
+    if (!S.model) {
+      renderModelKeyControls();
+      return;
+    }
     const fields = {
       modelUrl: 'base_url', modelName: 'model_id', modelKey: 'api_key_env',
       modelTimeout: 'timeout_seconds', modelTokens: 'max_output_tokens'
@@ -2058,14 +2087,34 @@
     for (const [field, key] of Object.entries(fields)) {
       document.getElementById(field).value = S.model[key] ?? '';
     }
+    renderModelKeyControls();
     document.getElementById('pingStatus').textContent =
-      data.key_configured ? '配置已保存，凭据已设置' : '配置已保存，宿主凭据尚未设置';
+      data.stored_key_configured ? '配置已保存，API Key 已就绪'
+        : data.key_configured ? '配置已保存，环境变量已就绪' : '配置已保存，尚未设置 API Key';
+  }
+
+  function renderModelKeyControls() {
+    const saved = S.modelKeyStored && fieldValue('modelUrl') === S.model?.base_url;
+    document.getElementById('modelApiKey').placeholder = saved
+      ? '已保存，留空保留当前 Key' : '输入供应商发放的 API Key';
+    document.getElementById('btnRemoveModelKey').classList.toggle('hidden', !saved);
   }
 
   async function saveModelConfig(button) {
     await withButton(button, '保存模型配置失败', async () => {
-      showModelConfig(await post('/api/model/config', modelConfigValues()));
+      const payload = modelConfigValues();
+      const key = fieldValue('modelApiKey');
+      if (key) payload.api_key = key;
+      showModelConfig(await post('/api/model/config', payload));
       toast('模型配置已保存', 'ok');
+    });
+  }
+
+  async function removeModelKey(button) {
+    if (!S.model) return;
+    await withButton(button, '移除 API Key 失败', async () => {
+      showModelConfig(await post('/api/model/config', { ...S.model, remove_api_key: true }));
+      toast('已移除保存的 API Key', 'ok');
     });
   }
 
@@ -2074,7 +2123,7 @@
     const dot = document.getElementById('pingDot');
     const status = document.getElementById('pingStatus');
     const baseUrl = document.getElementById('modelUrl').value.trim();
-    const keyEnv = document.getElementById('modelKey').value.trim();
+    const keyEnv = modelConfigValues().api_key_env;
 
     if (!baseUrl) {
       toast('请先填写 base_url', 'bad');
@@ -2091,7 +2140,7 @@
         body: JSON.stringify({ base_url: baseUrl, api_key_env: keyEnv })
       });
       dot.dataset.state = res.ok ? 'done' : 'blocked';
-      const keyNote = keyEnv ? (res.key_configured ? '· 凭据已就绪' : '· 环境变量未设置') : '· 未指定凭据变量';
+      const keyNote = res.key_configured ? '· 本机已有凭据' : '· 尚未保存凭据';
       status.textContent = `${res.message} · ${res.latency_ms}ms ${keyNote}`;
       status.className = res.ok ? '' : 'muted';
     } catch (err) {
@@ -2164,25 +2213,25 @@
     });
 
     host.innerHTML = `
-      <div class="panel">
-        <div class="panel-head">
+      <div class="panel inventory-results">
+        <div class="panel-head inventory-tools">
           <div class="row" style="gap:6px;flex-wrap:wrap">
             ${methods.map((m) => `
               <button class="chip ${S.filters.method === m ? '' : 'chip-bare'}"
                       style="${S.filters.method === m ? 'border-color:var(--accent);color:var(--accent)' : ''}"
                       onclick="setMethodFilter('${esc(m)}')">${esc(m === 'ALL' ? '全部' : m)}</button>`).join('')}
           </div>
-          <div class="row">
+          <div class="row inventory-search">
             <input type="text" placeholder="过滤路径或 operation_id" value="${esc(S.filters.q)}"
                    oninput="setInvQuery(this.value)"
-                   style="width:220px;height:26px;padding:0 8px;background:var(--bg);border:1px solid var(--line-strong);font:400 11.5px var(--mono);color:var(--text)">
+                   style="height:26px;padding:0 8px;background:var(--bg);border:1px solid var(--line-strong);font:400 11.5px var(--mono);color:var(--text)">
             <button class="btn btn-sm btn-quiet" onclick="inspectSource('inventory')">原件</button>
           </div>
         </div>
         ${filtered.length ? `
-        <table class="tbl">
+        <div class="inventory-scroll"><table class="tbl inventory-table">
           <thead><tr>
-            <th style="width:76px">方法</th><th>路径</th><th>operation_id</th><th style="width:110px">状态</th><th style="width:70px">来源</th>
+            <th>方法</th><th>路径</th><th>operation_id</th><th>状态</th><th>来源</th>
           </tr></thead>
           <tbody>
             ${filtered.map((op) => `
@@ -2195,7 +2244,7 @@
                 <td class="mono dim">${(op.sources || []).length}</td>
               </tr>`).join('')}
           </tbody>
-        </table>` : `
+        </table></div>` : `
         <div class="empty"><h4>没有匹配的操作</h4><p>换个过滤条件，或清空搜索框。</p></div>`}
       </div>
 
